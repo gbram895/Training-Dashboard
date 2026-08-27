@@ -23,6 +23,20 @@ interface PendingGarminLogin {
 const PENDING_TTL_MS = 10 * 60 * 1000;
 const pendingLogins = new Map<string, PendingGarminLogin>();
 
+/** Pulls out the parts of a Garmin SSO page that actually say what it wants, instead of dumping raw HTML. */
+function describeGarminPage(html: string): string {
+  const forms = [...html.matchAll(/<form\b[^>]*>/gi)].map((m) => m[0]);
+  const inputs = [...html.matchAll(/<input\b[^>]*>/gi)].map((m) => m[0]);
+  const contextSnippets = [...html.matchAll(/.{0,80}(verif|mfa|security code|authenticat|2-step|two-step)/gi)].map(
+    (m) => m[0].replace(/\s+/g, ' ').trim(),
+  );
+  return JSON.stringify(
+    { length: html.length, forms, inputs, contextSnippets: contextSnippets.slice(0, 10) },
+    null,
+    2,
+  );
+}
+
 function sweepExpiredPendingLogins() {
   const cutoff = Date.now() - PENDING_TTL_MS;
   for (const [id, entry] of pendingLogins) {
@@ -105,7 +119,7 @@ export async function beginGarminLogin(
   }
 
   if (!step3Result.includes('verifyMFA')) {
-    console.error('[garmin-auth] unexpected sign-in response, first 500 chars:', step3Result.slice(0, 500));
+    console.error('[garmin-auth] unexpected sign-in response:', describeGarminPage(step3Result));
     throw new Error('Garmin login failed: check your username and password');
   }
 
@@ -149,7 +163,7 @@ export async function completeGarminMfaLogin(pendingId: string, code: string): P
 
   const ticketMatch = TICKET_RE.exec(mfaResult);
   if (!ticketMatch) {
-    console.error('[garmin-auth] unexpected MFA response, first 500 chars:', mfaResult.slice(0, 500));
+    console.error('[garmin-auth] unexpected MFA response:', describeGarminPage(mfaResult));
     throw new Error('Garmin MFA verification failed: incorrect or expired code');
   }
   return finishGarminLogin(pending.client, ticketMatch[1]);
