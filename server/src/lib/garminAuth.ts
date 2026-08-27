@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import FormData from 'form-data';
 import type { GarminConnect, GarminTokens } from './garmin.js';
 
 // Garmin's SSO login has no public API and no documented MFA step — this
@@ -95,12 +94,13 @@ export async function beginGarminLogin(
   };
   const signinUrl = `${url.SIGNIN_URL}?${new URLSearchParams(signinParams).toString()}`;
 
-  const step3Form = new FormData();
-  step3Form.append('username', username);
-  step3Form.append('password', password);
-  step3Form.append('embed', 'true');
-  step3Form.append('_csrf', csrfMatch[1]);
-  const step3Result = await http.post<string>(signinUrl, step3Form, {
+  const step3Body = new URLSearchParams({
+    username,
+    password,
+    embed: 'true',
+    _csrf: csrfMatch[1],
+  }).toString();
+  const step3Result = await http.post<string>(signinUrl, step3Body, {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
       Dnt: 1,
@@ -145,13 +145,14 @@ export async function completeGarminMfaLogin(pendingId: string, code: string): P
   const mfaParams = { ...Object.fromEntries(signinQuery), fromPage: 'setupEnterMfaCode' };
   const mfaUrl = `${url.GARMIN_SSO}/verifyMFA/loginEnterMfaCode?${new URLSearchParams(mfaParams).toString()}`;
 
-  const mfaForm = new FormData();
-  mfaForm.append('mfa-code', code);
-  mfaForm.append('embed', 'true');
-  mfaForm.append('_csrf', pending.csrfToken);
-  mfaForm.append('fromPage', 'setupEnterMfaCode');
+  const mfaBody = new URLSearchParams({
+    'mfa-code': code,
+    embed: 'true',
+    _csrf: pending.csrfToken,
+    fromPage: 'setupEnterMfaCode',
+  }).toString();
 
-  const mfaResult = await http.post<string>(mfaUrl, mfaForm, {
+  const mfaResult = await http.post<string>(mfaUrl, mfaBody, {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
       Dnt: 1,
