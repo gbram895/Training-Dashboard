@@ -171,6 +171,7 @@ export async function beginGarminLogin(
 
   const mfaCsrfMatch = CSRF_RE.exec(step3Result) ?? csrfMatch;
   const pendingId = randomUUID();
+  console.log('[garmin-auth] MFA challenge issued, cookies tracked:', Object.keys(jar.toJSON()));
   pendingLogins.set(pendingId, {
     client,
     csrfToken: mfaCsrfMatch[1],
@@ -189,6 +190,7 @@ export async function completeGarminMfaLogin(pendingId: string, code: string): P
   const http = pending.client.client;
   const url = http.url;
   const jar = CookieJar.fromJSON(pending.cookies);
+  console.log('[garmin-auth] submitting MFA code, cookies loaded:', Object.keys(jar.toJSON()));
   const signinQuery = new URL(pending.signinUrl).searchParams;
   const mfaParams = { ...Object.fromEntries(signinQuery), fromPage: 'setupEnterMfaCode' };
   const mfaUrl = `${url.GARMIN_SSO}/verifyMFA/loginEnterMfaCode?${new URLSearchParams(mfaParams).toString()}`;
@@ -214,6 +216,12 @@ export async function completeGarminMfaLogin(pendingId: string, code: string): P
 
   const ticketMatch = TICKET_RE.exec(mfaResult);
   if (!ticketMatch) {
+    console.error(
+      '[garmin-auth] unexpected MFA response, status:',
+      mfaRes.status,
+      'new cookies set:',
+      Boolean(mfaRes.headers?.['set-cookie']),
+    );
     console.error('[garmin-auth] unexpected MFA response:', describeGarminPage(mfaResult));
     throw new Error('Garmin MFA verification failed: incorrect or expired code');
   }
