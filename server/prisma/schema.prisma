@@ -16,6 +16,7 @@ model User {
   workouts     Workout[]
   goals        Goal[]
   healthDays   DailyHealthSummary[]
+  healthSync   HealthSyncConfig?
 }
 
 enum WorkoutType {
@@ -72,6 +73,17 @@ model DailyHealthSummary {
   updatedAt         DateTime @updatedAt
 
   @@unique([userId, date])
+}
+
+model HealthSyncConfig {
+  id                  String    @id @default(uuid())
+  userId              String    @unique
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dropboxRefreshToken String
+  folderPath          String    @default("/Apps/Health Auto Export/Health Auto Export/Apple health")
+  lastSyncedAt        DateTime?
+  lastSyncError       String?
+  createdAt           DateTime  @default(now())
 }
 
 model Goal {

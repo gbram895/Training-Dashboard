@@ -1,13 +1,14 @@
 import { Router } from 'express';
+import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, AuthedRequest } from '../middleware/auth.js';
-import {
-  aggregateHealthExports,
-  externalWorkoutId,
-  mapWorkoutType,
-  type HealthAutoExportFile,
-} from '../lib/appleHealth.js';
+import type { HealthAutoExportFile } from '../lib/appleHealth.js';
+import { applyHealthFiles } from '../lib/healthImport.js';
+import { buildAuthorizeUrl, dropboxConfigured, exchangeCodeForTokens } from '../lib/dropbox.js';
+
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) throw new Error('JWT_SECRET is not set');
 
 const router = Router();
 
@@ -77,44 +78,81 @@ router.post('/import', async (req, res) => {
   const user = await prisma.user.findUnique({ where: { email: userEmail } });
   if (!user) return res.status(404).json({ error: 'No account with that email' });
 
-  const daily = aggregateHealthExports(files as HealthAutoExportFile[]);
-  for (const day of daily) {
-    await prisma.dailyHealthSummary.upsert({
-      where: { userId_date: { userId: user.id, date: new Date(day.date) } },
-      create: { ...day, date: new Date(day.date), userId: user.id },
-      update: { ...day, date: new Date(day.date) },
-    });
+  const result = await applyHealthFiles(user.id, files as HealthAutoExportFile[]);
+  res.json(result);
+});
+
+function callbackUrl(req: { protocol: string; get: (name: string) => string | undefined }) {
+  return `${req.protocol}://${req.get('host')}/api/health/dropbox/callback`;
+}
+
+router.get('/dropbox/status', requireAuth, async (req: AuthedRequest, res) => {
+  const config = await prisma.healthSyncConfig.findUnique({ where: { userId: req.userId } });
+  res.json({
+    configured: dropboxConfigured(),
+    connected: Boolean(config),
+    lastSyncedAt: config?.lastSyncedAt ?? null,
+    lastSyncError: config?.lastSyncError ?? null,
+  });
+});
+
+router.get('/dropbox/connect', async (req, res) => {
+  if (!dropboxConfigured()) {
+    return res.status(500).send('Dropbox app credentials are not configured on this server.');
+  }
+  const token = req.query.token;
+  if (typeof token !== 'string') return res.status(401).send('Missing token');
+
+  let userId: string;
+  try {
+    userId = (jwt.verify(token, JWT_SECRET!) as { userId: string }).userId;
+  } catch {
+    return res.status(401).send('Invalid or expired token');
   }
 
-  let workoutsImported = 0;
-  for (const file of files) {
-    for (const workout of file.data.workouts ?? []) {
-      const externalId = externalWorkoutId(workout);
-      const durationMin = workout.duration
-        ? Math.round(workout.duration / 60)
-        : Math.round((new Date(workout.end).getTime() - new Date(workout.start).getTime()) / 60000);
+  const state = jwt.sign({ userId, purpose: 'dropbox-connect' }, JWT_SECRET!, { expiresIn: '10m' });
+  res.redirect(buildAuthorizeUrl(callbackUrl(req), state));
+});
 
-      await prisma.workout.upsert({
-        where: { externalId },
-        create: {
-          userId: user.id,
-          type: mapWorkoutType(workout.name),
-          date: new Date(workout.start),
-          durationMin,
-          distanceKm: workout.distance?.units === 'km' ? workout.distance.qty : undefined,
-          source: 'apple_health',
-          externalId,
-        },
-        update: {
-          durationMin,
-          distanceKm: workout.distance?.units === 'km' ? workout.distance.qty : undefined,
-        },
-      });
-      workoutsImported += 1;
+router.get('/dropbox/callback', async (req, res) => {
+  const { code, state } = req.query;
+  if (typeof code !== 'string' || typeof state !== 'string') {
+    return res.status(400).send('Missing code or state');
+  }
+
+  let userId: string;
+  try {
+    const payload = jwt.verify(state, JWT_SECRET!) as { userId: string; purpose: string };
+    if (payload.purpose !== 'dropbox-connect') throw new Error('wrong purpose');
+    userId = payload.userId;
+  } catch {
+    return res.status(401).send('Invalid or expired state');
+  }
+
+  try {
+    const tokens = await exchangeCodeForTokens(code, callbackUrl(req));
+    if (!tokens.refresh_token) {
+      return res.status(500).send('Dropbox did not return a refresh token');
     }
+    await prisma.healthSyncConfig.upsert({
+      where: { userId },
+      create: { userId, dropboxRefreshToken: tokens.refresh_token },
+      update: { dropboxRefreshToken: tokens.refresh_token, lastSyncError: null },
+    });
+    res.redirect('/?dropbox=connected');
+  } catch (err) {
+    res.status(500).send(`Failed to connect Dropbox: ${err instanceof Error ? err.message : err}`);
   }
+});
 
-  res.json({ daysImported: daily.length, workoutsImported });
+router.post('/dropbox/sync-now', requireAuth, async (req: AuthedRequest, res) => {
+  const { runSyncForUser } = await import('../lib/healthSyncJob.js');
+  try {
+    const result = await runSyncForUser(req.userId!);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Sync failed' });
+  }
 });
 
 export default router;

@@ -48,6 +48,13 @@ export interface DailyHealthSummary {
   vo2Max?: number | null;
 }
 
+export interface DropboxSyncStatus {
+  configured: boolean;
+  connected: boolean;
+  lastSyncedAt: string | null;
+  lastSyncError: string | null;
+}
+
 export interface AuthUser {
   id: string;
   email: string;
