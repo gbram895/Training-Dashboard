@@ -111,7 +111,10 @@ router.get('/dropbox/connect', async (req, res) => {
   }
 
   const state = jwt.sign({ userId, purpose: 'dropbox-connect' }, JWT_SECRET!, { expiresIn: '10m' });
-  res.redirect(buildAuthorizeUrl(callbackUrl(req), state));
+  const redirectUri = callbackUrl(req);
+  const authorizeUrl = buildAuthorizeUrl(redirectUri, state);
+  console.log(`[dropbox] redirecting user ${userId} to Dropbox, redirect_uri=${redirectUri}`);
+  res.redirect(authorizeUrl);
 });
 
 router.get('/dropbox/callback', async (req, res) => {
@@ -139,8 +142,10 @@ router.get('/dropbox/callback', async (req, res) => {
       create: { userId, dropboxRefreshToken: tokens.refresh_token },
       update: { dropboxRefreshToken: tokens.refresh_token, lastSyncError: null },
     });
+    console.log(`[dropbox] connected successfully for user ${userId}`);
     res.redirect('/?dropbox=connected');
   } catch (err) {
+    console.error(`[dropbox] callback failed for user ${userId}:`, err);
     res.status(500).send(`Failed to connect Dropbox: ${err instanceof Error ? err.message : err}`);
   }
 });

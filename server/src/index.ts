@@ -19,6 +19,14 @@ app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json({ limit: '15mb' }));
 
+app.use('/api', (req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    console.log(`${req.method} ${req.originalUrl} -> ${res.statusCode} (${Date.now() - start}ms)`);
+  });
+  next();
+});
+
 app.get('/api/status', (_req, res) => res.json({ ok: true }));
 app.use('/api/auth', authRouter);
 app.use('/api/workouts', workoutsRouter);
@@ -32,6 +40,13 @@ if (process.env.NODE_ENV === 'production') {
     res.sendFile(path.join(clientDist, 'index.html'));
   });
 }
+
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('[unhandled error]', err);
+  if (!res.headersSent) {
+    res.status(500).send(`Server error: ${err instanceof Error ? err.message : String(err)}`);
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
