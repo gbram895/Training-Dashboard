@@ -8,6 +8,17 @@ function formatDay(date: string) {
   return new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+function latestValue(
+  days: DailyHealthSummary[],
+  key: keyof DailyHealthSummary,
+): number | null {
+  for (let i = days.length - 1; i >= 0; i--) {
+    const value = days[i][key];
+    if (typeof value === 'number') return value;
+  }
+  return null;
+}
+
 export default function HealthPanel() {
   const [days, setDays] = useState<DailyHealthSummary[] | null>(null);
   const [status, setStatus] = useState<DropboxSyncStatus | null>(null);
@@ -112,8 +123,8 @@ export default function HealthPanel() {
           <span className="stat-label">Steps</span>
         </div>
         <div className="health-stat">
-          <span className="stat-value">{latest.restingHeartRate?.toFixed(0) ?? '—'}</span>
-          <span className="stat-label">Resting HR</span>
+          <span className="stat-value">{latest.activeEnergyKcal?.toFixed(0) ?? '—'}</span>
+          <span className="stat-label">Active kcal</span>
         </div>
         <div className="health-stat">
           <span className="stat-value">
@@ -122,8 +133,28 @@ export default function HealthPanel() {
           <span className="stat-label">Sleep</span>
         </div>
         <div className="health-stat">
-          <span className="stat-value">{latest.activeEnergyKcal?.toFixed(0) ?? '—'}</span>
-          <span className="stat-label">Active kcal</span>
+          <span className="stat-value">{latestValue(days, 'restingHeartRate')?.toFixed(0) ?? '—'}</span>
+          <span className="stat-label">Resting HR</span>
+        </div>
+        <div className="health-stat">
+          <span className="stat-value">{latestValue(days, 'avgHeartRate')?.toFixed(0) ?? '—'}</span>
+          <span className="stat-label">Avg HR</span>
+        </div>
+        <div className="health-stat">
+          <span className="stat-value">{latestValue(days, 'avgHrv')?.toFixed(0) ?? '—'}</span>
+          <span className="stat-label">HRV (ms)</span>
+        </div>
+        <div className="health-stat">
+          <span className="stat-value">
+            {latestValue(days, 'avgBloodOxygen') != null
+              ? `${latestValue(days, 'avgBloodOxygen')!.toFixed(0)}%`
+              : '—'}
+          </span>
+          <span className="stat-label">Blood O₂</span>
+        </div>
+        <div className="health-stat">
+          <span className="stat-value">{latestValue(days, 'vo2Max')?.toFixed(1) ?? '—'}</span>
+          <span className="stat-label">VO2 Max</span>
         </div>
       </div>
 

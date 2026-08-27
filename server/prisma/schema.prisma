@@ -71,6 +71,8 @@ model DailyHealthSummary {
   exerciseMinutes   Float?
   flightsClimbed    Int?
   vo2Max            Float?
+  avgHrv            Float?
+  avgBloodOxygen    Float?
   updatedAt         DateTime @updatedAt
 
   @@unique([userId, date])

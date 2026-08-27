@@ -43,6 +43,8 @@ export interface DailyAggregate {
   exerciseMinutes?: number;
   flightsClimbed?: number;
   vo2Max?: number;
+  avgHrv?: number;
+  avgBloodOxygen?: number;
 }
 
 const KJ_TO_KCAL = 0.239006;
@@ -60,6 +62,10 @@ interface Accumulator {
   flightsClimbed: number;
   vo2MaxSum: number;
   vo2MaxCount: number;
+  hrvSum: number;
+  hrvCount: number;
+  bloodOxygenSum: number;
+  bloodOxygenCount: number;
 }
 
 function newAccumulator(): Accumulator {
@@ -76,6 +82,10 @@ function newAccumulator(): Accumulator {
     flightsClimbed: 0,
     vo2MaxSum: 0,
     vo2MaxCount: 0,
+    hrvSum: 0,
+    hrvCount: 0,
+    bloodOxygenSum: 0,
+    bloodOxygenCount: 0,
   };
 }
 
@@ -126,6 +136,18 @@ export function aggregateHealthExports(files: HealthAutoExportFile[]): DailyAggr
               acc.vo2MaxCount += 1;
             }
             break;
+          case 'heart_rate_variability':
+            if (entry.qty != null) {
+              acc.hrvSum += entry.qty;
+              acc.hrvCount += 1;
+            }
+            break;
+          case 'blood_oxygen_saturation':
+            if (entry.qty != null) {
+              acc.bloodOxygenSum += entry.qty;
+              acc.bloodOxygenCount += 1;
+            }
+            break;
         }
       }
     }
@@ -145,6 +167,8 @@ export function aggregateHealthExports(files: HealthAutoExportFile[]): DailyAggr
       exerciseMinutes: acc.exerciseMinutes || undefined,
       flightsClimbed: acc.flightsClimbed || undefined,
       vo2Max: acc.vo2MaxCount ? acc.vo2MaxSum / acc.vo2MaxCount : undefined,
+      avgHrv: acc.hrvCount ? acc.hrvSum / acc.hrvCount : undefined,
+      avgBloodOxygen: acc.bloodOxygenCount ? acc.bloodOxygenSum / acc.bloodOxygenCount : undefined,
     }))
     .filter((day) =>
       Object.entries(day).some(([key, value]) => key !== 'date' && value !== undefined),

@@ -46,6 +46,8 @@ export interface DailyHealthSummary {
   exerciseMinutes?: number | null;
   flightsClimbed?: number | null;
   vo2Max?: number | null;
+  avgHrv?: number | null;
+  avgBloodOxygen?: number | null;
 }
 
 export interface DropboxSyncStatus {
