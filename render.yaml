@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: training-dashboard
+    runtime: node
+    plan: free
+    buildCommand: >-
+      npm install --prefix client &&
+      npm run build --prefix client &&
+      npm install --prefix server &&
+      npm run build --prefix server
+    startCommand: npm start --prefix server
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SYNC_API_KEY
+        generateValue: true
