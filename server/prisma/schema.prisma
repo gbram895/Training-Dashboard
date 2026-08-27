@@ -18,6 +18,12 @@ model User {
   healthDays   DailyHealthSummary[]
   healthSync   HealthSyncConfig?
   syncedFiles  SyncedDropboxFile[]
+
+  // Heart-rate zone thresholds (bpm) — upper bound of zones 1-4; zone 5 is everything above z4Max
+  hrZone1Max   Int                 @default(114)
+  hrZone2Max   Int                 @default(133)
+  hrZone3Max   Int                 @default(152)
+  hrZone4Max   Int                 @default(171)
 }
 
 enum WorkoutType {
@@ -42,6 +48,14 @@ model Workout {
   externalId  String?         @unique
   createdAt   DateTime        @default(now())
   exercises   ExerciseEntry[]
+
+  // Minutes spent in each heart-rate zone, computed at import time from raw
+  // per-workout HR samples (Apple Health only) using the user's zone thresholds
+  hrZone1Min  Float?
+  hrZone2Min  Float?
+  hrZone3Min  Float?
+  hrZone4Min  Float?
+  hrZone5Min  Float?
 
   @@index([userId, date])
 }

@@ -16,6 +16,37 @@ export interface Workout {
   distanceKm?: number | null;
   notes?: string | null;
   exercises: ExerciseEntry[];
+  hrZone1Min?: number | null;
+  hrZone2Min?: number | null;
+  hrZone3Min?: number | null;
+  hrZone4Min?: number | null;
+  hrZone5Min?: number | null;
+}
+
+export interface DisciplineTotals {
+  distanceKm: number;
+  durationMin: number;
+}
+
+export interface DisciplineStats {
+  allTime: { RUN: DisciplineTotals; RIDE: DisciplineTotals; SWIM: DisciplineTotals };
+  weekly: ({ weekStart: string } & { RUN: DisciplineTotals; RIDE: DisciplineTotals; SWIM: DisciplineTotals })[];
+}
+
+export interface HrZoneWeek {
+  weekStart: string;
+  z1: number;
+  z2: number;
+  z3: number;
+  z4: number;
+  z5: number;
+}
+
+export interface HrZoneSettings {
+  hrZone1Max: number;
+  hrZone2Max: number;
+  hrZone3Max: number;
+  hrZone4Max: number;
 }
 
 export interface WorkoutStats {

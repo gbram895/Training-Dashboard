@@ -5,6 +5,7 @@ const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: '🏠', end: true },
   { to: '/workouts', label: 'Workouts', icon: '📋', end: false },
   { to: '/goals', label: 'Goals', icon: '🎯', end: false },
+  { to: '/settings', label: 'Settings', icon: '⚙️', end: false },
 ];
 
 export default function NavShell() {

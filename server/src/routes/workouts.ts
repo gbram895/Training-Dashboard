@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { WorkoutType } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, AuthedRequest } from '../middleware/auth.js';
 import { asString } from '../lib/params.js';
@@ -64,6 +65,83 @@ router.get('/stats', async (req: AuthedRequest, res) => {
       .map(([weekStart, data]) => ({ weekStart, ...data }))
       .sort((a, b) => a.weekStart.localeCompare(b.weekStart)),
   });
+});
+
+const DISCIPLINES: WorkoutType[] = ['RUN', 'RIDE', 'SWIM'];
+
+function weekStartKey(date: Date): string {
+  const weekStart = new Date(date);
+  weekStart.setHours(0, 0, 0, 0);
+  const day = weekStart.getDay(); // 0 = Sunday
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  weekStart.setDate(weekStart.getDate() + diffToMonday);
+  return weekStart.toISOString().slice(0, 10);
+}
+
+function emptyDisciplineTotals() {
+  return { RUN: { distanceKm: 0, durationMin: 0 }, RIDE: { distanceKm: 0, durationMin: 0 }, SWIM: { distanceKm: 0, durationMin: 0 } };
+}
+
+router.get('/discipline-stats', async (req: AuthedRequest, res) => {
+  const weeksBack = 8;
+  const since = new Date();
+  since.setDate(since.getDate() - weeksBack * 7);
+
+  const [allWorkouts, recentWorkouts] = await Promise.all([
+    prisma.workout.findMany({ where: { userId: req.userId, type: { in: DISCIPLINES } } }),
+    prisma.workout.findMany({
+      where: { userId: req.userId, type: { in: DISCIPLINES }, date: { gte: since } },
+      orderBy: { date: 'asc' },
+    }),
+  ]);
+
+  const allTime = emptyDisciplineTotals();
+  for (const w of allWorkouts) {
+    allTime[w.type as 'RUN' | 'RIDE' | 'SWIM'].distanceKm += w.distanceKm ?? 0;
+    allTime[w.type as 'RUN' | 'RIDE' | 'SWIM'].durationMin += w.durationMin;
+  }
+
+  const weeklyMap: Record<string, ReturnType<typeof emptyDisciplineTotals>> = {};
+  for (const w of recentWorkouts) {
+    const key = weekStartKey(w.date);
+    if (!weeklyMap[key]) weeklyMap[key] = emptyDisciplineTotals();
+    weeklyMap[key][w.type as 'RUN' | 'RIDE' | 'SWIM'].distanceKm += w.distanceKm ?? 0;
+    weeklyMap[key][w.type as 'RUN' | 'RIDE' | 'SWIM'].durationMin += w.durationMin;
+  }
+
+  const weekly = Object.entries(weeklyMap)
+    .map(([weekStart, disciplines]) => ({ weekStart, ...disciplines }))
+    .sort((a, b) => a.weekStart.localeCompare(b.weekStart));
+
+  res.json({ allTime, weekly });
+});
+
+router.get('/hr-zones-weekly', async (req: AuthedRequest, res) => {
+  const weeksBack = 8;
+  const since = new Date();
+  since.setDate(since.getDate() - weeksBack * 7);
+
+  const workouts = await prisma.workout.findMany({
+    where: { userId: req.userId, date: { gte: since }, hrZone1Min: { not: null } },
+    orderBy: { date: 'asc' },
+  });
+
+  const weeklyMap: Record<string, { z1: number; z2: number; z3: number; z4: number; z5: number }> = {};
+  for (const w of workouts) {
+    const key = weekStartKey(w.date);
+    if (!weeklyMap[key]) weeklyMap[key] = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
+    weeklyMap[key].z1 += w.hrZone1Min ?? 0;
+    weeklyMap[key].z2 += w.hrZone2Min ?? 0;
+    weeklyMap[key].z3 += w.hrZone3Min ?? 0;
+    weeklyMap[key].z4 += w.hrZone4Min ?? 0;
+    weeklyMap[key].z5 += w.hrZone5Min ?? 0;
+  }
+
+  const weekly = Object.entries(weeklyMap)
+    .map(([weekStart, zones]) => ({ weekStart, ...zones }))
+    .sort((a, b) => a.weekStart.localeCompare(b.weekStart));
+
+  res.json(weekly);
 });
 
 router.get('/:id', async (req: AuthedRequest, res) => {

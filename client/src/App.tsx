@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard';
 import Workouts from './pages/Workouts';
 import WorkoutForm from './pages/WorkoutForm';
 import Goals from './pages/Goals';
+import Settings from './pages/Settings';
 
 export default function App() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
             <Route path="/workouts/new" element={<WorkoutForm />} />
             <Route path="/workouts/:id" element={<WorkoutForm />} />
             <Route path="/goals" element={<Goals />} />
+            <Route path="/settings" element={<Settings />} />
           </Route>
         </Routes>
       </BrowserRouter>

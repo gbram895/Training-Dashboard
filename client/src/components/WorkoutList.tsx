@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { Workout } from '../api/types';
-import { formatDistance, formatDuration } from '../lib/format';
+import { formatDateUTC, formatDistance, formatDuration } from '../lib/format';
 
 export default function WorkoutList({
   workouts,
@@ -20,7 +20,7 @@ export default function WorkoutList({
               </span>
               <span className="muted">
                 {' '}
-                · {new Date(w.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                · {formatDateUTC(w.date)}
               </span>
             </div>
             <div className="workout-meta">

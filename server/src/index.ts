@@ -8,6 +8,7 @@ import authRouter from './routes/auth.js';
 import workoutsRouter from './routes/workouts.js';
 import goalsRouter from './routes/goals.js';
 import healthRouter from './routes/health.js';
+import settingsRouter from './routes/settings.js';
 import { dropboxConfigured } from './lib/dropbox.js';
 import { runAllSyncs } from './lib/healthSyncJob.js';
 
@@ -32,6 +33,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/workouts', workoutsRouter);
 app.use('/api/goals', goalsRouter);
 app.use('/api/health', healthRouter);
+app.use('/api/settings', settingsRouter);
 
 if (process.env.NODE_ENV === 'production') {
   const clientDist = path.resolve(__dirname, '../../client/dist');

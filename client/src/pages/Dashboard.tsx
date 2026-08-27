@@ -1,20 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
 import { apiFetch } from '../api/client';
-import type { Workout, WorkoutStats } from '../api/types';
-import { useAuth } from '../context/AuthContext';
+import type { DailyHealthSummary, DisciplineStats, DropboxSyncStatus, Goal, HrZoneWeek, Workout } from '../api/types';
 import WorkoutList from '../components/WorkoutList';
-import { formatDuration } from '../lib/format';
-import HealthPanel from '../components/HealthPanel';
+import DashboardHeader from '../components/dashboard/DashboardHeader';
+import DropboxSyncBar from '../components/dashboard/DropboxSyncBar';
+import SummaryBar from '../components/dashboard/SummaryBar';
+import StatTilesRow from '../components/dashboard/StatTilesRow';
+import HrvTrendChart from '../components/dashboard/HrvTrendChart';
+import HrvWeekCompareChart from '../components/dashboard/HrvWeekCompareChart';
+import SleepRhrCharts from '../components/dashboard/SleepRhrCharts';
+import HrZonesChart from '../components/dashboard/HrZonesChart';
+import DisciplineCharts from '../components/dashboard/DisciplineCharts';
 
 const WORKOUT_LABELS: Record<string, string> = {
   RUN: 'Run',
@@ -26,83 +23,54 @@ const WORKOUT_LABELS: Record<string, string> = {
 };
 
 export default function Dashboard() {
-  const { user } = useAuth();
-  const [stats, setStats] = useState<WorkoutStats | null>(null);
+  const [days, setDays] = useState<DailyHealthSummary[] | null>(null);
+  const [disciplineStats, setDisciplineStats] = useState<DisciplineStats | null>(null);
+  const [hrZones, setHrZones] = useState<HrZoneWeek[] | null>(null);
+  const [goals, setGoals] = useState<Goal[]>([]);
   const [recent, setRecent] = useState<Workout[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [syncStatus, setSyncStatus] = useState<DropboxSyncStatus | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      const [statsRes, workoutsRes] = await Promise.all([
-        apiFetch<WorkoutStats>('/workouts/stats'),
-        apiFetch<Workout[]>('/workouts'),
-      ]);
-      if (cancelled) return;
-      setStats(statsRes);
-      setRecent(workoutsRes.slice(0, 5));
-      setLoading(false);
-    }
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  function load() {
+    apiFetch<DailyHealthSummary[]>('/health/summary').then(setDays);
+    apiFetch<DisciplineStats>('/workouts/discipline-stats').then(setDisciplineStats);
+    apiFetch<HrZoneWeek[]>('/workouts/hr-zones-weekly').then(setHrZones);
+    apiFetch<Goal[]>('/goals').then(setGoals);
+    apiFetch<Workout[]>('/workouts').then((w) => setRecent(w.slice(0, 5)));
+    apiFetch<DropboxSyncStatus>('/health/dropbox/status').then(setSyncStatus);
+  }
 
-  const chartData =
-    stats?.weeklyBuckets.map((b) => ({
-      week: new Date(b.weekStart).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-      minutes: b.durationMin,
-    })) ?? [];
+  useEffect(load, []);
+
+  const loading = days === null || disciplineStats === null || hrZones === null;
 
   return (
     <div className="page">
-      <header className="page-header">
-        <h1>Hi {user?.name?.split(' ')[0]} 👋</h1>
-        <p className="muted">Here's your training over the last 4 weeks</p>
-      </header>
-
       {loading ? (
         <p className="muted">Loading…</p>
       ) : (
         <>
-          <HealthPanel />
+          <DashboardHeader
+            latestDataDate={days.length ? days[days.length - 1].date : null}
+            lastSyncedAt={syncStatus?.lastSyncedAt ?? null}
+            goals={goals}
+          />
 
-          <div className="stat-grid">
-            <div className="stat-card">
-              <span className="stat-value">{stats?.totalWorkouts ?? 0}</span>
-              <span className="stat-label">Workouts</span>
-            </div>
-            <div className="stat-card">
-              <span className="stat-value">{stats ? formatDuration(stats.totalDurationMin) : '0m'}</span>
-              <span className="stat-label">Time trained</span>
-            </div>
-            <div className="stat-card">
-              <span className="stat-value">{stats ? stats.totalDistanceKm.toFixed(2) : '0.00'}</span>
-              <span className="stat-label">km covered</span>
-            </div>
+          <DropboxSyncBar onSynced={load} />
+
+          <SummaryBar stats={disciplineStats} />
+
+          <StatTilesRow days={days} disciplineStats={disciplineStats} />
+
+          <HrvTrendChart days={days} />
+
+          <div className="dash-two-col">
+            <HrvWeekCompareChart days={days} />
+            <SleepRhrCharts days={days} />
           </div>
 
-          <section className="card">
-            <h2>Weekly training minutes</h2>
-            <div style={{ width: '100%', height: 220 }}>
-              <ResponsiveContainer>
-                <BarChart data={chartData} margin={{ left: -20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--grid-line)" />
-                  <XAxis dataKey="week" stroke="var(--text-muted)" fontSize={12} />
-                  <YAxis stroke="var(--text-muted)" fontSize={12} />
-                  <Tooltip
-                    contentStyle={{
-                      background: 'var(--surface)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 8,
-                    }}
-                  />
-                  <Bar dataKey="minutes" fill="var(--accent)" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </section>
+          <HrZonesChart weeks={hrZones} />
+
+          <DisciplineCharts weekly={disciplineStats.weekly} />
 
           <section className="card">
             <div className="card-header-row">

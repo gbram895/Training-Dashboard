@@ -16,6 +16,13 @@ export interface HealthAutoExportMetric {
   data: HealthAutoExportMetricEntry[];
 }
 
+export interface HeartRateSample {
+  date: string;
+  Avg?: number;
+  Min?: number;
+  Max?: number;
+}
+
 export interface HealthAutoExportWorkout {
   id?: string;
   name: string;
@@ -23,6 +30,55 @@ export interface HealthAutoExportWorkout {
   end: string;
   duration?: number;
   distance?: { qty: number; units: string };
+  heartRateData?: HeartRateSample[];
+}
+
+export interface HrZoneThresholds {
+  z1Max: number;
+  z2Max: number;
+  z3Max: number;
+  z4Max: number;
+}
+
+export interface HrZoneMinutes {
+  z1: number;
+  z2: number;
+  z3: number;
+  z4: number;
+  z5: number;
+}
+
+function zoneFor(bpm: number, t: HrZoneThresholds): keyof HrZoneMinutes {
+  if (bpm <= t.z1Max) return 'z1';
+  if (bpm <= t.z2Max) return 'z2';
+  if (bpm <= t.z3Max) return 'z3';
+  if (bpm <= t.z4Max) return 'z4';
+  return 'z5';
+}
+
+export function computeHrZoneMinutes(
+  samples: HeartRateSample[] | undefined,
+  workoutEnd: string,
+  thresholds: HrZoneThresholds,
+): HrZoneMinutes | null {
+  if (!samples || samples.length === 0) return null;
+  const sorted = samples
+    .filter((s): s is HeartRateSample & { Avg: number } => s.Avg != null)
+    .map((s) => ({ time: new Date(s.date).getTime(), bpm: s.Avg }))
+    .sort((a, b) => a.time - b.time);
+  if (sorted.length === 0) return null;
+
+  const endTime = new Date(workoutEnd).getTime();
+  const zones: HrZoneMinutes = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
+
+  for (let i = 0; i < sorted.length; i++) {
+    const current = sorted[i];
+    const nextTime = i + 1 < sorted.length ? sorted[i + 1].time : endTime;
+    const durationMin = Math.max(0, (nextTime - current.time) / 60000);
+    zones[zoneFor(current.bpm, thresholds)] += durationMin;
+  }
+
+  return zones;
 }
 
 export interface HealthAutoExportFile {
