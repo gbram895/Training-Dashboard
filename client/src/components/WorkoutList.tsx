@@ -15,7 +15,9 @@ export default function WorkoutList({
         <li key={w.id}>
           <Link to={`/workouts/${w.id}`} className="workout-row">
             <div>
-              <span className="workout-type">{labels[w.type] ?? w.type}</span>
+              <span className="workout-type">
+                {w.type === 'OTHER' && w.notes ? w.notes : (labels[w.type] ?? w.type)}
+              </span>
               <span className="muted">
                 {' '}
                 · {new Date(w.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}

@@ -20,26 +20,36 @@ export async function applyHealthFiles(userId: string, files: HealthAutoExportFi
   for (const file of files) {
     for (const workout of file.data.workouts ?? []) {
       const externalId = externalWorkoutId(workout);
+      const type = mapWorkoutType(workout.name);
       const durationMin = workout.duration
         ? Math.round(workout.duration / 60)
         : Math.round((new Date(workout.end).getTime() - new Date(workout.start).getTime()) / 60000);
+      const distanceKm = workout.distance?.units === 'km' ? workout.distance.qty : undefined;
 
-      await prisma.workout.upsert({
-        where: { externalId },
-        create: {
-          userId,
-          type: mapWorkoutType(workout.name),
-          date: new Date(workout.start),
-          durationMin,
-          distanceKm: workout.distance?.units === 'km' ? workout.distance.qty : undefined,
-          source: 'apple_health',
-          externalId,
-        },
-        update: {
-          durationMin,
-          distanceKm: workout.distance?.units === 'km' ? workout.distance.qty : undefined,
-        },
-      });
+      const existing = await prisma.workout.findUnique({ where: { externalId } });
+      if (existing) {
+        await prisma.workout.update({
+          where: { externalId },
+          data: {
+            durationMin,
+            distanceKm,
+            notes: type === 'OTHER' && !existing.notes ? workout.name : undefined,
+          },
+        });
+      } else {
+        await prisma.workout.create({
+          data: {
+            userId,
+            type,
+            date: new Date(workout.start),
+            durationMin,
+            distanceKm,
+            notes: type === 'OTHER' ? workout.name : undefined,
+            source: 'apple_health',
+            externalId,
+          },
+        });
+      }
       workoutsImported += 1;
     }
   }

@@ -156,9 +156,10 @@ router.get('/dropbox/callback', async (req, res) => {
 router.post('/dropbox/sync-now', requireAuth, async (req: AuthedRequest, res) => {
   const { runSyncForUser } = await import('../lib/healthSyncJob.js');
   const userId = req.userId!;
+  const force = req.query.force === 'true';
   res.json({ started: true });
-  runSyncForUser(userId)
-    .then((result) => console.log(`[health-sync] manual sync for user ${userId}:`, result))
+  runSyncForUser(userId, { force })
+    .then((result) => console.log(`[health-sync] manual sync (force=${force}) for user ${userId}:`, result))
     .catch((err) => console.error(`[health-sync] manual sync for user ${userId} failed:`, err));
 });
 

@@ -20,10 +20,10 @@ export default function HealthPanel() {
 
   useEffect(reload, []);
 
-  async function syncNow() {
+  async function syncNow(force = false) {
     setSyncing(true);
     try {
-      await apiFetch('/health/dropbox/sync-now', { method: 'POST' });
+      await apiFetch(`/health/dropbox/sync-now${force ? '?force=true' : ''}`, { method: 'POST' });
       setSyncStarted(true);
       setTimeout(() => setSyncStarted(false), 8000);
     } finally {
@@ -44,7 +44,7 @@ export default function HealthPanel() {
             Dropbox is connected. Waiting for the first sync
             {status.lastSyncError ? ` — last attempt failed: ${status.lastSyncError}` : '…'}
           </p>
-          <button type="button" onClick={syncNow} disabled={syncing}>
+          <button type="button" onClick={() => syncNow(false)} disabled={syncing}>
             {syncing ? 'Starting…' : 'Sync now'}
           </button>
           {syncStarted && (
@@ -81,9 +81,20 @@ export default function HealthPanel() {
       <div className="card-header-row">
         <h2>Health (Apple Health)</h2>
         {status.connected ? (
-          <button type="button" className="secondary" onClick={syncNow} disabled={syncing}>
-            {syncing ? 'Starting…' : syncStarted ? 'Started ✓' : 'Sync now'}
-          </button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => syncNow(true)}
+              disabled={syncing}
+              title="Re-processes every synced file instead of only new ones"
+            >
+              {syncing ? 'Starting…' : 'Re-sync all'}
+            </button>
+            <button type="button" className="secondary" onClick={() => syncNow(false)} disabled={syncing}>
+              {syncing ? 'Starting…' : syncStarted ? 'Started ✓' : 'Sync now'}
+            </button>
+          </div>
         ) : status.configured ? (
           <a href={`/api/health/dropbox/connect?token=${getToken()}`} style={{ textDecoration: 'none' }}>
             <button type="button" className="secondary">

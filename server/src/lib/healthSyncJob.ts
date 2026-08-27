@@ -3,7 +3,7 @@ import { downloadFile, listFolder, refreshAccessToken } from './dropbox.js';
 import { applyHealthFiles } from './healthImport.js';
 import type { HealthAutoExportFile } from './appleHealth.js';
 
-export async function runSyncForUser(userId: string) {
+export async function runSyncForUser(userId: string, options: { force?: boolean } = {}) {
   const config = await prisma.healthSyncConfig.findUnique({ where: { userId } });
   if (!config) throw new Error('Dropbox is not connected for this account');
 
@@ -29,7 +29,11 @@ export async function runSyncForUser(userId: string) {
         const existing = await prisma.syncedDropboxFile.findUnique({
           where: { userId_path: { userId, path: entry.path_lower } },
         });
-        if (existing && existing.serverModified.getTime() === serverModified.getTime()) {
+        if (
+          !options.force &&
+          existing &&
+          existing.serverModified.getTime() === serverModified.getTime()
+        ) {
           totals.filesSkipped += 1;
           continue;
         }
