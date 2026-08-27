@@ -728,3 +728,20 @@ button.icon-button {
   margin: 0;
   font-size: 0.85rem;
 }
+
+.garmin-connect-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+}
+
+.garmin-connect-form p {
+  flex-basis: 100%;
+  margin: 0 0 0.25rem;
+}
+
+.garmin-connect-form input {
+  flex: 1 1 180px;
+}

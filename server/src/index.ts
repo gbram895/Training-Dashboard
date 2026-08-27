@@ -11,6 +11,7 @@ import healthRouter from './routes/health.js';
 import settingsRouter from './routes/settings.js';
 import { dropboxConfigured } from './lib/dropbox.js';
 import { runAllSyncs } from './lib/healthSyncJob.js';
+import { runAllGarminSyncs } from './lib/garminSync.js';
 
 const app = express();
 const PORT = process.env.PORT ?? 4000;
@@ -63,4 +64,13 @@ app.listen(PORT, () => {
       runAllSyncs().catch((err) => console.error('[health-sync] initial run failed:', err));
     }, 15_000);
   }
+
+  const garminSchedule = process.env.GARMIN_SYNC_CRON ?? '0 */6 * * *';
+  cron.schedule(garminSchedule, () => {
+    runAllGarminSyncs().catch((err) => console.error('[garmin-sync] run failed:', err));
+  });
+  console.log(`[garmin-sync] scheduled with cron "${garminSchedule}"`);
+  setTimeout(() => {
+    runAllGarminSyncs().catch((err) => console.error('[garmin-sync] initial run failed:', err));
+  }, 20_000);
 });

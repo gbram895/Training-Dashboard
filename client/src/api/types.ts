@@ -89,6 +89,12 @@ export interface DropboxSyncStatus {
   lastSyncError: string | null;
 }
 
+export interface GarminSyncStatus {
+  connected: boolean;
+  lastSyncedAt: string | null;
+  lastSyncError: string | null;
+}
+
 export interface AuthUser {
   id: string;
   email: string;

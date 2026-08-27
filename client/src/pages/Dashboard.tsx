@@ -5,6 +5,7 @@ import type { DailyHealthSummary, DisciplineStats, DropboxSyncStatus, Goal, HrZo
 import WorkoutList from '../components/WorkoutList';
 import DashboardHeader from '../components/dashboard/DashboardHeader';
 import DropboxSyncBar from '../components/dashboard/DropboxSyncBar';
+import GarminSyncBar from '../components/dashboard/GarminSyncBar';
 import SummaryBar from '../components/dashboard/SummaryBar';
 import StatTilesRow from '../components/dashboard/StatTilesRow';
 import HrvTrendChart from '../components/dashboard/HrvTrendChart';
@@ -57,6 +58,7 @@ export default function Dashboard() {
           />
 
           <DropboxSyncBar onSynced={load} />
+          <GarminSyncBar onSynced={load} />
 
           <SummaryBar stats={disciplineStats} />
 

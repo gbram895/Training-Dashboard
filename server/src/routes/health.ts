@@ -6,6 +6,7 @@ import { requireAuth, AuthedRequest } from '../middleware/auth.js';
 import type { HealthAutoExportFile } from '../lib/appleHealth.js';
 import { applyHealthFiles } from '../lib/healthImport.js';
 import { buildAuthorizeUrl, dropboxConfigured, exchangeCodeForTokens } from '../lib/dropbox.js';
+import { connectGarminAccount, runGarminSyncForUser } from '../lib/garminSync.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET is not set');
@@ -161,6 +162,49 @@ router.post('/dropbox/sync-now', requireAuth, async (req: AuthedRequest, res) =>
   runSyncForUser(userId, { force })
     .then((result) => console.log(`[health-sync] manual sync (force=${force}) for user ${userId}:`, result))
     .catch((err) => console.error(`[health-sync] manual sync for user ${userId} failed:`, err));
+});
+
+router.get('/garmin/status', requireAuth, async (req: AuthedRequest, res) => {
+  const config = await prisma.garminSyncConfig.findUnique({ where: { userId: req.userId } });
+  res.json({
+    connected: Boolean(config),
+    lastSyncedAt: config?.lastSyncedAt ?? null,
+    lastSyncError: config?.lastSyncError ?? null,
+  });
+});
+
+const garminConnectSchema = z.object({
+  username: z.string().min(1),
+  password: z.string().min(1),
+});
+
+router.post('/garmin/connect', requireAuth, async (req: AuthedRequest, res) => {
+  const parsed = garminConnectSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  try {
+    await connectGarminAccount(req.userId!, parsed.data.username, parsed.data.password);
+    res.json({ connected: true });
+  } catch (err) {
+    console.error(`[garmin] login failed for user ${req.userId}:`, err);
+    res.status(400).json({
+      error: `Garmin login failed: ${err instanceof Error ? err.message : String(err)}`,
+    });
+  }
+});
+
+router.post('/garmin/disconnect', requireAuth, async (req: AuthedRequest, res) => {
+  await prisma.garminSyncConfig.deleteMany({ where: { userId: req.userId } });
+  res.json({ connected: false });
+});
+
+router.post('/garmin/sync-now', requireAuth, async (req: AuthedRequest, res) => {
+  const userId = req.userId!;
+  const force = req.query.force === 'true';
+  res.json({ started: true });
+  runGarminSyncForUser(userId, { force })
+    .then((result) => console.log(`[garmin-sync] manual sync (force=${force}) for user ${userId}:`, result))
+    .catch((err) => console.error(`[garmin-sync] manual sync for user ${userId} failed:`, err));
 });
 
 export default router;
