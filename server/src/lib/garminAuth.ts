@@ -164,7 +164,7 @@ export async function beginGarminLogin(
     return { tokens: await finishGarminLogin(client, ticketMatch[1]) };
   }
 
-  if (!step3Result.includes('verifyMFA')) {
+  if (!step3Result.includes('id="mfa-code"')) {
     console.error('[garmin-auth] unexpected sign-in response:', describeGarminPage(step3Result));
     throw new Error('Garmin login failed: check your username and password');
   }
