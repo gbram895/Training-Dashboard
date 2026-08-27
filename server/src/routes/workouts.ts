@@ -16,7 +16,7 @@ const exerciseSchema = z.object({
 });
 
 const workoutSchema = z.object({
-  type: z.enum(['RUN', 'RIDE', 'STRENGTH', 'SWIM', 'WALK', 'OTHER']),
+  type: z.enum(['RUN', 'RIDE', 'STRENGTH', 'SWIM', 'WALK', 'BADMINTON', 'OTHER']),
   date: z.string().datetime().or(z.string().min(1)),
   durationMin: z.number().int().positive(),
   distanceKm: z.number().nonnegative().optional(),
@@ -82,24 +82,33 @@ function emptyDisciplineTotals() {
   return { RUN: { distanceKm: 0, durationMin: 0 }, RIDE: { distanceKm: 0, durationMin: 0 }, SWIM: { distanceKm: 0, durationMin: 0 } };
 }
 
+function yearStart(): Date {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+}
+
 router.get('/discipline-stats', async (req: AuthedRequest, res) => {
   const weeksBack = 8;
-  const since = new Date();
-  since.setDate(since.getDate() - weeksBack * 7);
+  const weeklySince = new Date();
+  weeklySince.setDate(weeklySince.getDate() - weeksBack * 7);
+  const since = yearStart();
 
-  const [allWorkouts, recentWorkouts] = await Promise.all([
-    prisma.workout.findMany({ where: { userId: req.userId, type: { in: DISCIPLINES } } }),
+  const [yearlyWorkouts, recentWorkouts, badmintonWorkouts] = await Promise.all([
+    prisma.workout.findMany({ where: { userId: req.userId, type: { in: DISCIPLINES }, date: { gte: since } } }),
     prisma.workout.findMany({
-      where: { userId: req.userId, type: { in: DISCIPLINES }, date: { gte: since } },
+      where: { userId: req.userId, type: { in: DISCIPLINES }, date: { gte: weeklySince } },
       orderBy: { date: 'asc' },
     }),
+    prisma.workout.findMany({ where: { userId: req.userId, type: 'BADMINTON', date: { gte: since } } }),
   ]);
 
-  const allTime = emptyDisciplineTotals();
-  for (const w of allWorkouts) {
-    allTime[w.type as 'RUN' | 'RIDE' | 'SWIM'].distanceKm += w.distanceKm ?? 0;
-    allTime[w.type as 'RUN' | 'RIDE' | 'SWIM'].durationMin += w.durationMin;
+  const yearly = emptyDisciplineTotals();
+  for (const w of yearlyWorkouts) {
+    yearly[w.type as 'RUN' | 'RIDE' | 'SWIM'].distanceKm += w.distanceKm ?? 0;
+    yearly[w.type as 'RUN' | 'RIDE' | 'SWIM'].durationMin += w.durationMin;
   }
+
+  const badmintonHours = badmintonWorkouts.reduce((sum, w) => sum + w.durationMin, 0) / 60;
 
   const weeklyMap: Record<string, ReturnType<typeof emptyDisciplineTotals>> = {};
   for (const w of recentWorkouts) {
@@ -113,7 +122,7 @@ router.get('/discipline-stats', async (req: AuthedRequest, res) => {
     .map(([weekStart, disciplines]) => ({ weekStart, ...disciplines }))
     .sort((a, b) => a.weekStart.localeCompare(b.weekStart));
 
-  res.json({ allTime, weekly });
+  res.json({ yearly, badmintonHours, weekly });
 });
 
 router.get('/hr-zones-weekly', async (req: AuthedRequest, res) => {

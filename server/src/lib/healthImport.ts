@@ -56,6 +56,7 @@ export async function applyHealthFiles(userId: string, files: HealthAutoExportFi
         await prisma.workout.update({
           where: { externalId },
           data: {
+            type,
             durationMin,
             distanceKm,
             notes: type === 'OTHER' && !existing.notes ? workout.name : undefined,

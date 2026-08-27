@@ -240,6 +240,7 @@ const WORKOUT_TYPE_MAP: Record<string, WorkoutType> = {
   traditionalstrengthtraining: 'STRENGTH',
   functionalstrengthtraining: 'STRENGTH',
   coretraining: 'STRENGTH',
+  badminton: 'BADMINTON',
   // Dutch (Health Auto Export follows the phone's locale)
   hardlopen: 'RUN',
   fietsen: 'RIDE',

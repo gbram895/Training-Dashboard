@@ -10,6 +10,7 @@ const WORKOUT_LABELS: Record<string, string> = {
   STRENGTH: 'Strength',
   SWIM: 'Swim',
   WALK: 'Walk',
+  BADMINTON: 'Badminton',
   OTHER: 'Other',
 };
 

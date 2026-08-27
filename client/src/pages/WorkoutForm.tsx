@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { apiFetch } from '../api/client';
 import type { ExerciseEntry, Workout, WorkoutType } from '../api/types';
 
-const WORKOUT_TYPES: WorkoutType[] = ['RUN', 'RIDE', 'STRENGTH', 'SWIM', 'WALK', 'OTHER'];
+const WORKOUT_TYPES: WorkoutType[] = ['RUN', 'RIDE', 'STRENGTH', 'SWIM', 'WALK', 'BADMINTON', 'OTHER'];
 
 interface ExerciseDraft {
   name: string;

@@ -1,4 +1,4 @@
-export type WorkoutType = 'RUN' | 'RIDE' | 'STRENGTH' | 'SWIM' | 'WALK' | 'OTHER';
+export type WorkoutType = 'RUN' | 'RIDE' | 'STRENGTH' | 'SWIM' | 'WALK' | 'BADMINTON' | 'OTHER';
 
 export interface ExerciseEntry {
   id: string;
@@ -29,7 +29,8 @@ export interface DisciplineTotals {
 }
 
 export interface DisciplineStats {
-  allTime: { RUN: DisciplineTotals; RIDE: DisciplineTotals; SWIM: DisciplineTotals };
+  yearly: { RUN: DisciplineTotals; RIDE: DisciplineTotals; SWIM: DisciplineTotals };
+  badmintonHours: number;
   weekly: ({ weekStart: string } & { RUN: DisciplineTotals; RIDE: DisciplineTotals; SWIM: DisciplineTotals })[];
 }
 

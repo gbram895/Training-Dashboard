@@ -33,6 +33,7 @@ enum WorkoutType {
   STRENGTH
   SWIM
   WALK
+  BADMINTON
   OTHER
 }
 
