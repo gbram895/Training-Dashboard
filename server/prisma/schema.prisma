@@ -1,0 +1,65 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime  @default(now())
+  workouts     Workout[]
+  goals        Goal[]
+}
+
+enum WorkoutType {
+  RUN
+  RIDE
+  STRENGTH
+  SWIM
+  WALK
+  OTHER
+}
+
+model Workout {
+  id          String          @id @default(uuid())
+  userId      String
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        WorkoutType
+  date        DateTime
+  durationMin Int
+  distanceKm  Float?
+  notes       String?
+  createdAt   DateTime        @default(now())
+  exercises   ExerciseEntry[]
+
+  @@index([userId, date])
+}
+
+model ExerciseEntry {
+  id        String  @id @default(uuid())
+  workoutId String
+  workout   Workout @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  name      String
+  sets      Int
+  reps      Int
+  weightKg  Float?
+  order     Int     @default(0)
+}
+
+model Goal {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  targetValue Float
+  currentValue Float    @default(0)
+  unit        String
+  deadline    DateTime?
+  createdAt   DateTime  @default(now())
+}
