@@ -1,13 +1,20 @@
 :root {
-  --bg: #0f172a;
-  --surface: #1a2436;
-  --border: #2a3650;
-  --text: #f1f5f9;
-  --text-muted: #94a3b8;
-  --accent: #8264ff;
-  --accent-strong: #6d4bff;
-  --danger: #ef4444;
-  color-scheme: dark;
+  --bg: #f9f9f7;
+  --surface: #fcfcfb;
+  --border: rgba(11, 11, 11, 0.1);
+  --grid-line: #e1e0d9;
+  --text: #0b0b0b;
+  --text-muted: #52514e;
+  --text-faint: #898781;
+  --accent: #2a78d6;
+  --accent-strong: #1c5cab;
+  --accent-wash: rgba(42, 120, 214, 0.12);
+  --danger: #d03b3b;
+  --danger-wash: rgba(208, 59, 59, 0.08);
+  --chart-sleep: #4a3aa7;
+  --chart-heart-rate: #e34948;
+  --chart-hrv: #eb6834;
+  color-scheme: light;
 }
 
 * {
@@ -137,7 +144,7 @@ a {
 
   .sidebar-link.active,
   .sidebar-link:hover {
-    background: rgba(130, 100, 255, 0.12);
+    background: var(--accent-wash);
     color: var(--text);
   }
 
@@ -179,6 +186,7 @@ a {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 1rem 1.1rem;
+  box-shadow: 0 1px 3px rgba(11, 11, 11, 0.05);
 }
 
 .card h2 {
@@ -219,6 +227,7 @@ a {
   flex-direction: column;
   align-items: center;
   gap: 4px;
+  box-shadow: 0 1px 3px rgba(11, 11, 11, 0.05);
 }
 
 .stat-value {
@@ -227,9 +236,11 @@ a {
 }
 
 .stat-label {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: var(--text-muted);
   text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 /* Health panel */
@@ -365,7 +376,7 @@ button.secondary {
 }
 
 button.secondary:hover {
-  background: var(--surface);
+  background: rgba(11, 11, 11, 0.05);
 }
 
 button.danger {
@@ -486,7 +497,7 @@ button.icon-button {
   align-items: center;
   justify-content: center;
   font-size: 1.8rem;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 6px 16px rgba(11, 11, 11, 0.2);
   z-index: 5;
 }
 
@@ -534,9 +545,9 @@ button.icon-button {
 }
 
 .alert {
-  background: rgba(239, 68, 68, 0.15);
+  background: var(--danger-wash);
   border: 1px solid var(--danger);
-  color: #fca5a5;
+  color: var(--danger);
   padding: 0.6rem 0.8rem;
   border-radius: 8px;
   font-size: 0.9rem;

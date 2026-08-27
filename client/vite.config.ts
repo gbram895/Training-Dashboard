@@ -16,8 +16,8 @@ export default defineConfig({
         name: 'Training Dashboard',
         short_name: 'Training',
         description: 'Track workouts, progress, and training goals',
-        theme_color: '#0f172a',
-        background_color: '#0f172a',
+        theme_color: '#f9f9f7',
+        background_color: '#f9f9f7',
         display: 'standalone',
         start_url: '/',
         icons: [

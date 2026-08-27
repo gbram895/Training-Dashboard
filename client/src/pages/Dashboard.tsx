@@ -88,7 +88,7 @@ export default function Dashboard() {
             <div style={{ width: '100%', height: 220 }}>
               <ResponsiveContainer>
                 <BarChart data={chartData} margin={{ left: -20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--grid-line)" />
                   <XAxis dataKey="week" stroke="var(--text-muted)" fontSize={12} />
                   <YAxis stroke="var(--text-muted)" fontSize={12} />
                   <Tooltip

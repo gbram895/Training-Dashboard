@@ -221,21 +221,21 @@ export default function HealthPanel() {
           label="Sleep (hours)"
           data={sleepData}
           dataKey="value"
-          color="#47bfff"
+          color="var(--chart-sleep)"
           tooltipFormatter={(value) => formatDuration(value * 60)}
         />
         <HealthLineChart
           label="Heart rate (bpm)"
           data={hrData}
           dataKey="value"
-          color="#ff6b6b"
+          color="var(--chart-heart-rate)"
           tooltipFormatter={(value) => `${value.toFixed(0)} bpm`}
         />
         <HealthLineChart
           label="HRV (ms)"
           data={hrvData}
           dataKey="value"
-          color="#ffb84d"
+          color="var(--chart-hrv)"
           tooltipFormatter={(value) => `${value.toFixed(0)} ms`}
         />
       </div>
