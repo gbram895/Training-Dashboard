@@ -4,7 +4,7 @@ import { apiFetch, getToken } from '../api/client';
 import type { DailyHealthSummary, DropboxSyncStatus } from '../api/types';
 
 function formatDay(date: string) {
-  return new Date(date).toLocaleDateString(undefined, { weekday: 'short' });
+  return new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 export default function HealthPanel() {
@@ -75,6 +75,7 @@ export default function HealthPanel() {
   const latest = days[days.length - 1];
   const stepsData = days.map((d) => ({ day: formatDay(d.date), steps: d.steps ?? 0 }));
   const sleepData = days.map((d) => ({ day: formatDay(d.date), hours: d.sleepHours ?? 0 }));
+  const tickInterval = Math.max(0, Math.ceil(days.length / 6) - 1);
 
   return (
     <section className="card">
@@ -129,7 +130,12 @@ export default function HealthPanel() {
           <div style={{ width: '100%', height: 90 }}>
             <ResponsiveContainer>
               <LineChart data={stepsData} margin={{ top: 4, left: -30, right: 8, bottom: 0 }}>
-                <XAxis dataKey="day" stroke="var(--text-muted)" fontSize={11} />
+                <XAxis
+                  dataKey="day"
+                  stroke="var(--text-muted)"
+                  fontSize={11}
+                  interval={tickInterval}
+                />
                 <YAxis hide />
                 <Tooltip
                   contentStyle={{
@@ -148,7 +154,12 @@ export default function HealthPanel() {
           <div style={{ width: '100%', height: 90 }}>
             <ResponsiveContainer>
               <LineChart data={sleepData} margin={{ top: 4, left: -30, right: 8, bottom: 0 }}>
-                <XAxis dataKey="day" stroke="var(--text-muted)" fontSize={11} />
+                <XAxis
+                  dataKey="day"
+                  stroke="var(--text-muted)"
+                  fontSize={11}
+                  interval={tickInterval}
+                />
                 <YAxis hide />
                 <Tooltip
                   contentStyle={{
