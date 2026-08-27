@@ -1,12 +1,13 @@
 import { prisma } from './prisma.js';
 import { computeHrZoneMinutes, type HrZoneThresholds } from './appleHealth.js';
+import { beginGarminLogin, completeGarminMfaLogin } from './garminAuth.js';
 import {
   extractGarminHeartRateSamples,
   fetchGarminActivityDetails,
   garminClientFromTokens,
   garminExternalId,
-  loginToGarmin,
   mapGarminActivityType,
+  newGarminClient,
   parseGarminGmtDate,
   type GarminConnect,
   type GarminTokens,
@@ -19,8 +20,7 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function connectGarminAccount(userId: string, username: string, password: string) {
-  const tokens = await loginToGarmin(username, password);
+async function saveGarminTokens(userId: string, tokens: GarminTokens) {
   await prisma.garminSyncConfig.upsert({
     where: { userId },
     create: { userId, oauth1Token: JSON.stringify(tokens.oauth1), oauth2Token: JSON.stringify(tokens.oauth2) },
@@ -30,6 +30,19 @@ export async function connectGarminAccount(userId: string, username: string, pas
       lastSyncError: null,
     },
   });
+}
+
+export async function connectGarminAccountAndSave(userId: string, username: string, password: string) {
+  const client = newGarminClient();
+  const result = await beginGarminLogin(client, username, password);
+  if (result.pendingId) return { mfaRequired: true as const, pendingId: result.pendingId };
+  await saveGarminTokens(userId, result.tokens!);
+  return { mfaRequired: false as const };
+}
+
+export async function completeGarminAccountConnect(userId: string, pendingId: string, code: string) {
+  const tokens = await completeGarminMfaLogin(pendingId, code);
+  await saveGarminTokens(userId, tokens);
 }
 
 interface GarminActivitySummary {

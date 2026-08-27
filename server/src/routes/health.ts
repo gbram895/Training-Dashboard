@@ -6,7 +6,7 @@ import { requireAuth, AuthedRequest } from '../middleware/auth.js';
 import type { HealthAutoExportFile } from '../lib/appleHealth.js';
 import { applyHealthFiles } from '../lib/healthImport.js';
 import { buildAuthorizeUrl, dropboxConfigured, exchangeCodeForTokens } from '../lib/dropbox.js';
-import { connectGarminAccount, runGarminSyncForUser } from '../lib/garminSync.js';
+import { completeGarminAccountConnect, connectGarminAccountAndSave, runGarminSyncForUser } from '../lib/garminSync.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET is not set');
@@ -183,12 +183,32 @@ router.post('/garmin/connect', requireAuth, async (req: AuthedRequest, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   try {
-    await connectGarminAccount(req.userId!, parsed.data.username, parsed.data.password);
-    res.json({ connected: true });
+    const result = await connectGarminAccountAndSave(req.userId!, parsed.data.username, parsed.data.password);
+    res.json(result.mfaRequired ? { mfaRequired: true, pendingId: result.pendingId } : { connected: true });
   } catch (err) {
     console.error(`[garmin] login failed for user ${req.userId}:`, err);
     res.status(400).json({
       error: `Garmin login failed: ${err instanceof Error ? err.message : String(err)}`,
+    });
+  }
+});
+
+const garminMfaSchema = z.object({
+  pendingId: z.string().min(1),
+  code: z.string().min(1),
+});
+
+router.post('/garmin/verify-mfa', requireAuth, async (req: AuthedRequest, res) => {
+  const parsed = garminMfaSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  try {
+    await completeGarminAccountConnect(req.userId!, parsed.data.pendingId, parsed.data.code);
+    res.json({ connected: true });
+  } catch (err) {
+    console.error(`[garmin] MFA verification failed for user ${req.userId}:`, err);
+    res.status(400).json({
+      error: err instanceof Error ? err.message : 'Garmin MFA verification failed',
     });
   }
 });

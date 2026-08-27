@@ -2,10 +2,18 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '../../api/client';
 import type { GarminSyncStatus } from '../../api/types';
 
+interface GarminConnectResponse {
+  connected?: true;
+  mfaRequired?: true;
+  pendingId?: string;
+}
+
 export default function GarminSyncBar({ onSynced }: { onSynced?: () => void }) {
   const [status, setStatus] = useState<GarminSyncStatus | null>(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -22,16 +30,43 @@ export default function GarminSyncBar({ onSynced }: { onSynced?: () => void }) {
     setConnecting(true);
     setConnectError(null);
     try {
-      await apiFetch('/health/garmin/connect', {
+      const result = await apiFetch<GarminConnectResponse>('/health/garmin/connect', {
         method: 'POST',
         body: JSON.stringify({ username, password }),
       });
+      if (result.mfaRequired && result.pendingId) {
+        setPendingId(result.pendingId);
+      } else {
+        setUsername('');
+        setPassword('');
+        reload();
+        onSynced?.();
+      }
+    } catch (err) {
+      setConnectError(err instanceof Error ? err.message : 'Failed to connect');
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  async function verifyMfa(e: React.FormEvent) {
+    e.preventDefault();
+    if (!pendingId) return;
+    setConnecting(true);
+    setConnectError(null);
+    try {
+      await apiFetch('/health/garmin/verify-mfa', {
+        method: 'POST',
+        body: JSON.stringify({ pendingId, code: mfaCode }),
+      });
       setUsername('');
       setPassword('');
+      setPendingId(null);
+      setMfaCode('');
       reload();
       onSynced?.();
     } catch (err) {
-      setConnectError(err instanceof Error ? err.message : 'Failed to connect');
+      setConnectError(err instanceof Error ? err.message : 'Failed to verify code');
     } finally {
       setConnecting(false);
     }
@@ -57,6 +92,33 @@ export default function GarminSyncBar({ onSynced }: { onSynced?: () => void }) {
   if (status === null) return null;
 
   if (!status.connected) {
+    if (pendingId) {
+      return (
+        <section className="card sync-bar">
+          <form onSubmit={verifyMfa} className="garmin-connect-form">
+            <p className="muted">
+              Garmin sent a verification code to your email or phone — enter it to finish connecting.
+            </p>
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="Verification code"
+              value={mfaCode}
+              onChange={(e) => setMfaCode(e.target.value)}
+              required
+            />
+            <button type="submit" disabled={connecting}>
+              {connecting ? 'Verifying…' : 'Verify code'}
+            </button>
+            <button type="button" className="secondary" onClick={() => setPendingId(null)} disabled={connecting}>
+              Cancel
+            </button>
+          </form>
+          {connectError && <div className="alert">{connectError}</div>}
+        </section>
+      );
+    }
+
     return (
       <section className="card sync-bar">
         <form onSubmit={connect} className="garmin-connect-form">

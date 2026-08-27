@@ -2,21 +2,19 @@ import pkg from 'garmin-connect';
 import type { WorkoutType } from '@prisma/client';
 import type { HeartRateSample } from './appleHealth.js';
 
-const { GarminConnect } = pkg;
+export const { GarminConnect } = pkg;
 export type GarminConnect = InstanceType<typeof GarminConnect>;
 
 // The token shapes are Garmin/library internals we never inspect ourselves —
 // we just persist and replay whatever the client hands back, opaquely.
 export type GarminTokens = ReturnType<GarminConnect['exportToken']>;
 
-export async function loginToGarmin(username: string, password: string): Promise<GarminTokens> {
-  const client = new GarminConnect({ username, password });
-  await client.login();
-  return client.exportToken();
+export function newGarminClient(): GarminConnect {
+  return new GarminConnect({ username: '', password: '' });
 }
 
 export function garminClientFromTokens(tokens: GarminTokens): GarminConnect {
-  const client = new GarminConnect({ username: '', password: '' });
+  const client = newGarminClient();
   client.loadToken(tokens.oauth1, tokens.oauth2);
   return client;
 }
