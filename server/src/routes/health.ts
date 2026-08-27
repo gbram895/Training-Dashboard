@@ -14,7 +14,7 @@ const router = Router();
 
 router.get('/summary', requireAuth, async (req: AuthedRequest, res) => {
   const since = new Date();
-  since.setDate(since.getDate() - 30);
+  since.setDate(since.getDate() - 183);
 
   const days = await prisma.dailyHealthSummary.findMany({
     where: { userId: req.userId, date: { gte: since } },

@@ -55,7 +55,7 @@ export default function HrvTrendChart({ days }: { days: DailyHealthSummary[] }) 
       {!hasData ? (
         <p className="muted">Not enough HRV data yet.</p>
       ) : (
-        <div style={{ width: '100%', height: 260 }}>
+        <div style={{ width: '100%', height: 360 }}>
           <ResponsiveContainer>
             <ComposedChart data={data} margin={{ top: 8, left: 0, right: 24, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--grid-line)" />

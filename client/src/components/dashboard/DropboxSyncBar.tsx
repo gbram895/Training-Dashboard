@@ -43,7 +43,7 @@ export default function DropboxSyncBar({ onSynced }: { onSynced?: () => void }) 
     <section className="card sync-bar">
       <p className="muted">
         {status.lastSyncedAt
-          ? `Last synced ${new Date(status.lastSyncedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`
+          ? `Last synced ${new Date(status.lastSyncedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}`
           : 'Waiting for first sync…'}
         {status.lastSyncError ? ` — last attempt failed: ${status.lastSyncError}` : ''}
         {syncStarted ? ' — sync started, this can take a few minutes' : ''}

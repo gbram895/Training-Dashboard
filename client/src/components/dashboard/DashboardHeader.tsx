@@ -34,7 +34,7 @@ export default function DashboardHeader({
         <p className="muted dash-header-subtitle">
           {latestDataDate ? `Health data through ${formatDateUTC(latestDataDate)}` : 'No health data synced yet'}
           {lastSyncedAt &&
-            ` · Updated ${new Date(lastSyncedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, ${new Date(lastSyncedAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`}
+            ` · Updated ${new Date(lastSyncedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, ${new Date(lastSyncedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })}`}
         </p>
       </div>
       {raceGoal && (

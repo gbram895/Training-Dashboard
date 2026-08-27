@@ -21,6 +21,9 @@ export function formatDateUTC(
   return new Date(date).toLocaleDateString(undefined, { ...options, timeZone: 'UTC' });
 }
 
-export function formatTimeUTC(date: string | Date, options: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' }): string {
+export function formatTimeUTC(
+  date: string | Date,
+  options: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', hour12: false },
+): string {
   return new Date(date).toLocaleTimeString(undefined, { ...options, timeZone: 'UTC' });
 }

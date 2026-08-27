@@ -3,16 +3,15 @@ import type { DailyHealthSummary } from '../../api/types';
 import { formatDateUTC, formatDuration } from '../../lib/format';
 
 export default function SleepRhrCharts({ days }: { days: DailyHealthSummary[] }) {
-  const recent = days.slice(-14);
-  const sleepData = recent.map((d) => ({ day: formatDateUTC(d.date), value: d.sleepHours ?? null }));
-  const rhrData = recent.map((d) => ({ day: formatDateUTC(d.date), value: d.restingHeartRate ?? null }));
-  const tickInterval = Math.max(0, Math.ceil(recent.length / 6) - 1);
+  const sleepData = days.map((d) => ({ day: formatDateUTC(d.date), value: d.sleepHours ?? null }));
+  const rhrData = days.map((d) => ({ day: formatDateUTC(d.date), value: d.restingHeartRate ?? null }));
+  const tickInterval = Math.max(0, Math.ceil(days.length / 8) - 1);
 
   return (
     <section className="card">
       <h2>Sleep hours + resting HR</h2>
       <p className="muted health-chart-label">Sleep</p>
-      <div style={{ width: '100%', height: 110 }}>
+      <div style={{ width: '100%', height: 170 }}>
         <ResponsiveContainer>
           <BarChart data={sleepData} margin={{ top: 4, left: 0, right: 16, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--grid-line)" />
@@ -27,7 +26,7 @@ export default function SleepRhrCharts({ days }: { days: DailyHealthSummary[] })
         </ResponsiveContainer>
       </div>
       <p className="muted health-chart-label">Resting heart rate</p>
-      <div style={{ width: '100%', height: 110 }}>
+      <div style={{ width: '100%', height: 170 }}>
         <ResponsiveContainer>
           <LineChart data={rhrData} margin={{ top: 4, left: 0, right: 16, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--grid-line)" />
@@ -37,7 +36,7 @@ export default function SleepRhrCharts({ days }: { days: DailyHealthSummary[] })
               fontSize={11}
               unit=" bpm"
               domain={['auto', 'auto']}
-              tickCount={3}
+              tickCount={4}
               allowDecimals={false}
             />
             <Tooltip
