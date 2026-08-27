@@ -17,6 +17,7 @@ export interface HealthAutoExportMetric {
 }
 
 export interface HealthAutoExportWorkout {
+  id?: string;
   name: string;
   start: string;
   end: string;
@@ -151,6 +152,7 @@ export function aggregateHealthExports(files: HealthAutoExportFile[]): DailyAggr
 }
 
 const WORKOUT_TYPE_MAP: Record<string, WorkoutType> = {
+  // English
   running: 'RUN',
   cycling: 'RIDE',
   walking: 'WALK',
@@ -158,6 +160,16 @@ const WORKOUT_TYPE_MAP: Record<string, WorkoutType> = {
   traditionalstrengthtraining: 'STRENGTH',
   functionalstrengthtraining: 'STRENGTH',
   coretraining: 'STRENGTH',
+  // Dutch (Health Auto Export follows the phone's locale)
+  hardlopen: 'RUN',
+  fietsen: 'RIDE',
+  wandelen: 'WALK',
+  wandeling: 'WALK',
+  zwemmen: 'SWIM',
+  traditionelekrachttraining: 'STRENGTH',
+  functionelekrachttraining: 'STRENGTH',
+  krachttraining: 'STRENGTH',
+  kerntraining: 'STRENGTH',
 };
 
 export function mapWorkoutType(name: string): WorkoutType {
@@ -166,5 +178,5 @@ export function mapWorkoutType(name: string): WorkoutType {
 }
 
 export function externalWorkoutId(workout: HealthAutoExportWorkout): string {
-  return `apple_health:${workout.start}`;
+  return workout.id ? `apple_health:${workout.id}` : `apple_health:${workout.start}`;
 }

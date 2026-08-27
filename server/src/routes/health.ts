@@ -48,13 +48,16 @@ const fileSchema = z.object({
       .optional(),
     workouts: z
       .array(
-        z.object({
-          name: z.string(),
-          start: z.string(),
-          end: z.string(),
-          duration: z.number().optional(),
-          distance: z.object({ qty: z.number(), units: z.string() }).optional(),
-        }),
+        z
+          .object({
+            id: z.string().optional(),
+            name: z.string(),
+            start: z.string(),
+            end: z.string(),
+            duration: z.number().optional(),
+            distance: z.object({ qty: z.number(), units: z.string() }).optional(),
+          })
+          .passthrough(),
       )
       .optional(),
   }),
@@ -152,12 +155,11 @@ router.get('/dropbox/callback', async (req, res) => {
 
 router.post('/dropbox/sync-now', requireAuth, async (req: AuthedRequest, res) => {
   const { runSyncForUser } = await import('../lib/healthSyncJob.js');
-  try {
-    const result = await runSyncForUser(req.userId!);
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Sync failed' });
-  }
+  const userId = req.userId!;
+  res.json({ started: true });
+  runSyncForUser(userId)
+    .then((result) => console.log(`[health-sync] manual sync for user ${userId}:`, result))
+    .catch((err) => console.error(`[health-sync] manual sync for user ${userId} failed:`, err));
 });
 
 export default router;

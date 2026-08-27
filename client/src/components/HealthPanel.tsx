@@ -11,6 +11,7 @@ export default function HealthPanel() {
   const [days, setDays] = useState<DailyHealthSummary[] | null>(null);
   const [status, setStatus] = useState<DropboxSyncStatus | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [syncStarted, setSyncStarted] = useState(false);
 
   function reload() {
     apiFetch<DailyHealthSummary[]>('/health/summary').then(setDays);
@@ -23,10 +24,9 @@ export default function HealthPanel() {
     setSyncing(true);
     try {
       await apiFetch('/health/dropbox/sync-now', { method: 'POST' });
-    } catch {
-      // surfaced via lastSyncError after reload
+      setSyncStarted(true);
+      setTimeout(() => setSyncStarted(false), 8000);
     } finally {
-      reload();
       setSyncing(false);
     }
   }
@@ -45,8 +45,13 @@ export default function HealthPanel() {
             {status.lastSyncError ? ` — last attempt failed: ${status.lastSyncError}` : '…'}
           </p>
           <button type="button" onClick={syncNow} disabled={syncing}>
-            {syncing ? 'Syncing…' : 'Sync now'}
+            {syncing ? 'Starting…' : 'Sync now'}
           </button>
+          {syncStarted && (
+            <p className="muted" style={{ fontSize: '0.85rem' }}>
+              Sync started in the background — this can take a few minutes for a large history.
+            </p>
+          )}
         </section>
       );
     }
@@ -77,7 +82,7 @@ export default function HealthPanel() {
         <h2>Health (Apple Health)</h2>
         {status.connected ? (
           <button type="button" className="secondary" onClick={syncNow} disabled={syncing}>
-            {syncing ? 'Syncing…' : 'Sync now'}
+            {syncing ? 'Starting…' : syncStarted ? 'Started ✓' : 'Sync now'}
           </button>
         ) : status.configured ? (
           <a href={`/api/health/dropbox/connect?token=${getToken()}`} style={{ textDecoration: 'none' }}>

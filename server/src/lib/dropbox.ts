@@ -64,15 +64,23 @@ export async function refreshAccessToken(refreshToken: string): Promise<string> 
   return data.access_token;
 }
 
-interface DropboxFileEntry {
+export interface DropboxFileEntry {
   '.tag': string;
   name: string;
   path_lower: string;
   server_modified: string;
 }
 
+interface ListFolderResponse {
+  entries: DropboxFileEntry[];
+  cursor: string;
+  has_more: boolean;
+}
+
 export async function listFolder(accessToken: string, path: string): Promise<DropboxFileEntry[]> {
-  const res = await fetch('https://api.dropboxapi.com/2/files/list_folder', {
+  const all: DropboxFileEntry[] = [];
+
+  let res = await fetch('https://api.dropboxapi.com/2/files/list_folder', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -83,8 +91,26 @@ export async function listFolder(accessToken: string, path: string): Promise<Dro
   if (!res.ok) {
     throw new Error(`Dropbox list_folder failed: ${res.status} ${await res.text()}`);
   }
-  const data = (await res.json()) as { entries: DropboxFileEntry[] };
-  return data.entries.filter((e) => e['.tag'] === 'file');
+  let data = (await res.json()) as ListFolderResponse;
+  all.push(...data.entries);
+
+  while (data.has_more) {
+    res = await fetch('https://api.dropboxapi.com/2/files/list_folder/continue', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ cursor: data.cursor }),
+    });
+    if (!res.ok) {
+      throw new Error(`Dropbox list_folder/continue failed: ${res.status} ${await res.text()}`);
+    }
+    data = (await res.json()) as ListFolderResponse;
+    all.push(...data.entries);
+  }
+
+  return all.filter((e) => e['.tag'] === 'file');
 }
 
 export async function downloadFile(accessToken: string, path: string): Promise<string> {

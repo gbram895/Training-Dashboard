@@ -17,6 +17,7 @@ model User {
   goals        Goal[]
   healthDays   DailyHealthSummary[]
   healthSync   HealthSyncConfig?
+  syncedFiles  SyncedDropboxFile[]
 }
 
 enum WorkoutType {
@@ -80,10 +81,21 @@ model HealthSyncConfig {
   userId              String    @unique
   user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   dropboxRefreshToken String
-  folderPath          String    @default("/Apps/Health Auto Export/Health Auto Export/Apple health")
+  folderPaths         String[]  @default(["/Apps/Health Auto Export/Health Auto Export/Apple health", "/Apps/Health Auto Export/Health Auto Export/Apple Health Wourkouts"])
   lastSyncedAt        DateTime?
   lastSyncError       String?
   createdAt           DateTime  @default(now())
+}
+
+model SyncedDropboxFile {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  path           String
+  serverModified DateTime
+  syncedAt       DateTime @default(now())
+
+  @@unique([userId, path])
 }
 
 model Goal {
