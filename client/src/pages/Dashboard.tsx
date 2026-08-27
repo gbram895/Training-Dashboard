@@ -13,6 +13,7 @@ import { apiFetch } from '../api/client';
 import type { Workout, WorkoutStats } from '../api/types';
 import { useAuth } from '../context/AuthContext';
 import WorkoutList from '../components/WorkoutList';
+import HealthPanel from '../components/HealthPanel';
 
 const WORKOUT_LABELS: Record<string, string> = {
   RUN: 'Run',
@@ -64,6 +65,8 @@ export default function Dashboard() {
         <p className="muted">Loading…</p>
       ) : (
         <>
+          <HealthPanel />
+
           <div className="stat-grid">
             <div className="stat-card">
               <span className="stat-value">{stats?.totalWorkouts ?? 0}</span>

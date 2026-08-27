@@ -8,13 +8,14 @@ datasource db {
 }
 
 model User {
-  id           String    @id @default(uuid())
-  email        String    @unique
+  id           String              @id @default(uuid())
+  email        String              @unique
   passwordHash String
   name         String
-  createdAt    DateTime  @default(now())
+  createdAt    DateTime            @default(now())
   workouts     Workout[]
   goals        Goal[]
+  healthDays   DailyHealthSummary[]
 }
 
 enum WorkoutType {
@@ -35,6 +36,8 @@ model Workout {
   durationMin Int
   distanceKm  Float?
   notes       String?
+  source      String          @default("manual")
+  externalId  String?         @unique
   createdAt   DateTime        @default(now())
   exercises   ExerciseEntry[]
 
@@ -50,6 +53,25 @@ model ExerciseEntry {
   reps      Int
   weightKg  Float?
   order     Int     @default(0)
+}
+
+model DailyHealthSummary {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date              DateTime
+  steps             Int?
+  distanceKm        Float?
+  activeEnergyKcal  Float?
+  avgHeartRate      Float?
+  restingHeartRate  Float?
+  sleepHours        Float?
+  exerciseMinutes   Float?
+  flightsClimbed    Int?
+  vo2Max            Float?
+  updatedAt         DateTime @updatedAt
+
+  @@unique([userId, date])
 }
 
 model Goal {

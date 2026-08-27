@@ -34,6 +34,20 @@ export interface Goal {
   deadline?: string | null;
 }
 
+export interface DailyHealthSummary {
+  id: string;
+  date: string;
+  steps?: number | null;
+  distanceKm?: number | null;
+  activeEnergyKcal?: number | null;
+  avgHeartRate?: number | null;
+  restingHeartRate?: number | null;
+  sleepHours?: number | null;
+  exerciseMinutes?: number | null;
+  flightsClimbed?: number | null;
+  vo2Max?: number | null;
+}
+
 export interface AuthUser {
   id: string;
   email: string;
