@@ -4,9 +4,9 @@ services:
     runtime: node
     plan: free
     buildCommand: >-
-      npm install --prefix client &&
+      npm install --include=dev --prefix client &&
       npm run build --prefix client &&
-      npm install --prefix server &&
+      npm install --include=dev --prefix server &&
       npm run build --prefix server
     startCommand: npm start --prefix server
     envVars:
