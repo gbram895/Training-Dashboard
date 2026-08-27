@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { Workout } from '../api/types';
+import { formatDistance, formatDuration } from '../lib/format';
 
 export default function WorkoutList({
   workouts,
@@ -21,8 +22,8 @@ export default function WorkoutList({
               </span>
             </div>
             <div className="workout-meta">
-              <span>{w.durationMin} min</span>
-              {w.distanceKm ? <span>{w.distanceKm} km</span> : null}
+              <span>{formatDuration(w.durationMin)}</span>
+              {w.distanceKm ? <span>{formatDistance(w.distanceKm)}</span> : null}
             </div>
           </Link>
         </li>

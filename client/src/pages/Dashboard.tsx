@@ -13,6 +13,7 @@ import { apiFetch } from '../api/client';
 import type { Workout, WorkoutStats } from '../api/types';
 import { useAuth } from '../context/AuthContext';
 import WorkoutList from '../components/WorkoutList';
+import { formatDuration } from '../lib/format';
 import HealthPanel from '../components/HealthPanel';
 
 const WORKOUT_LABELS: Record<string, string> = {
@@ -73,11 +74,11 @@ export default function Dashboard() {
               <span className="stat-label">Workouts</span>
             </div>
             <div className="stat-card">
-              <span className="stat-value">{stats ? Math.round(stats.totalDurationMin / 60) : 0}h</span>
+              <span className="stat-value">{stats ? formatDuration(stats.totalDurationMin) : '0m'}</span>
               <span className="stat-label">Time trained</span>
             </div>
             <div className="stat-card">
-              <span className="stat-value">{stats?.totalDistanceKm.toFixed(1) ?? 0}</span>
+              <span className="stat-value">{stats ? stats.totalDistanceKm.toFixed(2) : '0.00'}</span>
               <span className="stat-label">km covered</span>
             </div>
           </div>
