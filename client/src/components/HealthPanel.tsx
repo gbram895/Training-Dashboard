@@ -19,6 +19,58 @@ function latestValue(
   return null;
 }
 
+function HealthLineChart({
+  label,
+  data,
+  dataKey,
+  color,
+  tooltipFormatter,
+}: {
+  label: string;
+  data: { day: string; value: number }[];
+  dataKey: 'value';
+  color: string;
+  tooltipFormatter?: (value: number) => string;
+}) {
+  const tickInterval = Math.max(0, Math.ceil(data.length / 6) - 1);
+
+  if (data.length === 0) {
+    return (
+      <div>
+        <p className="muted health-chart-label">{label}</p>
+        <p className="muted" style={{ fontSize: '0.8rem' }}>
+          Not enough data yet.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <p className="muted health-chart-label">{label}</p>
+      <div style={{ width: '100%', height: 90 }}>
+        <ResponsiveContainer>
+          <LineChart data={data} margin={{ top: 4, left: -30, right: 24, bottom: 0 }}>
+            <XAxis dataKey="day" stroke="var(--text-muted)" fontSize={11} interval={tickInterval} />
+            <YAxis hide domain={['auto', 'auto']} />
+            <Tooltip
+              contentStyle={{
+                background: 'var(--surface)',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+              }}
+              formatter={
+                tooltipFormatter ? (value) => [tooltipFormatter(Number(value)), label] : undefined
+              }
+            />
+            <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={2} dot={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
 export default function HealthPanel() {
   const [days, setDays] = useState<DailyHealthSummary[] | null>(null);
   const [status, setStatus] = useState<DropboxSyncStatus | null>(null);
@@ -85,9 +137,14 @@ export default function HealthPanel() {
   }
 
   const latest = days[days.length - 1];
-  const stepsData = days.map((d) => ({ day: formatDay(d.date), steps: d.steps ?? 0 }));
-  const sleepData = days.map((d) => ({ day: formatDay(d.date), hours: d.sleepHours ?? 0 }));
-  const tickInterval = Math.max(0, Math.ceil(days.length / 6) - 1);
+  const stepsData = days.map((d) => ({ day: formatDay(d.date), value: d.steps ?? 0 }));
+  const sleepData = days.map((d) => ({ day: formatDay(d.date), value: d.sleepHours ?? 0 }));
+  const hrData = days
+    .filter((d) => d.avgHeartRate != null)
+    .map((d) => ({ day: formatDay(d.date), value: d.avgHeartRate! }));
+  const hrvData = days
+    .filter((d) => d.avgHrv != null)
+    .map((d) => ({ day: formatDay(d.date), value: d.avgHrv! }));
 
   return (
     <section className="card">
@@ -159,55 +216,28 @@ export default function HealthPanel() {
       </div>
 
       <div className="health-charts">
-        <div>
-          <p className="muted health-chart-label">Steps</p>
-          <div style={{ width: '100%', height: 90 }}>
-            <ResponsiveContainer>
-              <LineChart data={stepsData} margin={{ top: 4, left: -30, right: 8, bottom: 0 }}>
-                <XAxis
-                  dataKey="day"
-                  stroke="var(--text-muted)"
-                  fontSize={11}
-                  interval={tickInterval}
-                />
-                <YAxis hide />
-                <Tooltip
-                  contentStyle={{
-                    background: 'var(--surface)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 8,
-                  }}
-                />
-                <Line type="monotone" dataKey="steps" stroke="var(--accent)" strokeWidth={2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-        <div>
-          <p className="muted health-chart-label">Sleep (hours)</p>
-          <div style={{ width: '100%', height: 90 }}>
-            <ResponsiveContainer>
-              <LineChart data={sleepData} margin={{ top: 4, left: -30, right: 8, bottom: 0 }}>
-                <XAxis
-                  dataKey="day"
-                  stroke="var(--text-muted)"
-                  fontSize={11}
-                  interval={tickInterval}
-                />
-                <YAxis hide />
-                <Tooltip
-                  contentStyle={{
-                    background: 'var(--surface)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 8,
-                  }}
-                  formatter={(value) => [formatDuration(Number(value) * 60), 'Sleep']}
-                />
-                <Line type="monotone" dataKey="hours" stroke="#47bfff" strokeWidth={2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+        <HealthLineChart label="Steps" data={stepsData} dataKey="value" color="var(--accent)" />
+        <HealthLineChart
+          label="Sleep (hours)"
+          data={sleepData}
+          dataKey="value"
+          color="#47bfff"
+          tooltipFormatter={(value) => formatDuration(value * 60)}
+        />
+        <HealthLineChart
+          label="Heart rate (bpm)"
+          data={hrData}
+          dataKey="value"
+          color="#ff6b6b"
+          tooltipFormatter={(value) => `${value.toFixed(0)} bpm`}
+        />
+        <HealthLineChart
+          label="HRV (ms)"
+          data={hrvData}
+          dataKey="value"
+          color="#ffb84d"
+          tooltipFormatter={(value) => `${value.toFixed(0)} ms`}
+        />
       </div>
     </section>
   );
