@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { apiFetch, getToken } from '../api/client';
 import type { DailyHealthSummary, DropboxSyncStatus } from '../api/types';
+import { formatDuration } from '../lib/format';
 
 function formatDay(date: string) {
   return new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -115,7 +116,9 @@ export default function HealthPanel() {
           <span className="stat-label">Resting HR</span>
         </div>
         <div className="health-stat">
-          <span className="stat-value">{latest.sleepHours?.toFixed(1) ?? '—'}h</span>
+          <span className="stat-value">
+            {latest.sleepHours != null ? formatDuration(latest.sleepHours * 60) : '—'}
+          </span>
           <span className="stat-label">Sleep</span>
         </div>
         <div className="health-stat">
@@ -167,6 +170,7 @@ export default function HealthPanel() {
                     border: '1px solid var(--border)',
                     borderRadius: 8,
                   }}
+                  formatter={(value) => [formatDuration(Number(value) * 60), 'Sleep']}
                 />
                 <Line type="monotone" dataKey="hours" stroke="#47bfff" strokeWidth={2} dot={false} />
               </LineChart>
