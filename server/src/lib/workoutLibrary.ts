@@ -4,6 +4,18 @@ import { parseFitWorkoutFile, parseZwoFile } from './workoutFormats.js';
 
 const WORKOUT_LIBRARY_FOLDER = '/Workout Database';
 
+/** Diagnostic only: lists top-level folder/file names so a wrong path is obvious from the logs. */
+async function listRootEntries(accessToken: string): Promise<string[]> {
+  const res = await fetch('https://api.dropboxapi.com/2/files/list_folder', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: '', recursive: false }),
+  });
+  if (!res.ok) return [`(failed to list root: ${res.status})`];
+  const data = (await res.json()) as { entries: { name: string; '.tag': string }[] };
+  return data.entries.map((e) => `${e.name} (${e['.tag']})`);
+}
+
 export type PlannedDiscipline = 'BIKE' | 'RUN';
 
 export interface ParsedWorkoutFile {
@@ -127,8 +139,10 @@ export async function fetchWorkoutLibrary(userId: string): Promise<ParsedWorkout
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (message.includes('not_found')) {
+      const rootEntries = await listRootEntries(accessToken).catch((e) => [`(failed to list root: ${e})`]);
       console.warn(
-        `[workout-library] folder "${WORKOUT_LIBRARY_FOLDER}" not found in Dropbox for user ${userId} — check it exists at the top level of Dropbox with that exact name.`,
+        `[workout-library] folder "${WORKOUT_LIBRARY_FOLDER}" not found in Dropbox for user ${userId}. ` +
+          `Top-level Dropbox contents: ${rootEntries.join(', ') || '(empty)'}`,
       );
       return [];
     }
