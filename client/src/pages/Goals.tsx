@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { apiFetch, ApiError } from '../api/client';
-import type { Goal, GoalEventResult } from '../api/types';
+import { apiFetch } from '../api/client';
+import type { Goal } from '../api/types';
 
 export default function Goals() {
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -14,9 +14,6 @@ export default function Goals() {
   const [submitting, setSubmitting] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<GoalEventResult[] | null>(null);
-  const [searching, setSearching] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
 
   function reload() {
     return apiFetch<Goal[]>('/goals').then(setGoals);
@@ -70,30 +67,11 @@ export default function Goals() {
     await reload();
   }
 
-  async function runSearch(e: FormEvent) {
+  function openWebSearch(e: FormEvent) {
     e.preventDefault();
-    setSearching(true);
-    setSearchError(null);
-    try {
-      const result = await apiFetch<{ results: GoalEventResult[] }>('/goals/search', {
-        method: 'POST',
-        body: JSON.stringify({ query: searchQuery }),
-      });
-      setSearchResults(result.results);
-    } catch (err) {
-      setSearchError(err instanceof ApiError ? err.message : 'Failed to search for events');
-    } finally {
-      setSearching(false);
-    }
-  }
-
-  function useSearchResult(result: GoalEventResult) {
-    setTitle(result.title);
-    setTargetValue(result.distanceKm != null ? String(result.distanceKm) : '');
-    setUnit('km');
-    setDeadline(result.eventDate ? result.eventDate.slice(0, 10) : '');
-    setNotes([result.location, result.description].filter(Boolean).join(' — '));
-    setShowForm(true);
+    if (!searchQuery.trim()) return;
+    const url = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
   }
 
   return (
@@ -102,9 +80,9 @@ export default function Goals() {
         <h1>Goals</h1>
       </header>
 
-      <form className="card goal-search-form" onSubmit={runSearch}>
+      <form className="card goal-search-form" onSubmit={openWebSearch}>
         <label>
-          Search for an event
+          Search the web for an event
           <input
             placeholder="e.g. marathons in the Netherlands spring 2026"
             value={searchQuery}
@@ -112,38 +90,12 @@ export default function Goals() {
           />
         </label>
         <div className="form-actions">
-          <button type="submit" disabled={searching || !searchQuery.trim()}>
-            {searching ? 'Searching…' : '🔍 Search'}
+          <button type="submit" disabled={!searchQuery.trim()}>
+            🔍 Search
           </button>
         </div>
-        {searchError && <p className="muted">{searchError}</p>}
+        <p className="muted">Opens a web search in a new tab — bring back what you find and add it below.</p>
       </form>
-
-      {searchResults && (
-        <div className="goal-grid">
-          {searchResults.length === 0 ? (
-            <p className="muted">No matching events found — try a different search.</p>
-          ) : (
-            searchResults.map((r, i) => (
-              <div className="card goal-card goal-search-result-card" key={i}>
-                <h2>{r.title}</h2>
-                <p className="muted">
-                  {r.location}
-                  {r.location && r.eventDate && ' · '}
-                  {r.eventDate && new Date(r.eventDate).toLocaleDateString()}
-                  {r.distanceKm != null && ` · ${r.distanceKm} km`}
-                </p>
-                <p className="goal-search-result-description">{r.description}</p>
-                <div className="form-actions">
-                  <button type="button" onClick={() => useSearchResult(r)}>
-                    Use this
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      )}
 
       {loading ? (
         <p className="muted">Loading…</p>

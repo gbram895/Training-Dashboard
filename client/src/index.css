@@ -495,17 +495,6 @@ button.icon-button {
   margin-bottom: 1.5rem;
 }
 
-.goal-search-result-card {
-  border-style: dashed;
-  border-color: var(--accent);
-}
-
-.goal-search-result-description {
-  font-size: 0.85rem;
-  color: var(--text-faint);
-  font-style: italic;
-}
-
 .goal-notes {
   font-size: 0.85rem;
   color: var(--text-faint);

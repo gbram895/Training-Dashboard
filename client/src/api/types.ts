@@ -108,13 +108,6 @@ export interface Goal {
   notes?: string | null;
 }
 
-export interface GoalEventResult {
-  title: string;
-  eventDate: string | null;
-  location: string | null;
-  distanceKm: number | null;
-  description: string;
-}
 
 export interface DailyHealthSummary {
   id: string;

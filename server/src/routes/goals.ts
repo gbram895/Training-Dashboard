@@ -3,25 +3,9 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, AuthedRequest } from '../middleware/auth.js';
 import { asString } from '../lib/params.js';
-import { searchGoalEvents } from '../lib/goalEventSearch.js';
 
 const router = Router();
 router.use(requireAuth);
-
-const searchRequestSchema = z.object({ query: z.string().min(1) });
-
-router.post('/search', async (req: AuthedRequest, res) => {
-  const parsed = searchRequestSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Enter something to search for first.' });
-
-  try {
-    const results = await searchGoalEvents(parsed.data.query);
-    res.json({ results });
-  } catch (err) {
-    console.error('[goals] event search failed:', err);
-    res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to search for events' });
-  }
-});
 
 const goalSchema = z.object({
   title: z.string().min(1),
