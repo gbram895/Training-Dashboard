@@ -910,16 +910,16 @@ button.icon-button {
   flex-direction: column;
   gap: 0.9rem;
   padding: 1.1rem 1.2rem;
-  border-radius: 4px;
+  border-radius: 10px;
   color: #fff;
 }
 
 .workout-segment-list .workout-segment-card:first-child {
-  border-radius: 12px 12px 4px 4px;
+  border-radius: 18px 18px 10px 10px;
 }
 
 .workout-segment-list .workout-segment-card:last-child {
-  border-radius: 4px 4px 12px 12px;
+  border-radius: 10px 10px 18px 18px;
 }
 
 .workout-segment-card-plain {
