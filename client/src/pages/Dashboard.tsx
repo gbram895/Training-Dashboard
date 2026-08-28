@@ -37,7 +37,7 @@ export default function Dashboard() {
     apiFetch<DisciplineStats>('/workouts/discipline-stats').then(setDisciplineStats);
     apiFetch<HrZoneWeek[]>('/workouts/hr-zones-weekly').then(setHrZones);
     apiFetch<Goal[]>('/goals').then(setGoals);
-    apiFetch<Workout[]>('/workouts').then((w) => setRecent(w.slice(0, 5)));
+    apiFetch<Workout[]>('/workouts?limit=5').then(setRecent);
     apiFetch<DropboxSyncStatus>('/health/dropbox/status').then(setSyncStatus);
   }
 

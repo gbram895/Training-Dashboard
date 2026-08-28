@@ -42,7 +42,7 @@ export default function WorkoutForm() {
       setDistanceKm(w.distanceKm != null ? String(w.distanceKm) : '');
       setNotes(w.notes ?? '');
       setExercises(
-        w.exercises.map((e: ExerciseEntry) => ({
+        (w.exercises ?? []).map((e: ExerciseEntry) => ({
           name: e.name,
           sets: String(e.sets),
           reps: String(e.reps),

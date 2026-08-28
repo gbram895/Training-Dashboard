@@ -25,10 +25,13 @@ const workoutSchema = z.object({
 });
 
 router.get('/', async (req: AuthedRequest, res) => {
+  const rawLimit = Number(req.query.limit);
+  const limit = Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 200) : undefined;
+
   const workouts = await prisma.workout.findMany({
     where: { userId: req.userId },
     orderBy: { date: 'desc' },
-    include: { exercises: true },
+    take: limit,
   });
   res.json(workouts);
 });

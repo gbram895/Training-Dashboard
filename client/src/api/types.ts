@@ -15,7 +15,7 @@ export interface Workout {
   durationMin: number;
   distanceKm?: number | null;
   notes?: string | null;
-  exercises: ExerciseEntry[];
+  exercises?: ExerciseEntry[];
   hrZone1Min?: number | null;
   hrZone2Min?: number | null;
   hrZone3Min?: number | null;
