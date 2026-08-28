@@ -125,7 +125,10 @@ export function parseFitWorkoutFile(
   }
 
   const workout = messages.workoutMesgs?.[0];
-  const name = typeof workout?.wktName === 'string' ? workout.wktName : undefined;
+  const rawName = typeof workout?.wktName === 'string' ? workout.wktName : undefined;
+  // JOIN's own exports prefix every workout name with "JOIN <Sport> - ", which is
+  // redundant once the name is shown next to a discipline pill on the dashboard.
+  const name = rawName?.replace(/^JOIN\s+\w+\s*-\s*/i, '').trim() || rawName;
   if (!workout || !name) {
     console.warn(
       `[workout-formats] ${path}: no usable workout found. Message types present: ${Object.keys(messages).join(', ')}.`,
