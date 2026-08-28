@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch, ApiError } from '../api/client';
 import type { LibraryWorkout, SelectedWorkout } from '../api/types';
 import { formatDuration } from '../lib/format';
+import BarScale from '../components/BarScale';
 import WorkoutProfileChart from '../components/WorkoutProfileChart';
 
 export default function Plan() {
@@ -88,11 +89,11 @@ export default function Plan() {
                   </div>
                   <div className="stat-tile">
                     <span className="stat-tile-label">⏰ Training stress</span>
-                    <span className="stat-tile-value">{w.trainingStress != null ? `${w.trainingStress}/5` : '—'}</span>
+                    {w.trainingStress != null ? <BarScale value={w.trainingStress} /> : <span className="stat-tile-value">—</span>}
                   </div>
                   <div className="stat-tile">
                     <span className="stat-tile-label">⏰ Intensity</span>
-                    <span className="stat-tile-value">{w.intensity != null ? `${w.intensity}/5` : '—'}</span>
+                    {w.intensity != null ? <BarScale value={w.intensity} /> : <span className="stat-tile-value">—</span>}
                   </div>
                 </div>
                 {w.segments && w.segments.length > 0 && <WorkoutProfileChart segments={w.segments} height={70} />}

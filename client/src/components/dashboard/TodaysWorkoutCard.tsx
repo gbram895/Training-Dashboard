@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { apiFetch } from '../../api/client';
 import type { SelectedWorkout } from '../../api/types';
 import { formatDuration } from '../../lib/format';
+import BarScale from '../BarScale';
 import WorkoutProfileChart from '../WorkoutProfileChart';
 
 export default function TodaysWorkoutCard({
@@ -48,11 +49,11 @@ export default function TodaysWorkoutCard({
         </div>
         <div className="stat-tile">
           <span className="stat-tile-label">⏰ Training stress</span>
-          <span className="stat-tile-value">{workout.trainingStress != null ? `${workout.trainingStress}/5` : '—'}</span>
+          {workout.trainingStress != null ? <BarScale value={workout.trainingStress} /> : <span className="stat-tile-value">—</span>}
         </div>
         <div className="stat-tile">
           <span className="stat-tile-label">⏰ Intensity</span>
-          <span className="stat-tile-value">{workout.intensity != null ? `${workout.intensity}/5` : '—'}</span>
+          {workout.intensity != null ? <BarScale value={workout.intensity} /> : <span className="stat-tile-value">—</span>}
         </div>
       </div>
 

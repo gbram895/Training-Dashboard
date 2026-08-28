@@ -668,6 +668,18 @@ button.icon-button {
   color: var(--text-muted);
 }
 
+.bar-scale {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 1.1rem;
+}
+
+.bar-scale-bar {
+  width: 5px;
+  border-radius: 1px;
+}
+
 /* Chart legend */
 
 .chart-legend {
