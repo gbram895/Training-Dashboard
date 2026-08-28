@@ -857,6 +857,24 @@ button.icon-button {
   gap: 0.75rem;
 }
 
+.workout-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.workout-stat-value {
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.workout-stat-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
 .workout-profile-heading {
   font-size: 0.95rem;
   font-weight: 700;

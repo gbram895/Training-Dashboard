@@ -83,17 +83,17 @@ export default function Plan() {
                   </span>
                 </div>
                 <div className="workout-stat-tiles">
-                  <div className="stat-tile">
-                    <span className="stat-tile-label">⏱ Duration</span>
-                    <span className="stat-tile-value">{w.durationMin != null ? formatDuration(w.durationMin) : '—'}</span>
+                  <div className="workout-stat">
+                    <span className="workout-stat-value">{w.durationMin != null ? formatDuration(w.durationMin) : '—'}</span>
+                    <span className="workout-stat-label">Duration</span>
                   </div>
-                  <div className="stat-tile">
-                    <span className="stat-tile-label">⏰ Training stress</span>
-                    {w.trainingStress != null ? <BarScale value={w.trainingStress} /> : <span className="stat-tile-value">—</span>}
+                  <div className="workout-stat">
+                    {w.trainingStress != null ? <BarScale value={w.trainingStress} /> : <span className="workout-stat-value">—</span>}
+                    <span className="workout-stat-label">Training stress</span>
                   </div>
-                  <div className="stat-tile">
-                    <span className="stat-tile-label">⏰ Intensity</span>
-                    {w.intensity != null ? <BarScale value={w.intensity} /> : <span className="stat-tile-value">—</span>}
+                  <div className="workout-stat">
+                    {w.intensity != null ? <BarScale value={w.intensity} /> : <span className="workout-stat-value">—</span>}
+                    <span className="workout-stat-label">Intensity</span>
                   </div>
                 </div>
                 {w.segments && w.segments.length > 0 && <WorkoutProfileChart segments={w.segments} height={70} />}

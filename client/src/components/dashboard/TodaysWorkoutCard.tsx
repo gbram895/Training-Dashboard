@@ -43,17 +43,17 @@ export default function TodaysWorkoutCard({
       </div>
 
       <div className="workout-stat-tiles">
-        <div className="stat-tile">
-          <span className="stat-tile-label">⏱ Duration</span>
-          <span className="stat-tile-value">{workout.durationMin != null ? formatDuration(workout.durationMin) : '—'}</span>
+        <div className="workout-stat">
+          <span className="workout-stat-value">{workout.durationMin != null ? formatDuration(workout.durationMin) : '—'}</span>
+          <span className="workout-stat-label">Duration</span>
         </div>
-        <div className="stat-tile">
-          <span className="stat-tile-label">⏰ Training stress</span>
-          {workout.trainingStress != null ? <BarScale value={workout.trainingStress} /> : <span className="stat-tile-value">—</span>}
+        <div className="workout-stat">
+          {workout.trainingStress != null ? <BarScale value={workout.trainingStress} /> : <span className="workout-stat-value">—</span>}
+          <span className="workout-stat-label">Training stress</span>
         </div>
-        <div className="stat-tile">
-          <span className="stat-tile-label">⏰ Intensity</span>
-          {workout.intensity != null ? <BarScale value={workout.intensity} /> : <span className="stat-tile-value">—</span>}
+        <div className="workout-stat">
+          {workout.intensity != null ? <BarScale value={workout.intensity} /> : <span className="workout-stat-value">—</span>}
+          <span className="workout-stat-label">Intensity</span>
         </div>
       </div>
 
