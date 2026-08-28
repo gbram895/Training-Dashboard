@@ -37,4 +37,29 @@ router.put('/hr-zones', async (req: AuthedRequest, res) => {
   res.json(user);
 });
 
+router.get('/thresholds', async (req: AuthedRequest, res) => {
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: req.userId },
+    select: { ftpWatts: true, thresholdPaceSecPerKm: true },
+  });
+  res.json(user);
+});
+
+const thresholdsSchema = z.object({
+  ftpWatts: z.number().int().positive(),
+  thresholdPaceSecPerKm: z.number().int().positive(),
+});
+
+router.put('/thresholds', async (req: AuthedRequest, res) => {
+  const parsed = thresholdsSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const user = await prisma.user.update({
+    where: { id: req.userId },
+    data: parsed.data,
+    select: { ftpWatts: true, thresholdPaceSecPerKm: true },
+  });
+  res.json(user);
+});
+
 export default router;

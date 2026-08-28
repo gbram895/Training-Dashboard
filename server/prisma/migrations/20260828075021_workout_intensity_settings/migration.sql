@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN     "ftpWatts" INTEGER NOT NULL DEFAULT 200,
+ADD COLUMN     "thresholdPaceSecPerKm" INTEGER NOT NULL DEFAULT 300;

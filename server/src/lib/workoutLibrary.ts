@@ -1,5 +1,6 @@
 import { prisma } from './prisma.js';
-import { downloadFile, listFolder, refreshAccessToken } from './dropbox.js';
+import { downloadFile, downloadFileBinary, listFolder, refreshAccessToken } from './dropbox.js';
+import { parseFitWorkoutFile, parseZwoFile } from './workoutFormats.js';
 
 const WORKOUT_LIBRARY_FOLDER = '/Workout Database';
 
@@ -109,6 +110,15 @@ export async function fetchWorkoutLibrary(userId: string): Promise<ParsedWorkout
   const config = await prisma.healthSyncConfig.findUnique({ where: { userId } });
   if (!config) throw new Error('Connect Dropbox first (from the dashboard) to load your workout library.');
 
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: userId },
+    select: { ftpWatts: true, thresholdPaceSecPerKm: true },
+  });
+  const thresholds = {
+    ftpWatts: user.ftpWatts,
+    thresholdSpeedMps: user.thresholdPaceSecPerKm > 0 ? 1000 / user.thresholdPaceSecPerKm : 0,
+  };
+
   const accessToken = await refreshAccessToken(config.dropboxRefreshToken);
 
   let entries;
@@ -119,17 +129,27 @@ export async function fetchWorkoutLibrary(userId: string): Promise<ParsedWorkout
     if (message.includes('not_found')) return [];
     throw err;
   }
-  const textFiles = entries.filter((e) => /\.(txt|md)$/i.test(e.name));
+  const supportedFiles = entries.filter((e) => /\.(txt|md|zwo|fit)$/i.test(e.name));
 
   const workouts: ParsedWorkoutFile[] = [];
-  for (const entry of textFiles) {
+  for (const entry of supportedFiles) {
     try {
-      const content = await downloadFile(accessToken, entry.path_lower);
-      const parsed = parseWorkoutFile(entry.path_lower, content);
+      let parsed: ParsedWorkoutFile | null = null;
+      if (/\.fit$/i.test(entry.name)) {
+        const buffer = await downloadFileBinary(accessToken, entry.path_lower);
+        parsed = parseFitWorkoutFile(entry.path_lower, buffer, thresholds);
+      } else if (/\.zwo$/i.test(entry.name)) {
+        const content = await downloadFile(accessToken, entry.path_lower);
+        parsed = parseZwoFile(entry.path_lower, content);
+      } else {
+        const content = await downloadFile(accessToken, entry.path_lower);
+        parsed = parseWorkoutFile(entry.path_lower, content);
+      }
+
       if (parsed) {
         workouts.push(parsed);
       } else {
-        console.warn(`[workout-library] skipped ${entry.path_lower}: missing Name or Type field`);
+        console.warn(`[workout-library] skipped ${entry.path_lower}: could not parse name/discipline`);
       }
     } catch (err) {
       console.error(`[workout-library] failed to read ${entry.path_lower}:`, err);

@@ -57,8 +57,15 @@ export default function Plan() {
         <p className="muted">Loading…</p>
       ) : workouts.length === 0 ? (
         <p className="muted">
-          No workouts found. Add text files to a "Workout Database" folder in your Dropbox — one workout per file,
-          e.g.:
+          No workouts found. Add files to a "Workout Database" folder in your Dropbox — one workout per file.
+          <br />
+          <br />
+          <strong>.fit</strong> and <strong>.zwo</strong> files are parsed automatically: name, duration, and
+          bike/run come straight from the file, and intensity/training stress are estimated from its power or pace
+          targets against your FTP and threshold pace (set those in Settings).
+          <br />
+          <br />
+          Plain text files also work, e.g.:
           <br />
           <code>
             Name: Zone 2 Endurance Ride

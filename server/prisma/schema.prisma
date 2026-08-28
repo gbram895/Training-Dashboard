@@ -27,6 +27,10 @@ model User {
   hrZone2Max   Int                 @default(133)
   hrZone3Max   Int                 @default(152)
   hrZone4Max   Int                 @default(171)
+
+  // Used to estimate intensity/training-stress for .fit and .zwo workout library files
+  ftpWatts               Int @default(200)
+  thresholdPaceSecPerKm  Int @default(300)
 }
 
 enum WorkoutType {

@@ -126,3 +126,17 @@ export async function downloadFile(accessToken: string, path: string): Promise<s
   }
   return res.text();
 }
+
+export async function downloadFileBinary(accessToken: string, path: string): Promise<Buffer> {
+  const res = await fetch('https://content.dropboxapi.com/2/files/download', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Dropbox-API-Arg': JSON.stringify({ path }),
+    },
+  });
+  if (!res.ok) {
+    throw new Error(`Dropbox download failed: ${res.status} ${await res.text()}`);
+  }
+  return Buffer.from(await res.arrayBuffer());
+}

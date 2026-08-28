@@ -74,6 +74,11 @@ export interface HrZoneSettings {
   hrZone4Max: number;
 }
 
+export interface ThresholdSettings {
+  ftpWatts: number;
+  thresholdPaceSecPerKm: number;
+}
+
 export interface WorkoutStats {
   totalWorkouts: number;
   totalDurationMin: number;
