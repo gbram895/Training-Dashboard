@@ -587,11 +587,28 @@ button.icon-button {
   font-size: 1.3rem;
 }
 
-.dash-wordmark {
-  display: block;
-  height: 40px;
-  width: auto;
-  border-radius: 10px;
+.wordmark {
+  font-family: 'Coustard', serif;
+  font-weight: 900;
+  font-size: 1.9rem;
+  line-height: 1;
+  color: var(--text);
+  display: inline-flex;
+  align-items: baseline;
+}
+
+.wordmark-i {
+  position: relative;
+  display: inline-block;
+}
+
+.wordmark-i-icon {
+  position: absolute;
+  top: -0.6em;
+  left: -0.1em;
+  width: 0.65em;
+  height: 0.45em;
+  transform: rotate(6deg);
 }
 
 .dash-header-subtitle {
