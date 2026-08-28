@@ -91,8 +91,13 @@ export default function WorkoutDetailView({
             const hasThresholds =
               workout.discipline === 'BIKE' ? (thresholds?.ftpWatts ?? 0) > 0 : (thresholds?.thresholdPaceSecPerKm ?? 0) > 0;
 
+            const onLight = zone.textColor !== '#fff';
             return (
-              <div key={i} className="workout-segment-card" style={{ background: zone.cardColor }}>
+              <div
+                key={i}
+                className={`workout-segment-card${onLight ? ' workout-segment-card-on-light' : ''}`}
+                style={{ background: zone.color, color: zone.textColor }}
+              >
                 <span className="workout-segment-card-title">{zone.label}</span>
                 <div className="workout-segment-card-row">
                   <div className="workout-segment-card-stat">

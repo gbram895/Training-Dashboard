@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../api/client';
 import type { SelectedWorkout } from '../../api/types';
 import { formatDuration } from '../../lib/format';
@@ -12,6 +12,8 @@ export default function TodaysWorkoutCard({
   workout: SelectedWorkout | null;
   onCleared: () => void;
 }) {
+  const navigate = useNavigate();
+
   async function clearSelection() {
     await apiFetch('/workout-library/selected', { method: 'DELETE' });
     onCleared();
@@ -28,7 +30,7 @@ export default function TodaysWorkoutCard({
   }
 
   return (
-    <section className="card todays-workout-card">
+    <section className="card todays-workout-card todays-workout-clickable" onClick={() => navigate('/plan/today')}>
       <div className="workout-card-header">
         <div>
           <p className="workout-card-eyebrow">Today's workout</p>
@@ -65,7 +67,14 @@ export default function TodaysWorkoutCard({
       )}
 
       {workout.profile && <p className="plan-card-profile">{workout.profile}</p>}
-      <button type="button" className="secondary" onClick={clearSelection}>
+      <button
+        type="button"
+        className="secondary"
+        onClick={(e) => {
+          e.stopPropagation();
+          clearSelection();
+        }}
+      >
         Clear
       </button>
     </section>

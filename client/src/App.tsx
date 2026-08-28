@@ -6,6 +6,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Plan from './pages/Plan';
+import TodaysWorkoutDetail from './pages/TodaysWorkoutDetail';
 import Workouts from './pages/Workouts';
 import WorkoutForm from './pages/WorkoutForm';
 import Goals from './pages/Goals';
@@ -27,6 +28,7 @@ export default function App() {
           >
             <Route path="/" element={<Dashboard />} />
             <Route path="/plan" element={<Plan />} />
+            <Route path="/plan/today" element={<TodaysWorkoutDetail />} />
             <Route path="/workouts" element={<Workouts />} />
             <Route path="/workouts/new" element={<WorkoutForm />} />
             <Route path="/workouts/:id" element={<WorkoutForm />} />

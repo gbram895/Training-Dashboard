@@ -23,11 +23,6 @@
   --chart-z3: #6fcf8e;
   --chart-z4: #f2cb55;
   --chart-z5: #ef7b72;
-  --chart-z1-dark: #999b9e;
-  --chart-z2-dark: #2b93c2;
-  --chart-z3-dark: #2f9c63;
-  --chart-z4-dark: #d1971f;
-  --chart-z5-dark: #d1453c;
   color-scheme: light;
 }
 
@@ -887,6 +882,10 @@ button.icon-button {
   padding: 0.9rem 1rem;
 }
 
+.todays-workout-clickable {
+  cursor: pointer;
+}
+
 /* Workout detail view */
 
 .workout-detail {
@@ -965,6 +964,14 @@ button.icon-button {
 .workout-segment-card-divider {
   height: 1px;
   background: rgba(255, 255, 255, 0.3);
+}
+
+.workout-segment-card-on-light .workout-segment-card-label {
+  color: rgba(11, 11, 11, 0.6);
+}
+
+.workout-segment-card-on-light .workout-segment-card-divider {
+  background: rgba(11, 11, 11, 0.15);
 }
 
 /* Featured workout card (Today's Workout / Plan detail) */
