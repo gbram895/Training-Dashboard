@@ -107,6 +107,14 @@ export interface Goal {
   deadline?: string | null;
 }
 
+export interface GoalSuggestion {
+  title: string;
+  targetValue: number;
+  unit: string;
+  deadline: string | null;
+  rationale: string;
+}
+
 export interface DailyHealthSummary {
   id: string;
   date: string;

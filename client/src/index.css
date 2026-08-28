@@ -491,6 +491,24 @@ button.icon-button {
   margin-top: 4px;
 }
 
+.goal-suggest-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.goal-suggestion-card {
+  border-style: dashed;
+  border-color: var(--accent);
+}
+
+.goal-suggestion-rationale {
+  font-size: 0.85rem;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
 /* FAB */
 
 .fab {

@@ -3,9 +3,20 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, AuthedRequest } from '../middleware/auth.js';
 import { asString } from '../lib/params.js';
+import { suggestGoals } from '../lib/goalSuggestions.js';
 
 const router = Router();
 router.use(requireAuth);
+
+router.post('/suggest', async (req: AuthedRequest, res) => {
+  try {
+    const suggestions = await suggestGoals(req.userId!);
+    res.json({ suggestions });
+  } catch (err) {
+    console.error('[goals] suggestion failed:', err);
+    res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to generate goal suggestions' });
+  }
+});
 
 const goalSchema = z.object({
   title: z.string().min(1),
