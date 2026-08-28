@@ -73,4 +73,14 @@ app.listen(PORT, () => {
   setTimeout(() => {
     runAllGarminSyncs().catch((err) => console.error('[garmin-sync] initial run failed:', err));
   }, 20_000);
+
+  // Render's free tier spins the service down after 15 minutes with no incoming
+  // requests. Pinging our own public URL well inside that window keeps it warm.
+  if (process.env.RENDER_EXTERNAL_URL) {
+    const pingUrl = `${process.env.RENDER_EXTERNAL_URL}/api/status`;
+    cron.schedule('*/10 * * * *', () => {
+      fetch(pingUrl).catch((err) => console.error('[keep-alive] ping failed:', err));
+    });
+    console.log(`[keep-alive] pinging ${pingUrl} every 10 minutes`);
+  }
 });
