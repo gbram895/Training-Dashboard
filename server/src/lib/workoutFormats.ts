@@ -21,7 +21,7 @@ function zwoBlockToSegments(tag: string, attrs: Record<string, unknown>): Workou
   switch (tag) {
     case 'SteadyState': {
       const power = toNumber(attrs['@_Power']);
-      return duration ? [{ durationSec: duration, intensityFraction: power }] : [];
+      return duration ? [{ durationSec: duration, intensityFraction: power, intensityLow: power, intensityHigh: power }] : [];
     }
     case 'Warmup':
     case 'Cooldown':
@@ -30,7 +30,9 @@ function zwoBlockToSegments(tag: string, attrs: Record<string, unknown>): Workou
       const high = toNumber(attrs['@_PowerHigh']);
       const avg = low != null && high != null ? (low + high) / 2 : (low ?? high);
       const role = tag === 'Warmup' ? 'warmup' : tag === 'Cooldown' ? 'cooldown' : undefined;
-      return duration ? [{ durationSec: duration, intensityFraction: avg, role }] : [];
+      return duration
+        ? [{ durationSec: duration, intensityFraction: avg, intensityLow: low ?? avg, intensityHigh: high ?? avg, role }]
+        : [];
     }
     case 'IntervalsT': {
       const repeat = toNumber(attrs['@_Repeat']) ?? 1;
@@ -40,8 +42,12 @@ function zwoBlockToSegments(tag: string, attrs: Record<string, unknown>): Workou
       const offPower = toNumber(attrs['@_OffPower']);
       const segments: WorkoutSegment[] = [];
       for (let i = 0; i < repeat; i++) {
-        if (onDuration) segments.push({ durationSec: onDuration, intensityFraction: onPower });
-        if (offDuration) segments.push({ durationSec: offDuration, intensityFraction: offPower });
+        if (onDuration) {
+          segments.push({ durationSec: onDuration, intensityFraction: onPower, intensityLow: onPower, intensityHigh: onPower });
+        }
+        if (offDuration) {
+          segments.push({ durationSec: offDuration, intensityFraction: offPower, intensityLow: offPower, intensityHigh: offPower });
+        }
       }
       return segments;
     }
@@ -147,7 +153,8 @@ export function parseFitWorkoutFile(
     if (!durationSec) continue; // skip distance/reps/HR-bounded/open-ended steps
 
     const targetType = String(step.targetType ?? '');
-    let intensityFraction: number | undefined;
+    let intensityLow: number | undefined;
+    let intensityHigh: number | undefined;
     // Garmin's own workout builder emits power-averaging variants like "power3s"/
     // "power10s"/"power30s" rather than plain "power". Those enum values aren't the
     // exact one the FIT profile maps to customTargetPower*, so the SDK decodes the
@@ -155,21 +162,21 @@ export function parseFitWorkoutFile(
     if (discipline === 'BIKE' && targetType.startsWith('power')) {
       const rawLow = toNumber(step.customTargetPowerLow) ?? toNumber(step.customTargetValueLow);
       const rawHigh = toNumber(step.customTargetPowerHigh) ?? toNumber(step.customTargetValueHigh);
-      const low = normalizePower(rawLow, thresholds.ftpWatts);
-      const high = normalizePower(rawHigh, thresholds.ftpWatts);
-      intensityFraction = low != null && high != null ? (low + high) / 2 : (low ?? high);
+      intensityLow = normalizePower(rawLow, thresholds.ftpWatts);
+      intensityHigh = normalizePower(rawHigh, thresholds.ftpWatts);
     } else if (discipline === 'RUN' && targetType.startsWith('speed')) {
-      const low = toNumber(step.customTargetSpeedLow) ?? toNumber(step.customTargetValueLow);
-      const high = toNumber(step.customTargetSpeedHigh) ?? toNumber(step.customTargetValueHigh);
-      const avgSpeed = low != null && high != null ? (low + high) / 2 : (low ?? high);
-      intensityFraction =
-        avgSpeed != null && thresholds.thresholdSpeedMps > 0 ? avgSpeed / thresholds.thresholdSpeedMps : undefined;
+      const rawLow = toNumber(step.customTargetSpeedLow) ?? toNumber(step.customTargetValueLow);
+      const rawHigh = toNumber(step.customTargetSpeedHigh) ?? toNumber(step.customTargetValueHigh);
+      intensityLow = rawLow != null && thresholds.thresholdSpeedMps > 0 ? rawLow / thresholds.thresholdSpeedMps : undefined;
+      intensityHigh = rawHigh != null && thresholds.thresholdSpeedMps > 0 ? rawHigh / thresholds.thresholdSpeedMps : undefined;
     }
+    const intensityFraction =
+      intensityLow != null && intensityHigh != null ? (intensityLow + intensityHigh) / 2 : (intensityLow ?? intensityHigh);
 
     const stepIntensity = String(step.intensity ?? '');
     const role = stepIntensity === 'warmup' ? 'warmup' : stepIntensity === 'cooldown' ? 'cooldown' : undefined;
 
-    segments.push({ durationSec, intensityFraction, role });
+    segments.push({ durationSec, intensityFraction, intensityLow, intensityHigh, role });
   }
 
   const durationMin = Math.round(segments.reduce((sum, s) => sum + s.durationSec, 0) / 60);

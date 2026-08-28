@@ -1,16 +1,5 @@
 import type { WorkoutProfileSegment } from '../api/types';
-
-const ZONE_COLORS = ['var(--chart-z1)', 'var(--chart-z2)', 'var(--chart-z3)', 'var(--chart-z4)', 'var(--chart-z5)'];
-
-// Standard power-zone cutoffs: Z1 Recovery <=55%, Z2 Endurance 56-75%,
-// Z3 Tempo 76-90%, Z4 Threshold 91-105%, Z5 VO2max+ >105%.
-function zoneColor(intensityFraction: number): string {
-  if (intensityFraction <= 0.55) return ZONE_COLORS[0];
-  if (intensityFraction <= 0.75) return ZONE_COLORS[1];
-  if (intensityFraction <= 0.9) return ZONE_COLORS[2];
-  if (intensityFraction <= 1.05) return ZONE_COLORS[3];
-  return ZONE_COLORS[4];
-}
+import { getTrainingZone } from '../lib/trainingZones';
 
 export default function WorkoutProfileChart({
   segments,
@@ -49,7 +38,7 @@ export default function WorkoutProfileChart({
           width: `calc(${widthPct}% - ${gap}px)`,
           bottom: 0,
           height: barHeight,
-          background: hasTarget ? zoneColor(segment.intensityFraction!) : 'var(--border)',
+          background: hasTarget ? getTrainingZone(segment.intensityFraction!).color : 'var(--border)',
           borderRadius: '2px 2px 0 0',
         }}
       />

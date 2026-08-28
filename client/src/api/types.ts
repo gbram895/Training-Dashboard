@@ -29,6 +29,9 @@ export type WorkoutCategory = 'ENDURANCE' | 'TEMPO' | 'THRESHOLD' | 'VO2MAX';
 export interface WorkoutProfileSegment {
   durationSec: number;
   intensityFraction?: number;
+  intensityLow?: number;
+  intensityHigh?: number;
+  role?: 'warmup' | 'cooldown';
 }
 
 export interface LibraryWorkout {

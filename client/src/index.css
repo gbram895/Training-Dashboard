@@ -23,6 +23,11 @@
   --chart-z3: #6fcf8e;
   --chart-z4: #f2cb55;
   --chart-z5: #ef7b72;
+  --chart-z1-dark: #999b9e;
+  --chart-z2-dark: #2b93c2;
+  --chart-z3-dark: #2f9c63;
+  --chart-z4-dark: #d1971f;
+  --chart-z5-dark: #d1453c;
   color-scheme: light;
 }
 
@@ -862,6 +867,10 @@ button.icon-button {
   gap: 0.6rem;
 }
 
+.plan-card-clickable {
+  cursor: pointer;
+}
+
 .plan-card-selected {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent);
@@ -876,6 +885,86 @@ button.icon-button {
 
 .todays-workout-empty {
   padding: 0.9rem 1rem;
+}
+
+/* Workout detail view */
+
+.workout-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.workout-detail-title {
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+.workout-segment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.workout-segment-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 1.1rem 1.2rem;
+  border-radius: 4px;
+  color: #fff;
+}
+
+.workout-segment-list .workout-segment-card:first-child {
+  border-radius: 12px 12px 4px 4px;
+}
+
+.workout-segment-list .workout-segment-card:last-child {
+  border-radius: 4px 4px 12px 12px;
+}
+
+.workout-segment-card-plain {
+  background: var(--border);
+  color: var(--text-muted);
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.workout-segment-card-title {
+  font-weight: 700;
+  font-size: 1.15rem;
+}
+
+.workout-segment-card-row {
+  display: flex;
+  gap: 2.5rem;
+}
+
+.workout-segment-card-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.workout-segment-card-value {
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.workout-segment-card-value small {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.workout-segment-card-label {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.workout-segment-card-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.3);
 }
 
 /* Featured workout card (Today's Workout / Plan detail) */

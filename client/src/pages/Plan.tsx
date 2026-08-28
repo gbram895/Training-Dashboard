@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { apiFetch, ApiError } from '../api/client';
-import type { LibraryWorkout, PlannedDiscipline, SelectedWorkout, WorkoutCategory } from '../api/types';
+import type { LibraryWorkout, PlannedDiscipline, SelectedWorkout, ThresholdSettings, WorkoutCategory } from '../api/types';
 import { formatDuration } from '../lib/format';
 import BarScale from '../components/BarScale';
+import WorkoutDetailView from '../components/WorkoutDetailView';
 import WorkoutProfileChart from '../components/WorkoutProfileChart';
 
 const CATEGORY_INFO: { key: WorkoutCategory | 'OTHER'; label: string; icon: string; description: string }[] = [
@@ -30,6 +31,8 @@ export default function Plan() {
   const [selectingPath, setSelectingPath] = useState<string | null>(null);
   const [discipline, setDiscipline] = useState<PlannedDiscipline>('BIKE');
   const [category, setCategory] = useState<WorkoutCategory | 'OTHER' | null>(null);
+  const [detailPath, setDetailPath] = useState<string | null>(null);
+  const [thresholds, setThresholds] = useState<ThresholdSettings | null>(null);
 
   function load() {
     apiFetch<LibraryWorkout[]>('/workout-library')
@@ -39,6 +42,7 @@ export default function Plan() {
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Failed to load workout library'));
     apiFetch<SelectedWorkout | null>('/workout-library/selected').then(setSelected);
+    apiFetch<ThresholdSettings>('/settings/thresholds').then(setThresholds);
   }
 
   useEffect(load, []);
@@ -58,6 +62,22 @@ export default function Plan() {
 
   const byDiscipline = workouts?.filter((w) => w.discipline === discipline) ?? null;
   const inCategory = category ? (byDiscipline ?? []).filter((w) => (w.category ?? 'OTHER') === category) : [];
+  const detailWorkout = detailPath ? (workouts ?? []).find((w) => w.path === detailPath) ?? null : null;
+
+  if (detailWorkout) {
+    return (
+      <div className="page">
+        <WorkoutDetailView
+          workout={detailWorkout}
+          thresholds={thresholds}
+          isSelected={selected?.sourcePath === detailWorkout.path}
+          selecting={selectingPath === detailWorkout.path}
+          onBack={() => setDetailPath(null)}
+          onSelect={() => selectWorkout(detailWorkout)}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="page">
@@ -149,7 +169,11 @@ export default function Plan() {
                   {inCategory.map((w) => {
                     const isSelected = selected?.sourcePath === w.path;
                     return (
-                      <div className={`card plan-card${isSelected ? ' plan-card-selected' : ''}`} key={w.path}>
+                      <div
+                        className={`card plan-card plan-card-clickable${isSelected ? ' plan-card-selected' : ''}`}
+                        key={w.path}
+                        onClick={() => setDetailPath(w.path)}
+                      >
                         <div className="workout-card-header">
                           <h2 className="workout-card-title">{w.name}</h2>
                           <span className={`discipline-pill discipline-${w.discipline.toLowerCase()}`}>
@@ -188,7 +212,10 @@ export default function Plan() {
                           type="button"
                           className={isSelected ? 'secondary' : ''}
                           disabled={selectingPath === w.path}
-                          onClick={() => selectWorkout(w)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            selectWorkout(w);
+                          }}
                         >
                           {isSelected ? 'Selected as today’s workout ✓' : 'Set as today’s workout'}
                         </button>

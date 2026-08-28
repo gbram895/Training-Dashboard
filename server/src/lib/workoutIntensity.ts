@@ -27,6 +27,8 @@
 export interface WorkoutSegment {
   durationSec: number;
   intensityFraction?: number;
+  intensityLow?: number;
+  intensityHigh?: number;
   role?: 'warmup' | 'cooldown';
 }
 
