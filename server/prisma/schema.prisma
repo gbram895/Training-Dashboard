@@ -20,6 +20,7 @@ model User {
   healthSync   HealthSyncConfig?
   syncedFiles  SyncedDropboxFile[]
   garminSync   GarminSyncConfig?
+  selectedWorkout SelectedWorkout?
 
   // Heart-rate zone thresholds (bpm) — upper bound of zones 1-4; zone 5 is everything above z4Max
   hrZone1Max   Int                 @default(114)
@@ -126,6 +127,25 @@ model SyncedDropboxFile {
   syncedAt       DateTime @default(now())
 
   @@unique([userId, path])
+}
+
+enum PlannedDiscipline {
+  BIKE
+  RUN
+}
+
+model SelectedWorkout {
+  id             String            @id @default(uuid())
+  userId         String            @unique
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String
+  discipline     PlannedDiscipline
+  durationMin    Int?
+  intensity      Int?
+  trainingStress Int?
+  profile        String?
+  sourcePath     String
+  selectedAt     DateTime          @default(now())
 }
 
 model Goal {

@@ -9,6 +9,7 @@ import workoutsRouter from './routes/workouts.js';
 import goalsRouter from './routes/goals.js';
 import healthRouter from './routes/health.js';
 import settingsRouter from './routes/settings.js';
+import workoutLibraryRouter from './routes/workoutLibrary.js';
 import { dropboxConfigured } from './lib/dropbox.js';
 import { runAllSyncs } from './lib/healthSyncJob.js';
 import { runAllGarminSyncs } from './lib/garminSync.js';
@@ -35,6 +36,7 @@ app.use('/api/workouts', workoutsRouter);
 app.use('/api/goals', goalsRouter);
 app.use('/api/health', healthRouter);
 app.use('/api/settings', settingsRouter);
+app.use('/api/workout-library', workoutLibraryRouter);
 
 if (process.env.NODE_ENV === 'production') {
   const clientDist = path.resolve(__dirname, '../../client/dist');

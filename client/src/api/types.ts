@@ -23,6 +23,30 @@ export interface Workout {
   hrZone5Min?: number | null;
 }
 
+export type PlannedDiscipline = 'BIKE' | 'RUN';
+
+export interface LibraryWorkout {
+  path: string;
+  name: string;
+  discipline: PlannedDiscipline;
+  durationMin?: number;
+  intensity?: number;
+  trainingStress?: number;
+  profile?: string;
+}
+
+export interface SelectedWorkout {
+  id: string;
+  name: string;
+  discipline: PlannedDiscipline;
+  durationMin: number | null;
+  intensity: number | null;
+  trainingStress: number | null;
+  profile: string | null;
+  sourcePath: string;
+  selectedAt: string;
+}
+
 export interface DisciplineTotals {
   distanceKm: number;
   durationMin: number;

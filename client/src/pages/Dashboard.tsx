@@ -1,9 +1,18 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../api/client';
-import type { DailyHealthSummary, DisciplineStats, DropboxSyncStatus, Goal, HrZoneWeek, Workout } from '../api/types';
+import type {
+  DailyHealthSummary,
+  DisciplineStats,
+  DropboxSyncStatus,
+  Goal,
+  HrZoneWeek,
+  SelectedWorkout,
+  Workout,
+} from '../api/types';
 import WorkoutList from '../components/WorkoutList';
 import DashboardHeader from '../components/dashboard/DashboardHeader';
+import TodaysWorkoutCard from '../components/dashboard/TodaysWorkoutCard';
 import DropboxSyncBar from '../components/dashboard/DropboxSyncBar';
 import GarminSyncBar from '../components/dashboard/GarminSyncBar';
 import SummaryBar from '../components/dashboard/SummaryBar';
@@ -31,6 +40,7 @@ export default function Dashboard() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [recent, setRecent] = useState<Workout[]>([]);
   const [syncStatus, setSyncStatus] = useState<DropboxSyncStatus | null>(null);
+  const [todaysWorkout, setTodaysWorkout] = useState<SelectedWorkout | null>(null);
 
   function load() {
     apiFetch<DailyHealthSummary[]>('/health/summary').then(setDays);
@@ -39,6 +49,7 @@ export default function Dashboard() {
     apiFetch<Goal[]>('/goals').then(setGoals);
     apiFetch<Workout[]>('/workouts?limit=5').then(setRecent);
     apiFetch<DropboxSyncStatus>('/health/dropbox/status').then(setSyncStatus);
+    apiFetch<SelectedWorkout | null>('/workout-library/selected').then(setTodaysWorkout);
   }
 
   useEffect(load, []);
@@ -56,6 +67,8 @@ export default function Dashboard() {
             lastSyncedAt={syncStatus?.lastSyncedAt ?? null}
             goals={goals}
           />
+
+          <TodaysWorkoutCard workout={todaysWorkout} onCleared={load} />
 
           <DropboxSyncBar onSynced={load} />
           <GarminSyncBar onSynced={load} />

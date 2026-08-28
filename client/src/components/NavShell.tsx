@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: '🏠', end: true },
+  { to: '/plan', label: 'Plan', icon: '🗓️', end: false },
   { to: '/workouts', label: 'Workouts', icon: '📋', end: false },
   { to: '/goals', label: 'Goals', icon: '🎯', end: false },
   { to: '/settings', label: 'Settings', icon: '⚙️', end: false },
