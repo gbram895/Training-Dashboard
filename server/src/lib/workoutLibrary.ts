@@ -126,9 +126,17 @@ export async function fetchWorkoutLibrary(userId: string): Promise<ParsedWorkout
     entries = await listFolder(accessToken, WORKOUT_LIBRARY_FOLDER);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    if (message.includes('not_found')) return [];
+    if (message.includes('not_found')) {
+      console.warn(
+        `[workout-library] folder "${WORKOUT_LIBRARY_FOLDER}" not found in Dropbox for user ${userId} — check it exists at the top level of Dropbox with that exact name.`,
+      );
+      return [];
+    }
     throw err;
   }
+  console.log(
+    `[workout-library] found ${entries.length} file(s) in "${WORKOUT_LIBRARY_FOLDER}": ${entries.map((e) => e.name).join(', ') || '(none)'}`,
+  );
   const supportedFiles = entries.filter((e) => /\.(txt|md|zwo|fit)$/i.test(e.name));
 
   const workouts: ParsedWorkoutFile[] = [];
