@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { apiFetch, ApiError } from '../api/client';
-import type { Goal, GoalSuggestion } from '../api/types';
+import type { Goal, GoalEventResult } from '../api/types';
 
 export default function Goals() {
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -9,12 +9,14 @@ export default function Goals() {
   const [title, setTitle] = useState('');
   const [targetValue, setTargetValue] = useState('');
   const [unit, setUnit] = useState('km');
+  const [deadline, setDeadline] = useState('');
+  const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [aiPrompt, setAiPrompt] = useState('');
-  const [suggestions, setSuggestions] = useState<GoalSuggestion[] | null>(null);
-  const [suggestLoading, setSuggestLoading] = useState(false);
-  const [suggestError, setSuggestError] = useState<string | null>(null);
-  const [addingSuggestion, setAddingSuggestion] = useState<number | null>(null);
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<GoalEventResult[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   function reload() {
     return apiFetch<Goal[]>('/goals').then(setGoals);
@@ -24,17 +26,29 @@ export default function Goals() {
     reload().then(() => setLoading(false));
   }, []);
 
+  function resetForm() {
+    setTitle('');
+    setTargetValue('');
+    setUnit('km');
+    setDeadline('');
+    setNotes('');
+  }
+
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     try {
       await apiFetch('/goals', {
         method: 'POST',
-        body: JSON.stringify({ title, targetValue: Number(targetValue), unit }),
+        body: JSON.stringify({
+          title,
+          targetValue: Number(targetValue),
+          unit,
+          deadline: deadline || undefined,
+          notes: notes || undefined,
+        }),
       });
-      setTitle('');
-      setTargetValue('');
-      setUnit('km');
+      resetForm();
       setShowForm(false);
       await reload();
     } finally {
@@ -56,44 +70,30 @@ export default function Goals() {
     await reload();
   }
 
-  async function requestSuggestions(e: FormEvent) {
+  async function runSearch(e: FormEvent) {
     e.preventDefault();
-    setSuggestLoading(true);
-    setSuggestError(null);
+    setSearching(true);
+    setSearchError(null);
     try {
-      const result = await apiFetch<{ suggestions: GoalSuggestion[] }>('/goals/suggest', {
+      const result = await apiFetch<{ results: GoalEventResult[] }>('/goals/search', {
         method: 'POST',
-        body: JSON.stringify({ prompt: aiPrompt }),
+        body: JSON.stringify({ query: searchQuery }),
       });
-      setSuggestions(result.suggestions);
+      setSearchResults(result.results);
     } catch (err) {
-      setSuggestError(err instanceof ApiError ? err.message : 'Failed to get goal suggestions');
+      setSearchError(err instanceof ApiError ? err.message : 'Failed to search for events');
     } finally {
-      setSuggestLoading(false);
+      setSearching(false);
     }
   }
 
-  async function acceptSuggestion(index: number, suggestion: GoalSuggestion) {
-    setAddingSuggestion(index);
-    try {
-      await apiFetch('/goals', {
-        method: 'POST',
-        body: JSON.stringify({
-          title: suggestion.title,
-          targetValue: suggestion.targetValue,
-          unit: suggestion.unit,
-          deadline: suggestion.deadline ?? undefined,
-        }),
-      });
-      setSuggestions((prev) => prev?.filter((_, i) => i !== index) ?? null);
-      await reload();
-    } finally {
-      setAddingSuggestion(null);
-    }
-  }
-
-  function dismissSuggestion(index: number) {
-    setSuggestions((prev) => prev?.filter((_, i) => i !== index) ?? null);
+  function useSearchResult(result: GoalEventResult) {
+    setTitle(result.title);
+    setTargetValue(result.distanceKm != null ? String(result.distanceKm) : '');
+    setUnit('km');
+    setDeadline(result.eventDate ? result.eventDate.slice(0, 10) : '');
+    setNotes([result.location, result.description].filter(Boolean).join(' — '));
+    setShowForm(true);
   }
 
   return (
@@ -102,43 +102,46 @@ export default function Goals() {
         <h1>Goals</h1>
       </header>
 
-      <form className="card goal-suggest-form" onSubmit={requestSuggestions}>
+      <form className="card goal-search-form" onSubmit={runSearch}>
         <label>
-          What do you want to train for?
+          Search for an event
           <input
-            placeholder="e.g. I want to run a marathon this fall, or find me a local triathlon in spring"
-            value={aiPrompt}
-            onChange={(e) => setAiPrompt(e.target.value)}
+            placeholder="e.g. marathons in the Netherlands spring 2026"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
           />
         </label>
         <div className="form-actions">
-          <button type="submit" disabled={suggestLoading || !aiPrompt.trim()}>
-            {suggestLoading ? 'Searching…' : '✨ Find a goal with AI'}
+          <button type="submit" disabled={searching || !searchQuery.trim()}>
+            {searching ? 'Searching…' : '🔍 Search'}
           </button>
         </div>
-        {suggestError && <p className="muted">{suggestError}</p>}
+        {searchError && <p className="muted">{searchError}</p>}
       </form>
 
-      {suggestions && suggestions.length > 0 && (
+      {searchResults && (
         <div className="goal-grid">
-          {suggestions.map((s, i) => (
-            <div className="card goal-card goal-suggestion-card" key={i}>
-              <h2>{s.title}</h2>
-              <p className="muted">
-                {s.targetValue} {s.unit}
-                {s.deadline && ` by ${new Date(s.deadline).toLocaleDateString()}`}
-              </p>
-              <p className="goal-suggestion-rationale">{s.rationale}</p>
-              <div className="form-actions">
-                <button type="button" disabled={addingSuggestion === i} onClick={() => acceptSuggestion(i, s)}>
-                  {addingSuggestion === i ? 'Adding…' : 'Add goal'}
-                </button>
-                <button type="button" className="secondary" onClick={() => dismissSuggestion(i)}>
-                  Dismiss
-                </button>
+          {searchResults.length === 0 ? (
+            <p className="muted">No matching events found — try a different search.</p>
+          ) : (
+            searchResults.map((r, i) => (
+              <div className="card goal-card goal-search-result-card" key={i}>
+                <h2>{r.title}</h2>
+                <p className="muted">
+                  {r.location}
+                  {r.location && r.eventDate && ' · '}
+                  {r.eventDate && new Date(r.eventDate).toLocaleDateString()}
+                  {r.distanceKm != null && ` · ${r.distanceKm} km`}
+                </p>
+                <p className="goal-search-result-description">{r.description}</p>
+                <div className="form-actions">
+                  <button type="button" onClick={() => useSearchResult(r)}>
+                    Use this
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       )}
 
@@ -163,7 +166,9 @@ export default function Goals() {
                 </div>
                 <p className="muted">
                   {g.currentValue} / {g.targetValue} {g.unit} ({pct}%)
+                  {g.deadline && ` · by ${new Date(g.deadline).toLocaleDateString()}`}
                 </p>
+                {g.notes && <p className="goal-notes">{g.notes}</p>}
                 <input
                   type="number"
                   className="progress-input"
@@ -203,12 +208,31 @@ export default function Goals() {
               Unit
               <input required value={unit} onChange={(e) => setUnit(e.target.value)} />
             </label>
+            <label>
+              Deadline
+              <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+            </label>
           </div>
+          <label>
+            Notes
+            <textarea
+              placeholder="Optional details - location, why this goal, etc."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </label>
           <div className="form-actions">
             <button type="submit" disabled={submitting}>
               {submitting ? 'Saving…' : 'Add goal'}
             </button>
-            <button type="button" className="secondary" onClick={() => setShowForm(false)}>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                resetForm();
+                setShowForm(false);
+              }}
+            >
               Cancel
             </button>
           </div>

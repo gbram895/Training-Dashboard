@@ -491,19 +491,25 @@ button.icon-button {
   margin-top: 4px;
 }
 
-.goal-suggest-form {
+.goal-search-form {
   margin-bottom: 1.5rem;
 }
 
-.goal-suggestion-card {
+.goal-search-result-card {
   border-style: dashed;
   border-color: var(--accent);
 }
 
-.goal-suggestion-rationale {
+.goal-search-result-description {
   font-size: 0.85rem;
   color: var(--text-faint);
   font-style: italic;
+}
+
+.goal-notes {
+  font-size: 0.85rem;
+  color: var(--text-faint);
+  white-space: pre-line;
 }
 
 /* FAB */

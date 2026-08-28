@@ -105,14 +105,15 @@ export interface Goal {
   currentValue: number;
   unit: string;
   deadline?: string | null;
+  notes?: string | null;
 }
 
-export interface GoalSuggestion {
+export interface GoalEventResult {
   title: string;
-  targetValue: number;
-  unit: string;
-  deadline: string | null;
-  rationale: string;
+  eventDate: string | null;
+  location: string | null;
+  distanceKm: number | null;
+  description: string;
 }
 
 export interface DailyHealthSummary {

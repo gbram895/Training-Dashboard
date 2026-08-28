@@ -3,23 +3,23 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, AuthedRequest } from '../middleware/auth.js';
 import { asString } from '../lib/params.js';
-import { suggestGoals } from '../lib/goalSuggestions.js';
+import { searchGoalEvents } from '../lib/goalEventSearch.js';
 
 const router = Router();
 router.use(requireAuth);
 
-const suggestRequestSchema = z.object({ prompt: z.string().min(1) });
+const searchRequestSchema = z.object({ query: z.string().min(1) });
 
-router.post('/suggest', async (req: AuthedRequest, res) => {
-  const parsed = suggestRequestSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Describe what you want to train for first.' });
+router.post('/search', async (req: AuthedRequest, res) => {
+  const parsed = searchRequestSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Enter something to search for first.' });
 
   try {
-    const suggestions = await suggestGoals(req.userId!, parsed.data.prompt);
-    res.json({ suggestions });
+    const results = await searchGoalEvents(parsed.data.query);
+    res.json({ results });
   } catch (err) {
-    console.error('[goals] suggestion failed:', err);
-    res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to generate goal suggestions' });
+    console.error('[goals] event search failed:', err);
+    res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to search for events' });
   }
 });
 
@@ -29,6 +29,7 @@ const goalSchema = z.object({
   currentValue: z.number().optional(),
   unit: z.string().min(1),
   deadline: z.string().optional(),
+  notes: z.string().optional(),
 });
 
 router.get('/', async (req: AuthedRequest, res) => {

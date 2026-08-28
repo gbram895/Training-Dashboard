@@ -162,5 +162,6 @@ model Goal {
   currentValue Float    @default(0)
   unit        String
   deadline    DateTime?
+  notes       String?
   createdAt   DateTime  @default(now())
 }
