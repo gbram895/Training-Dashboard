@@ -12,11 +12,45 @@ import type { GarminConnect, GarminTokens } from './garmin.js';
 // tracks cookies manually across the whole GET/GET/POST(/POST) sequence —
 // without them, Garmin has no way to tell a step-3 POST apart from a fresh,
 // unauthenticated page load, and just re-serves the blank sign-in form.
+//
+// Garmin's sign-in page sits behind Cloudflare bot management (the __cf_bm /
+// __cflb cookies). Headers below aim to look like a real browser navigating
+// the page normally — full Accept/sec-ch-ua/Sec-Fetch-* sets, consistent
+// across every request, plus small pauses between steps instead of firing
+// requests back-to-back. This is "look like an ordinary browser session,"
+// not fingerprint spoofing — there's a real ceiling to what this can get
+// past, and if Cloudflare keeps blocking it, that's a hard stop, not a bug
+// to keep chasing.
 
 const CSRF_RE = /name="_csrf"\s+value="(.+?)"/;
 const TICKET_RE = /ticket=([^"]+)"/;
 const USER_AGENT_BROWSER =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36';
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36';
+const SEC_CH_UA = '"Google Chrome";v="129", "Not=A?Brand";v="8", "Chromium";v="129"';
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function humanPause(minMs = 250, maxMs = 650) {
+  return sleep(minMs + Math.random() * (maxMs - minMs));
+}
+
+function browserHeaders(extra: Record<string, string | number> = {}): Record<string, string | number> {
+  return {
+    'User-Agent': USER_AGENT_BROWSER,
+    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'sec-ch-ua': SEC_CH_UA,
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"Windows"',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'same-origin',
+    'Upgrade-Insecure-Requests': 1,
+    ...extra,
+  };
+}
 
 class CookieJar {
   private cookies = new Map<string, string>();
@@ -107,8 +141,11 @@ export async function beginGarminLogin(
   const step1Params = { clientId: 'GarminConnect', locale: 'en', service: url.GC_MODERN };
   const step1Res = await http.client.get(
     `${url.GARMIN_SSO_EMBED}?${new URLSearchParams(step1Params).toString()}`,
+    { headers: browserHeaders({ 'Sec-Fetch-Site': 'none' }) },
   );
   jar.absorb(step1Res);
+
+  await humanPause();
 
   const step2Params = {
     id: 'gauth-widget',
@@ -118,7 +155,7 @@ export async function beginGarminLogin(
   };
   const step2Res = await http.client.get<string>(
     `${url.SIGNIN_URL}?${new URLSearchParams(step2Params).toString()}`,
-    { headers: { Cookie: jar.header(), 'User-Agent': USER_AGENT_BROWSER } },
+    { headers: browserHeaders({ Cookie: jar.header(), Referer: url.GARMIN_SSO_EMBED }) },
   );
   jar.absorb(step2Res);
   const csrfMatch = CSRF_RE.exec(step2Res.data);
@@ -137,6 +174,8 @@ export async function beginGarminLogin(
   };
   const signinUrl = `${url.SIGNIN_URL}?${new URLSearchParams(signinParams).toString()}`;
 
+  await humanPause(600, 1400);
+
   const step3Body = new URLSearchParams({
     username,
     password,
@@ -144,14 +183,13 @@ export async function beginGarminLogin(
     _csrf: csrfMatch[1],
   }).toString();
   const step3Res = await http.client.post<string>(signinUrl, step3Body, {
-    headers: {
+    headers: browserHeaders({
       Cookie: jar.header(),
       'Content-Type': 'application/x-www-form-urlencoded',
-      Dnt: 1,
       Origin: url.GARMIN_SSO_ORIGIN,
       Referer: url.SIGNIN_URL,
-      'User-Agent': USER_AGENT_BROWSER,
-    },
+      'Sec-Fetch-User': '?1',
+    }),
   });
   jar.absorb(step3Res);
   const step3Result = step3Res.data;
@@ -203,14 +241,13 @@ export async function completeGarminMfaLogin(pendingId: string, code: string): P
   }).toString();
 
   const mfaRes = await http.client.post<string>(mfaUrl, mfaBody, {
-    headers: {
+    headers: browserHeaders({
       Cookie: jar.header(),
       'Content-Type': 'application/x-www-form-urlencoded',
-      Dnt: 1,
       Origin: url.GARMIN_SSO_ORIGIN,
       Referer: pending.signinUrl,
-      'User-Agent': USER_AGENT_BROWSER,
-    },
+      'Sec-Fetch-User': '?1',
+    }),
   });
   const mfaResult = mfaRes.data;
 
