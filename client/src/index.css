@@ -672,7 +672,7 @@ button.icon-button {
   display: inline-flex;
   align-items: flex-end;
   gap: 2.5px;
-  height: 1.1rem;
+  height: 1.3rem;
 }
 
 .bar-scale-bar {
@@ -864,6 +864,9 @@ button.icon-button {
 }
 
 .workout-stat-value {
+  display: inline-flex;
+  align-items: center;
+  height: 1.3rem;
   font-size: 1.2rem;
   font-weight: 700;
 }
