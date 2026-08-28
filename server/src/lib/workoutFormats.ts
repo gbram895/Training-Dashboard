@@ -111,14 +111,26 @@ export function parseFitWorkoutFile(
   thresholds: AthleteThresholds,
 ): ParsedWorkoutFile | null {
   const stream = Stream.fromBuffer(buffer);
-  if (!Decoder.isFIT(stream)) return null;
+  if (!Decoder.isFIT(stream)) {
+    console.warn(`[workout-formats] ${path}: not recognized as a FIT file`);
+    return null;
+  }
 
   const decoder = new Decoder(stream);
-  const { messages } = decoder.read();
+  const { messages, errors } = decoder.read();
+  if (errors.length > 0) {
+    console.warn(`[workout-formats] ${path}: FIT decode errors:`, errors);
+  }
 
   const workout = messages.workoutMesgs?.[0];
   const name = typeof workout?.wktName === 'string' ? workout.wktName : undefined;
-  if (!workout || !name) return null;
+  if (!workout || !name) {
+    console.warn(
+      `[workout-formats] ${path}: no usable workout found. Message types present: ${Object.keys(messages).join(', ')}.`,
+      workout ? `workoutMesgs[0]: ${JSON.stringify(workout)}` : '(no workoutMesgs at all)',
+    );
+    return null;
+  }
 
   const sport = String(workout.sport ?? '').toLowerCase();
   const discipline: PlannedDiscipline = sport.includes('run') ? 'RUN' : 'BIKE';
@@ -147,6 +159,15 @@ export function parseFitWorkoutFile(
 
   const durationMin = Math.round(segments.reduce((sum, s) => sum + s.durationSec, 0) / 60);
   const { intensity, trainingStress } = estimateIntensityAndStress(segments);
+
+  console.log(
+    `[workout-formats] ${path}: parsed "${name}" (${discipline}), ${steps.length} steps, ` +
+      `${segments.filter((s) => s.intensityFraction != null).length}/${segments.length} segments with a usable target, ` +
+      `durationMin=${durationMin}, intensity=${intensity}, trainingStress=${trainingStress}`,
+  );
+  if (steps.length > 0) {
+    console.log(`[workout-formats] ${path}: raw steps:`, JSON.stringify(steps));
+  }
 
   return {
     path,
