@@ -765,8 +765,78 @@ button.icon-button {
 
 /* Plan / workout library */
 
-.plan-category + .plan-category {
-  margin-top: 2rem;
+.plan-discipline-tabs {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 1.2rem;
+}
+
+.plan-discipline-tab {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.plan-discipline-tab-active {
+  color: var(--text);
+}
+
+.plan-discipline-tab:hover {
+  background: none;
+}
+
+.plan-category-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.plan-category-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  text-align: left;
+  width: 100%;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.plan-category-card:hover {
+  background: var(--bg);
+}
+
+.plan-category-card-icon {
+  font-size: 1.6rem;
+  flex-shrink: 0;
+}
+
+.plan-category-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.plan-category-card-title {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.plan-category-card-count {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.plan-category-card-description {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.plan-back-button {
+  margin-bottom: 0.8rem;
 }
 
 .plan-category-heading {
