@@ -29,7 +29,8 @@ function zwoBlockToSegments(tag: string, attrs: Record<string, unknown>): Workou
       const low = toNumber(attrs['@_PowerLow']);
       const high = toNumber(attrs['@_PowerHigh']);
       const avg = low != null && high != null ? (low + high) / 2 : (low ?? high);
-      return duration ? [{ durationSec: duration, intensityFraction: avg }] : [];
+      const role = tag === 'Warmup' ? 'warmup' : tag === 'Cooldown' ? 'cooldown' : undefined;
+      return duration ? [{ durationSec: duration, intensityFraction: avg, role }] : [];
     }
     case 'IntervalsT': {
       const repeat = toNumber(attrs['@_Repeat']) ?? 1;
@@ -162,7 +163,10 @@ export function parseFitWorkoutFile(
         avgSpeed != null && thresholds.thresholdSpeedMps > 0 ? avgSpeed / thresholds.thresholdSpeedMps : undefined;
     }
 
-    segments.push({ durationSec, intensityFraction });
+    const stepIntensity = String(step.intensity ?? '');
+    const role = stepIntensity === 'warmup' ? 'warmup' : stepIntensity === 'cooldown' ? 'cooldown' : undefined;
+
+    segments.push({ durationSec, intensityFraction, role });
   }
 
   const durationMin = Math.round(segments.reduce((sum, s) => sum + s.durationSec, 0) / 60);
