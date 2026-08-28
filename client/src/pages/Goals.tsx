@@ -10,6 +10,7 @@ export default function Goals() {
   const [targetValue, setTargetValue] = useState('');
   const [unit, setUnit] = useState('km');
   const [submitting, setSubmitting] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
   const [suggestions, setSuggestions] = useState<GoalSuggestion[] | null>(null);
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [suggestError, setSuggestError] = useState<string | null>(null);
@@ -55,11 +56,15 @@ export default function Goals() {
     await reload();
   }
 
-  async function requestSuggestions() {
+  async function requestSuggestions(e: FormEvent) {
+    e.preventDefault();
     setSuggestLoading(true);
     setSuggestError(null);
     try {
-      const result = await apiFetch<{ suggestions: GoalSuggestion[] }>('/goals/suggest', { method: 'POST' });
+      const result = await apiFetch<{ suggestions: GoalSuggestion[] }>('/goals/suggest', {
+        method: 'POST',
+        body: JSON.stringify({ prompt: aiPrompt }),
+      });
       setSuggestions(result.suggestions);
     } catch (err) {
       setSuggestError(err instanceof ApiError ? err.message : 'Failed to get goal suggestions');
@@ -97,12 +102,22 @@ export default function Goals() {
         <h1>Goals</h1>
       </header>
 
-      <div className="goal-suggest-bar">
-        <button type="button" className="secondary" onClick={requestSuggestions} disabled={suggestLoading}>
-          {suggestLoading ? 'Thinking…' : '✨ Suggest goals with AI'}
-        </button>
+      <form className="card goal-suggest-form" onSubmit={requestSuggestions}>
+        <label>
+          What do you want to train for?
+          <input
+            placeholder="e.g. I want to run a marathon this fall, or find me a local triathlon in spring"
+            value={aiPrompt}
+            onChange={(e) => setAiPrompt(e.target.value)}
+          />
+        </label>
+        <div className="form-actions">
+          <button type="submit" disabled={suggestLoading || !aiPrompt.trim()}>
+            {suggestLoading ? 'Searching…' : '✨ Find a goal with AI'}
+          </button>
+        </div>
         {suggestError && <p className="muted">{suggestError}</p>}
-      </div>
+      </form>
 
       {suggestions && suggestions.length > 0 && (
         <div className="goal-grid">

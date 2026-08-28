@@ -491,11 +491,8 @@ button.icon-button {
   margin-top: 4px;
 }
 
-.goal-suggest-bar {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
+.goal-suggest-form {
+  margin-bottom: 1.5rem;
 }
 
 .goal-suggestion-card {

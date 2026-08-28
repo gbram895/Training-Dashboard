@@ -8,9 +8,14 @@ import { suggestGoals } from '../lib/goalSuggestions.js';
 const router = Router();
 router.use(requireAuth);
 
+const suggestRequestSchema = z.object({ prompt: z.string().min(1) });
+
 router.post('/suggest', async (req: AuthedRequest, res) => {
+  const parsed = suggestRequestSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Describe what you want to train for first.' });
+
   try {
-    const suggestions = await suggestGoals(req.userId!);
+    const suggestions = await suggestGoals(req.userId!, parsed.data.prompt);
     res.json({ suggestions });
   } catch (err) {
     console.error('[goals] suggestion failed:', err);
