@@ -587,6 +587,29 @@ button.icon-button {
   font-size: 1.3rem;
 }
 
+.wordmark {
+  font-family: 'Bree Serif', serif;
+  font-size: 1.9rem;
+  line-height: 1;
+  color: var(--text);
+  display: inline-flex;
+  align-items: baseline;
+}
+
+.wordmark-i {
+  position: relative;
+  display: inline-block;
+}
+
+.wordmark-i-icon {
+  position: absolute;
+  top: -0.55em;
+  left: 50%;
+  width: 0.85em;
+  height: 0.42em;
+  transform: translateX(-72%) rotate(6deg);
+}
+
 .dash-header-subtitle {
   margin: 4px 0 0;
   font-size: 0.85rem;

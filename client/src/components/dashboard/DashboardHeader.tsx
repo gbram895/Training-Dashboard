@@ -1,5 +1,6 @@
 import type { Goal } from '../../api/types';
 import { formatDateUTC } from '../../lib/format';
+import Wordmark from '../Wordmark';
 
 function nearestUpcomingGoal(goals: Goal[]): Goal | null {
   const now = Date.now();
@@ -30,7 +31,9 @@ export default function DashboardHeader({
   return (
     <header className="dash-header">
       <div>
-        <h1 className="dash-header-title">🏔️🚴🏃 Training Dashboard</h1>
+        <h1 className="dash-header-title">
+          <Wordmark />
+        </h1>
         <p className="muted dash-header-subtitle">
           {latestDataDate ? `Health data through ${formatDateUTC(latestDataDate)}` : 'No health data synced yet'}
           {lastSyncedAt &&
