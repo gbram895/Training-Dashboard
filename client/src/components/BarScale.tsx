@@ -5,11 +5,8 @@ export default function BarScale({ value, max = 5 }: { value: number; max?: numb
       {bars.map((i) => (
         <span
           key={i}
-          className="bar-scale-bar"
-          style={{
-            height: `${((i + 1) / max) * 100}%`,
-            background: i < value ? 'var(--text)' : 'var(--border)',
-          }}
+          className={`bar-scale-bar${i < value ? ' bar-scale-bar-filled' : ''}`}
+          style={{ height: `${30 + (i / (max - 1)) * 70}%` }}
         />
       ))}
     </span>

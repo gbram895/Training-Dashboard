@@ -671,13 +671,18 @@ button.icon-button {
 .bar-scale {
   display: inline-flex;
   align-items: flex-end;
-  gap: 3px;
+  gap: 2.5px;
   height: 1.1rem;
 }
 
 .bar-scale-bar {
-  width: 5px;
-  border-radius: 1px;
+  width: 4px;
+  border-radius: 1.5px;
+  background: #e3e2de;
+}
+
+.bar-scale-bar-filled {
+  background: var(--text);
 }
 
 /* Chart legend */
