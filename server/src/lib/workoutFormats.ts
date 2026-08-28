@@ -142,14 +142,21 @@ export function parseFitWorkoutFile(
     const durationSec = toNumber(step.durationTime);
     if (!durationSec) continue; // skip distance/reps/HR-bounded/open-ended steps
 
+    const targetType = String(step.targetType ?? '');
     let intensityFraction: number | undefined;
-    if (discipline === 'BIKE' && step.targetType === 'power') {
-      const low = normalizePower(toNumber(step.customTargetPowerLow), thresholds.ftpWatts);
-      const high = normalizePower(toNumber(step.customTargetPowerHigh), thresholds.ftpWatts);
+    // Garmin's own workout builder emits power-averaging variants like "power3s"/
+    // "power10s"/"power30s" rather than plain "power". Those enum values aren't the
+    // exact one the FIT profile maps to customTargetPower*, so the SDK decodes the
+    // target into the generic customTargetValue* fields instead - fall back to those.
+    if (discipline === 'BIKE' && targetType.startsWith('power')) {
+      const rawLow = toNumber(step.customTargetPowerLow) ?? toNumber(step.customTargetValueLow);
+      const rawHigh = toNumber(step.customTargetPowerHigh) ?? toNumber(step.customTargetValueHigh);
+      const low = normalizePower(rawLow, thresholds.ftpWatts);
+      const high = normalizePower(rawHigh, thresholds.ftpWatts);
       intensityFraction = low != null && high != null ? (low + high) / 2 : (low ?? high);
-    } else if (discipline === 'RUN' && step.targetType === 'speed') {
-      const low = toNumber(step.customTargetSpeedLow);
-      const high = toNumber(step.customTargetSpeedHigh);
+    } else if (discipline === 'RUN' && targetType.startsWith('speed')) {
+      const low = toNumber(step.customTargetSpeedLow) ?? toNumber(step.customTargetValueLow);
+      const high = toNumber(step.customTargetSpeedHigh) ?? toNumber(step.customTargetValueHigh);
       const avgSpeed = low != null && high != null ? (low + high) / 2 : (low ?? high);
       intensityFraction =
         avgSpeed != null && thresholds.thresholdSpeedMps > 0 ? avgSpeed / thresholds.thresholdSpeedMps : undefined;
