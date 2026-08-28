@@ -765,6 +765,15 @@ button.icon-button {
 
 /* Plan / workout library */
 
+.plan-category + .plan-category {
+  margin-top: 2rem;
+}
+
+.plan-category-heading {
+  margin: 0 0 0.9rem;
+  font-size: 1.1rem;
+}
+
 .plan-grid {
   display: grid;
   grid-template-columns: 1fr;

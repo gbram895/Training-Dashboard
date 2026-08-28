@@ -1,7 +1,7 @@
 import { prisma } from './prisma.js';
 import { downloadFile, downloadFileBinary, listFolder, refreshAccessToken } from './dropbox.js';
 import { parseFitWorkoutFile, parseZwoFile } from './workoutFormats.js';
-import type { WorkoutSegment } from './workoutIntensity.js';
+import { classifyWorkoutCategory, type WorkoutCategory, type WorkoutSegment } from './workoutIntensity.js';
 
 const WORKOUT_LIBRARY_FOLDER = '/Workout Database';
 
@@ -28,6 +28,7 @@ export interface ParsedWorkoutFile {
   trainingStress?: number;
   profile?: string;
   segments?: WorkoutSegment[];
+  category?: WorkoutCategory;
 }
 
 type RawField = 'name' | 'type' | 'duration' | 'intensity' | 'trainingStress' | 'profile';
@@ -171,6 +172,7 @@ export async function fetchWorkoutLibrary(userId: string): Promise<ParsedWorkout
       }
 
       if (parsed) {
+        parsed.category = classifyWorkoutCategory(parsed.segments ?? [], parsed.intensity);
         workouts.push(parsed);
       } else {
         console.warn(`[workout-library] skipped ${entry.path_lower}: could not parse name/discipline`);

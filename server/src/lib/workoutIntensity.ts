@@ -88,3 +88,45 @@ function stressBucket(tss: number): number {
   if (tss < 140) return 4;
   return 5;
 }
+
+/**
+ * Labels a workout by the hardest zone its main effort actually reaches -
+ * the same way a coach would ("this is a VO2max session"), not by its
+ * whole-session average, which a brief peak wouldn't move much.
+ *
+ * Only segments of at least 20s count toward that peak, so a few-second
+ * acceleration or attack inside an otherwise steady tempo/sweet-spot ride
+ * doesn't reclassify the whole session as VO2max - a real VO2max or
+ * threshold effort is sustained, not a blip. Falls back to every segment
+ * if nothing clears that floor (e.g. an all-out-sprints-only file), and to
+ * the 1-5 intensity score for sources with no segment data (a hand-typed
+ * workout note).
+ */
+export type WorkoutCategory = 'ENDURANCE' | 'TEMPO' | 'THRESHOLD' | 'VO2MAX';
+
+const SUSTAINED_EFFORT_MIN_SEC = 20;
+
+export function classifyWorkoutCategory(
+  segments: WorkoutSegment[],
+  fallbackIntensity?: number,
+): WorkoutCategory | undefined {
+  const withTarget = segments.filter(
+    (s): s is WorkoutSegment & { intensityFraction: number } => s.intensityFraction != null,
+  );
+  const sustained = withTarget.filter((s) => s.durationSec >= SUSTAINED_EFFORT_MIN_SEC);
+  const targets = (sustained.length > 0 ? sustained : withTarget).map((s) => s.intensityFraction);
+  if (targets.length > 0) {
+    const peak = Math.max(...targets);
+    if (peak > 1.05) return 'VO2MAX';
+    if (peak > 0.9) return 'THRESHOLD';
+    if (peak > 0.75) return 'TEMPO';
+    return 'ENDURANCE';
+  }
+  if (fallbackIntensity != null) {
+    if (fallbackIntensity >= 5) return 'VO2MAX';
+    if (fallbackIntensity === 4) return 'THRESHOLD';
+    if (fallbackIntensity === 3) return 'TEMPO';
+    return 'ENDURANCE';
+  }
+  return undefined;
+}

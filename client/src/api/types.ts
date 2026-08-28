@@ -24,6 +24,7 @@ export interface Workout {
 }
 
 export type PlannedDiscipline = 'BIKE' | 'RUN';
+export type WorkoutCategory = 'ENDURANCE' | 'TEMPO' | 'THRESHOLD' | 'VO2MAX';
 
 export interface WorkoutProfileSegment {
   durationSec: number;
@@ -39,6 +40,7 @@ export interface LibraryWorkout {
   trainingStress?: number;
   profile?: string;
   segments?: WorkoutProfileSegment[];
+  category?: WorkoutCategory;
 }
 
 export interface SelectedWorkout {
