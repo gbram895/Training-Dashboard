@@ -771,19 +771,6 @@ button.icon-button {
   box-shadow: 0 0 0 1px var(--accent);
 }
 
-.plan-card-stats {
-  display: flex;
-  gap: 1.25rem;
-  flex-wrap: wrap;
-}
-
-.plan-card-stats > div {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  font-size: 0.85rem;
-}
-
 .plan-card-profile {
   margin: 0;
   font-size: 0.85rem;
@@ -791,46 +778,77 @@ button.icon-button {
   white-space: pre-line;
 }
 
-.discipline-badge {
-  font-size: 0.72rem;
-  font-weight: 600;
+.todays-workout-empty {
+  padding: 0.9rem 1rem;
+}
+
+/* Featured workout card (Today's Workout / Plan detail) */
+
+.workout-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.workout-card-eyebrow {
+  font-size: 0.78rem;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
-  padding: 0.15rem 0.55rem;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  margin: 0 0 0.15rem;
+}
+
+.workout-card-title {
+  margin: 0 0 0.3rem;
+  font-size: 1.3rem;
+}
+
+.workout-card-date {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-faint);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.discipline-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #fff;
+  padding: 0.4rem 0.9rem;
   border-radius: 999px;
   white-space: nowrap;
 }
 
-.discipline-bike {
-  color: var(--chart-ride);
-  background: rgba(42, 120, 214, 0.12);
+.discipline-pill.discipline-bike {
+  background: var(--chart-ride);
 }
 
-.discipline-run {
-  color: var(--chart-run);
-  background: rgba(227, 73, 72, 0.12);
+.discipline-pill.discipline-run {
+  background: var(--chart-run);
 }
 
-.dot-scale {
-  display: inline-flex;
-  gap: 0.25rem;
+.workout-stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
 }
 
-.dot-scale .dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--border);
+.workout-profile-heading {
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin: 0.4rem 0 0.6rem;
 }
 
-.dot-scale .dot.filled {
-  background: var(--accent);
-}
-
-.todays-workout-card .card-header-row {
-  align-items: center;
-}
-
-.todays-workout-empty {
-  padding: 0.9rem 1rem;
+.workout-profile-chart {
+  position: relative;
+  width: 100%;
+  background: var(--bg);
+  border-radius: 8px;
 }

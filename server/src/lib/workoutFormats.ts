@@ -88,6 +88,7 @@ export function parseZwoFile(path: string, xml: string): ParsedWorkoutFile | nul
     intensity,
     trainingStress,
     profile: typeof wf.description === 'string' ? wf.description : undefined,
+    segments,
   };
 }
 
@@ -177,5 +178,6 @@ export function parseFitWorkoutFile(
     intensity,
     trainingStress,
     profile: undefined,
+    segments,
   };
 }

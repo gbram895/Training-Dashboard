@@ -2,17 +2,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch, ApiError } from '../api/client';
 import type { LibraryWorkout, SelectedWorkout } from '../api/types';
 import { formatDuration } from '../lib/format';
-
-function DotScale({ value, max = 5 }: { value?: number; max?: number }) {
-  if (value == null) return <span className="muted">—</span>;
-  return (
-    <span className="dot-scale">
-      {Array.from({ length: max }, (_, i) => (
-        <span key={i} className={`dot${i < value ? ' filled' : ''}`} />
-      ))}
-    </span>
-  );
-}
+import WorkoutProfileChart from '../components/WorkoutProfileChart';
 
 export default function Plan() {
   const [workouts, setWorkouts] = useState<LibraryWorkout[] | null>(null);
@@ -85,26 +75,27 @@ export default function Plan() {
             const isSelected = selected?.sourcePath === w.path;
             return (
               <div className={`card plan-card${isSelected ? ' plan-card-selected' : ''}`} key={w.path}>
-                <div className="card-header-row">
-                  <h2>{w.name}</h2>
-                  <span className={`discipline-badge discipline-${w.discipline.toLowerCase()}`}>
-                    {w.discipline === 'BIKE' ? 'Bike' : 'Run'}
+                <div className="workout-card-header">
+                  <h2 className="workout-card-title">{w.name}</h2>
+                  <span className={`discipline-pill discipline-${w.discipline.toLowerCase()}`}>
+                    {w.discipline === 'BIKE' ? '🚴 Bike' : '🏃 Run'}
                   </span>
                 </div>
-                <div className="plan-card-stats">
-                  <div>
-                    <span className="muted">Duration</span>
-                    <span>{w.durationMin != null ? formatDuration(w.durationMin) : '—'}</span>
+                <div className="workout-stat-tiles">
+                  <div className="stat-tile">
+                    <span className="stat-tile-label">⏱ Duration</span>
+                    <span className="stat-tile-value">{w.durationMin != null ? formatDuration(w.durationMin) : '—'}</span>
                   </div>
-                  <div>
-                    <span className="muted">Intensity</span>
-                    <DotScale value={w.intensity} />
+                  <div className="stat-tile">
+                    <span className="stat-tile-label">⏰ Training stress</span>
+                    <span className="stat-tile-value">{w.trainingStress != null ? `${w.trainingStress}/5` : '—'}</span>
                   </div>
-                  <div>
-                    <span className="muted">Training stress</span>
-                    <DotScale value={w.trainingStress} />
+                  <div className="stat-tile">
+                    <span className="stat-tile-label">⏰ Intensity</span>
+                    <span className="stat-tile-value">{w.intensity != null ? `${w.intensity}/5` : '—'}</span>
                   </div>
                 </div>
+                {w.segments && w.segments.length > 0 && <WorkoutProfileChart segments={w.segments} height={70} />}
                 {w.profile && <p className="plan-card-profile">{w.profile}</p>}
                 <button
                   type="button"

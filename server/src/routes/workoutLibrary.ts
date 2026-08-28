@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, AuthedRequest } from '../middleware/auth.js';
 import { fetchWorkoutLibrary } from '../lib/workoutLibrary.js';
@@ -21,6 +22,11 @@ router.get('/selected', async (req: AuthedRequest, res) => {
   res.json(selected);
 });
 
+const segmentSchema = z.object({
+  durationSec: z.number().positive(),
+  intensityFraction: z.number().optional(),
+});
+
 const selectSchema = z.object({
   path: z.string().min(1),
   name: z.string().min(1),
@@ -29,18 +35,20 @@ const selectSchema = z.object({
   intensity: z.number().int().min(1).max(5).optional(),
   trainingStress: z.number().int().min(1).max(5).optional(),
   profile: z.string().optional(),
+  segments: z.array(segmentSchema).optional(),
 });
 
 router.post('/select', async (req: AuthedRequest, res) => {
   const parsed = selectSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { path, ...fields } = parsed.data;
+  const { path, segments, ...fields } = parsed.data;
   const userId = req.userId!;
+  const segmentsValue = segments ?? Prisma.DbNull;
 
   const selected = await prisma.selectedWorkout.upsert({
     where: { userId },
-    create: { userId, sourcePath: path, ...fields },
-    update: { sourcePath: path, ...fields, selectedAt: new Date() },
+    create: { userId, sourcePath: path, segments: segmentsValue, ...fields },
+    update: { sourcePath: path, segments: segmentsValue, ...fields, selectedAt: new Date() },
   });
   res.json(selected);
 });

@@ -1,6 +1,7 @@
 import { prisma } from './prisma.js';
 import { downloadFile, downloadFileBinary, listFolder, refreshAccessToken } from './dropbox.js';
 import { parseFitWorkoutFile, parseZwoFile } from './workoutFormats.js';
+import type { WorkoutSegment } from './workoutIntensity.js';
 
 const WORKOUT_LIBRARY_FOLDER = '/Workout Database';
 
@@ -26,6 +27,7 @@ export interface ParsedWorkoutFile {
   intensity?: number;
   trainingStress?: number;
   profile?: string;
+  segments?: WorkoutSegment[];
 }
 
 type RawField = 'name' | 'type' | 'duration' | 'intensity' | 'trainingStress' | 'profile';

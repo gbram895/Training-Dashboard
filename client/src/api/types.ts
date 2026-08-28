@@ -25,6 +25,11 @@ export interface Workout {
 
 export type PlannedDiscipline = 'BIKE' | 'RUN';
 
+export interface WorkoutProfileSegment {
+  durationSec: number;
+  intensityFraction?: number;
+}
+
 export interface LibraryWorkout {
   path: string;
   name: string;
@@ -33,6 +38,7 @@ export interface LibraryWorkout {
   intensity?: number;
   trainingStress?: number;
   profile?: string;
+  segments?: WorkoutProfileSegment[];
 }
 
 export interface SelectedWorkout {
@@ -44,6 +50,7 @@ export interface SelectedWorkout {
   trainingStress: number | null;
   profile: string | null;
   sourcePath: string;
+  segments: WorkoutProfileSegment[] | null;
   selectedAt: string;
 }
 

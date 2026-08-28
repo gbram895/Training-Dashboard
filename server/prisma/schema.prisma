@@ -149,6 +149,7 @@ model SelectedWorkout {
   trainingStress Int?
   profile        String?
   sourcePath     String
+  segments       Json?
   selectedAt     DateTime          @default(now())
 }
 
