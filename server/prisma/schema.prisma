@@ -56,6 +56,7 @@ model Workout {
   externalId  String?         @unique
   createdAt   DateTime        @default(now())
   exercises   ExerciseEntry[]
+  samples     WorkoutSample[]
 
   // Minutes spent in each heart-rate zone, computed at import time from raw
   // per-workout HR samples (Apple Health only) using the user's zone thresholds
@@ -77,6 +78,21 @@ model ExerciseEntry {
   reps      Int
   weightKg  Float?
   order     Int     @default(0)
+}
+
+// Per-second (or so) time-series data for a workout, used to draw HR/speed/power
+// graphs. Only available for Garmin-sourced workouts, except heartRate which is
+// also available for Apple Health imports.
+model WorkoutSample {
+  id         String  @id @default(uuid())
+  workoutId  String
+  workout    Workout @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  offsetSec  Int
+  heartRate  Int?
+  speedMps   Float?
+  powerWatts Int?
+
+  @@index([workoutId, offsetSec])
 }
 
 model DailyHealthSummary {

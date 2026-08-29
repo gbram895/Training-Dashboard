@@ -2,6 +2,7 @@ import { prisma } from './prisma.js';
 import { computeHrZoneMinutes, type HrZoneThresholds } from './appleHealth.js';
 import { beginGarminLogin, completeGarminMfaLogin } from './garminAuth.js';
 import {
+  extractGarminActivitySamples,
   extractGarminHeartRateSamples,
   fetchGarminActivityDetails,
   garminClientFromTokens,
@@ -70,10 +71,11 @@ async function importGarminActivity(
   const date = parseGarminGmtDate(activity.startTimeGMT);
 
   let zoneFields = {};
+  let activitySamples: ReturnType<typeof extractGarminActivitySamples> = [];
   try {
     const details = await fetchGarminActivityDetails(client, activity.activityId);
-    const samples = extractGarminHeartRateSamples(details);
-    const zones = computeHrZoneMinutes(samples, date.toISOString(), thresholds);
+    const hrSamples = extractGarminHeartRateSamples(details);
+    const zones = computeHrZoneMinutes(hrSamples, date.toISOString(), thresholds);
     if (zones) {
       zoneFields = {
         hrZone1Min: zones.z1,
@@ -83,11 +85,12 @@ async function importGarminActivity(
         hrZone5Min: zones.z5,
       };
     }
+    activitySamples = extractGarminActivitySamples(details);
   } catch (err) {
-    console.error(`[garmin-sync] failed to fetch HR details for activity ${activity.activityId}:`, err);
+    console.error(`[garmin-sync] failed to fetch activity details for activity ${activity.activityId}:`, err);
   }
 
-  await prisma.workout.create({
+  const workout = await prisma.workout.create({
     data: {
       userId,
       type,
@@ -100,6 +103,13 @@ async function importGarminActivity(
       ...zoneFields,
     },
   });
+
+  if (activitySamples.length > 0) {
+    await prisma.workoutSample.createMany({
+      data: activitySamples.map((s) => ({ workoutId: workout.id, ...s })),
+    });
+  }
+
   return true;
 }
 

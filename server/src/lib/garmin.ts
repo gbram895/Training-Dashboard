@@ -117,3 +117,52 @@ export function extractGarminHeartRateSamples(details: GarminActivityDetailsResp
     return [];
   }
 }
+
+export interface GarminActivitySample {
+  offsetSec: number;
+  heartRate?: number;
+  speedMps?: number;
+  powerWatts?: number;
+}
+
+/**
+ * Same column-oriented response as extractGarminHeartRateSamples, but also pulls
+ * directSpeed/directPower and expresses each row as a whole-second offset from the
+ * activity's own first sample, ready to persist as WorkoutSample rows.
+ */
+export function extractGarminActivitySamples(details: GarminActivityDetailsResponse): GarminActivitySample[] {
+  try {
+    if (!details.metricDescriptors || !details.activityDetailMetrics) return [];
+    const descriptors = details.metricDescriptors as GarminMetricDescriptor[];
+    const tsIdx = descriptors.find((d) => d.key === 'directTimestamp')?.metricsIndex;
+    if (tsIdx == null) return [];
+    const hrIdx = descriptors.find((d) => d.key === 'directHeartRate')?.metricsIndex;
+    const speedIdx = descriptors.find((d) => d.key === 'directSpeed')?.metricsIndex;
+    const powerIdx = descriptors.find((d) => d.key === 'directPower')?.metricsIndex;
+    if (hrIdx == null && speedIdx == null && powerIdx == null) return [];
+
+    const rows = details.activityDetailMetrics as GarminDetailMetric[];
+    const samples: GarminActivitySample[] = [];
+    let startTs: number | null = null;
+    for (const row of rows) {
+      const ts = row.metrics[tsIdx];
+      if (typeof ts !== 'number') continue;
+      if (startTs == null) startTs = ts;
+
+      const hr = hrIdx != null ? row.metrics[hrIdx] : undefined;
+      const speed = speedIdx != null ? row.metrics[speedIdx] : undefined;
+      const power = powerIdx != null ? row.metrics[powerIdx] : undefined;
+      if (typeof hr !== 'number' && typeof speed !== 'number' && typeof power !== 'number') continue;
+
+      samples.push({
+        offsetSec: Math.round((ts - startTs) / 1000),
+        heartRate: typeof hr === 'number' ? Math.round(hr) : undefined,
+        speedMps: typeof speed === 'number' ? speed : undefined,
+        powerWatts: typeof power === 'number' ? Math.round(power) : undefined,
+      });
+    }
+    return samples;
+  } catch {
+    return [];
+  }
+}

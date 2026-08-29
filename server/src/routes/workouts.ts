@@ -166,6 +166,19 @@ router.get('/:id', async (req: AuthedRequest, res) => {
   res.json(workout);
 });
 
+router.get('/:id/samples', async (req: AuthedRequest, res) => {
+  const id = asString(req.params.id);
+  const workout = await prisma.workout.findFirst({ where: { id, userId: req.userId } });
+  if (!workout) return res.status(404).json({ error: 'Workout not found' });
+
+  const samples = await prisma.workoutSample.findMany({
+    where: { workoutId: id },
+    orderBy: { offsetSec: 'asc' },
+    select: { offsetSec: true, heartRate: true, speedMps: true, powerWatts: true },
+  });
+  res.json(samples);
+});
+
 router.post('/', async (req: AuthedRequest, res) => {
   const parsed = workoutSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });

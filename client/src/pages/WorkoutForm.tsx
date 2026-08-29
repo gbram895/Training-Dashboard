@@ -91,10 +91,11 @@ export default function WorkoutForm() {
 
       if (isNew) {
         await apiFetch('/workouts', { method: 'POST', body: JSON.stringify(payload) });
+        navigate('/workouts');
       } else {
         await apiFetch(`/workouts/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+        navigate(`/workouts/${id}`);
       }
-      navigate('/workouts');
     } catch {
       setError('Could not save workout. Check the fields and try again.');
     } finally {

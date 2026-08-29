@@ -9,6 +9,7 @@ import Plan from './pages/Plan';
 import TodaysWorkoutDetail from './pages/TodaysWorkoutDetail';
 import Workouts from './pages/Workouts';
 import WorkoutForm from './pages/WorkoutForm';
+import WorkoutDetail from './pages/WorkoutDetail';
 import Goals from './pages/Goals';
 import Settings from './pages/Settings';
 
@@ -31,7 +32,8 @@ export default function App() {
             <Route path="/plan/today" element={<TodaysWorkoutDetail />} />
             <Route path="/workouts" element={<Workouts />} />
             <Route path="/workouts/new" element={<WorkoutForm />} />
-            <Route path="/workouts/:id" element={<WorkoutForm />} />
+            <Route path="/workouts/:id" element={<WorkoutDetail />} />
+            <Route path="/workouts/:id/edit" element={<WorkoutForm />} />
             <Route path="/goals" element={<Goals />} />
             <Route path="/settings" element={<Settings />} />
           </Route>

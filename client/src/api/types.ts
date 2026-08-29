@@ -23,6 +23,13 @@ export interface Workout {
   hrZone5Min?: number | null;
 }
 
+export interface WorkoutSample {
+  offsetSec: number;
+  heartRate?: number | null;
+  speedMps?: number | null;
+  powerWatts?: number | null;
+}
+
 export type PlannedDiscipline = 'BIKE' | 'RUN';
 export type WorkoutCategory = 'ENDURANCE' | 'TEMPO' | 'THRESHOLD' | 'VO2MAX';
 

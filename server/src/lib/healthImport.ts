@@ -51,6 +51,7 @@ export async function applyHealthFiles(userId: string, files: HealthAutoExportFi
         hrZone5Min: zones?.z5,
       };
 
+      let workoutId: string;
       const existing = await prisma.workout.findUnique({ where: { externalId } });
       if (existing) {
         await prisma.workout.update({
@@ -63,8 +64,9 @@ export async function applyHealthFiles(userId: string, files: HealthAutoExportFi
             ...zoneFields,
           },
         });
+        workoutId = existing.id;
       } else {
-        await prisma.workout.create({
+        const created = await prisma.workout.create({
           data: {
             userId,
             type,
@@ -77,7 +79,24 @@ export async function applyHealthFiles(userId: string, files: HealthAutoExportFi
             ...zoneFields,
           },
         });
+        workoutId = created.id;
       }
+
+      if (workout.heartRateData?.length) {
+        const startMs = new Date(workout.start).getTime();
+        const samples = workout.heartRateData
+          .filter((s): s is typeof s & { Avg: number } => s.Avg != null)
+          .map((s) => ({
+            workoutId,
+            offsetSec: Math.round((new Date(s.date).getTime() - startMs) / 1000),
+            heartRate: Math.round(s.Avg),
+          }));
+        if (samples.length > 0) {
+          await prisma.workoutSample.deleteMany({ where: { workoutId } });
+          await prisma.workoutSample.createMany({ data: samples });
+        }
+      }
+
       workoutsImported += 1;
     }
   }
