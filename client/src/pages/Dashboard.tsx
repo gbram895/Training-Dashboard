@@ -12,6 +12,7 @@ import type {
 } from '../api/types';
 import WorkoutList from '../components/WorkoutList';
 import DashboardHeader from '../components/dashboard/DashboardHeader';
+import HeaderSyncButtons from '../components/dashboard/HeaderSyncButtons';
 import TodaysWorkoutCard from '../components/dashboard/TodaysWorkoutCard';
 import DropboxSyncBar from '../components/dashboard/DropboxSyncBar';
 import GarminSyncBar from '../components/dashboard/GarminSyncBar';
@@ -66,14 +67,14 @@ export default function Dashboard() {
             latestDataDate={days.length ? days[days.length - 1].date : null}
             lastSyncedAt={syncStatus?.lastSyncedAt ?? null}
             goals={goals}
+            syncActions={<HeaderSyncButtons status={syncStatus} onSynced={load} />}
           />
+
+          <SummaryBar stats={disciplineStats} />
 
           <TodaysWorkoutCard workout={todaysWorkout} onCleared={load} />
 
-          <DropboxSyncBar onSynced={load} />
-          <GarminSyncBar onSynced={load} />
-
-          <SummaryBar stats={disciplineStats} />
+          <DropboxSyncBar status={syncStatus} />
 
           <StatTilesRow days={days} disciplineStats={disciplineStats} />
 
@@ -101,6 +102,8 @@ export default function Dashboard() {
               <WorkoutList workouts={recent} labels={WORKOUT_LABELS} />
             )}
           </section>
+
+          <GarminSyncBar onSynced={load} />
         </>
       )}
 

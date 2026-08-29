@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { Goal } from '../../api/types';
 import { formatDateUTC } from '../../lib/format';
 import Wordmark from '../Wordmark';
@@ -21,10 +22,12 @@ export default function DashboardHeader({
   latestDataDate,
   lastSyncedAt,
   goals,
+  syncActions,
 }: {
   latestDataDate: string | null;
   lastSyncedAt: string | null;
   goals: Goal[];
+  syncActions?: ReactNode;
 }) {
   const raceGoal = nearestUpcomingGoal(goals);
 
@@ -40,12 +43,15 @@ export default function DashboardHeader({
             ` · Updated ${new Date(lastSyncedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, ${new Date(lastSyncedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })}`}
         </p>
       </div>
-      {raceGoal && (
-        <div className="dash-header-countdown">
-          <span className="dash-countdown-value">{formatCountdown(raceGoal.deadline!)}</span>
-          <span className="muted dash-countdown-label">until {raceGoal.title}</span>
-        </div>
-      )}
+      <div className="dash-header-right">
+        {syncActions}
+        {raceGoal && (
+          <div className="dash-header-countdown">
+            <span className="dash-countdown-value">{formatCountdown(raceGoal.deadline!)}</span>
+            <span className="muted dash-countdown-label">until {raceGoal.title}</span>
+          </div>
+        )}
+      </div>
     </header>
   );
 }

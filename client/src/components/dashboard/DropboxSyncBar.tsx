@@ -1,30 +1,7 @@
-import { useEffect, useState } from 'react';
-import { apiFetch, getToken } from '../../api/client';
+import { getToken } from '../../api/client';
 import type { DropboxSyncStatus } from '../../api/types';
 
-export default function DropboxSyncBar({ onSynced }: { onSynced?: () => void }) {
-  const [status, setStatus] = useState<DropboxSyncStatus | null>(null);
-  const [syncing, setSyncing] = useState(false);
-  const [syncStarted, setSyncStarted] = useState(false);
-
-  function reload() {
-    apiFetch<DropboxSyncStatus>('/health/dropbox/status').then(setStatus);
-  }
-
-  useEffect(reload, []);
-
-  async function syncNow(force = false) {
-    setSyncing(true);
-    try {
-      await apiFetch(`/health/dropbox/sync-now${force ? '?force=true' : ''}`, { method: 'POST' });
-      setSyncStarted(true);
-      setTimeout(() => setSyncStarted(false), 8000);
-      onSynced?.();
-    } finally {
-      setSyncing(false);
-    }
-  }
-
+export default function DropboxSyncBar({ status }: { status: DropboxSyncStatus | null }) {
   if (status === null) return null;
 
   if (!status.connected) {
@@ -46,16 +23,7 @@ export default function DropboxSyncBar({ onSynced }: { onSynced?: () => void }) 
           ? `Last synced ${new Date(status.lastSyncedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}`
           : 'Waiting for first sync…'}
         {status.lastSyncError ? ` — last attempt failed: ${status.lastSyncError}` : ''}
-        {syncStarted ? ' — sync started, this can take a few minutes' : ''}
       </p>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button type="button" className="secondary" onClick={() => syncNow(true)} disabled={syncing}>
-          Re-sync all
-        </button>
-        <button type="button" className="secondary" onClick={() => syncNow(false)} disabled={syncing}>
-          {syncing ? 'Starting…' : 'Sync now'}
-        </button>
-      </div>
     </section>
   );
 }

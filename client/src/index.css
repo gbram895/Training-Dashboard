@@ -632,6 +632,33 @@ button.icon-button {
   font-size: 0.85rem;
 }
 
+.dash-header-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.dash-sync-icons {
+  display: flex;
+  gap: 4px;
+}
+
+.dash-sync-icons .icon-button {
+  font-size: 1.1rem;
+  line-height: 1;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dash-sync-icons .icon-button:hover {
+  background: rgba(11, 11, 11, 0.05);
+}
+
 .dash-header-countdown {
   display: flex;
   flex-direction: column;
