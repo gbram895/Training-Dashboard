@@ -9,17 +9,17 @@ export default function HeaderSyncButtons({
   status: DropboxSyncStatus | null;
   onSynced: () => void;
 }) {
-  const [syncing, setSyncing] = useState(false);
+  const [syncing, setSyncing] = useState<'all' | 'now' | null>(null);
 
   if (!status?.connected) return null;
 
   async function syncNow(force: boolean) {
-    setSyncing(true);
+    setSyncing(force ? 'all' : 'now');
     try {
       await apiFetch(`/health/dropbox/sync-now${force ? '?force=true' : ''}`, { method: 'POST' });
       onSynced();
     } finally {
-      setSyncing(false);
+      setSyncing(null);
     }
   }
 
@@ -27,23 +27,23 @@ export default function HeaderSyncButtons({
     <div className="dash-sync-icons">
       <button
         type="button"
-        className="icon-button"
+        className={`icon-button${syncing === 'all' ? ' spinning' : ''}`}
         title="Re-sync all history"
         aria-label="Re-sync all history"
         onClick={() => syncNow(true)}
-        disabled={syncing}
+        disabled={syncing !== null}
       >
         ⟲
       </button>
       <button
         type="button"
-        className="icon-button"
+        className={`icon-button${syncing === 'now' ? ' spinning' : ''}`}
         title="Sync now"
         aria-label="Sync now"
         onClick={() => syncNow(false)}
-        disabled={syncing}
+        disabled={syncing !== null}
       >
-        {syncing ? '…' : '⟳'}
+        ⟳
       </button>
     </div>
   );

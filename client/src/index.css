@@ -592,8 +592,13 @@ button.icon-button {
 
 .dash-header {
   display: flex;
+  flex-direction: column;
+}
+
+.dash-header-top {
+  display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
 }
@@ -632,13 +637,6 @@ button.icon-button {
   font-size: 0.85rem;
 }
 
-.dash-header-right {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
-}
-
 .dash-sync-icons {
   display: flex;
   gap: 4px;
@@ -653,6 +651,16 @@ button.icon-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.dash-sync-icons .icon-button.spinning {
+  animation: dash-sync-spin 0.8s linear infinite;
+}
+
+@keyframes dash-sync-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .dash-sync-icons .icon-button:hover {
