@@ -1,12 +1,13 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { DashboardIcon, GoalsIcon, PlanIcon, SettingsIcon, WorkoutsIcon } from './NavIcons';
 
 const NAV_ITEMS = [
-  { to: '/', label: 'Dashboard', icon: '🏠', end: true },
-  { to: '/plan', label: 'Plan', icon: '🗓️', end: false },
-  { to: '/workouts', label: 'Workouts', icon: '📋', end: false },
-  { to: '/goals', label: 'Goals', icon: '🎯', end: false },
-  { to: '/settings', label: 'Settings', icon: '⚙️', end: false },
+  { to: '/', label: 'Dashboard', icon: DashboardIcon, end: true },
+  { to: '/plan', label: 'Plan', icon: PlanIcon, end: false },
+  { to: '/workouts', label: 'Workouts', icon: WorkoutsIcon, end: false },
+  { to: '/goals', label: 'Goals', icon: GoalsIcon, end: false },
+  { to: '/settings', label: 'Settings', icon: SettingsIcon, end: false },
 ];
 
 export default function NavShell() {
@@ -24,7 +25,14 @@ export default function NavShell() {
               end={item.end}
               className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
             >
-              <span>{item.icon}</span> {item.label}
+              {({ isActive }) => (
+                <>
+                  <span className={`nav-icon-badge${isActive ? ' active' : ''}`}>
+                    <item.icon />
+                  </span>
+                  {item.label}
+                </>
+              )}
             </NavLink>
           ))}
         </nav>
@@ -48,8 +56,14 @@ export default function NavShell() {
             end={item.end}
             className={({ isActive }) => `bottom-nav-link${isActive ? ' active' : ''}`}
           >
-            <span className="bottom-nav-icon">{item.icon}</span>
-            <span>{item.label}</span>
+            {({ isActive }) => (
+              <>
+                <span className={`nav-icon-badge${isActive ? ' active' : ''}`}>
+                  <item.icon />
+                </span>
+                <span>{item.label}</span>
+              </>
+            )}
           </NavLink>
         ))}
       </nav>
