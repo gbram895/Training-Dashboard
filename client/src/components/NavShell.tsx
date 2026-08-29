@@ -1,13 +1,12 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { DashboardIcon, GoalsIcon, PlanIcon, SettingsIcon, WorkoutsIcon } from './NavIcons';
 
 const NAV_ITEMS = [
-  { to: '/', label: 'Dashboard', icon: DashboardIcon, end: true },
-  { to: '/plan', label: 'Plan', icon: PlanIcon, end: false },
-  { to: '/workouts', label: 'Workouts', icon: WorkoutsIcon, end: false },
-  { to: '/goals', label: 'Goals', icon: GoalsIcon, end: false },
-  { to: '/settings', label: 'Settings', icon: SettingsIcon, end: false },
+  { to: '/', label: 'Dashboard', icon: 'dashboard', end: true },
+  { to: '/plan', label: 'Plan', icon: 'plan', end: false },
+  { to: '/workouts', label: 'Workouts', icon: 'workouts', end: false },
+  { to: '/goals', label: 'Goals', icon: 'goals', end: false },
+  { to: '/settings', label: 'Settings', icon: 'settings', end: false },
 ];
 
 export default function NavShell() {
@@ -28,7 +27,7 @@ export default function NavShell() {
               {({ isActive }) => (
                 <>
                   <span className={`nav-icon-badge${isActive ? ' active' : ''}`}>
-                    <item.icon />
+                    <img src={`/nav-icons/${item.icon}.png`} alt="" />
                   </span>
                   {item.label}
                 </>
@@ -59,7 +58,7 @@ export default function NavShell() {
             {({ isActive }) => (
               <>
                 <span className={`nav-icon-badge${isActive ? ' active' : ''}`}>
-                  <item.icon />
+                  <img src={`/nav-icons/${item.icon}.png`} alt="" />
                 </span>
                 <span>{item.label}</span>
               </>
