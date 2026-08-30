@@ -36,6 +36,7 @@ export default function WorkoutList({
                 <span>{formatDuration(w.durationMin)}</span>
                 {w.distanceKm ? <span>{formatDistance(w.distanceKm)}</span> : null}
                 {pace ? <span>{pace}</span> : null}
+                {w.calorieKcal ? <span>{Math.round(w.calorieKcal)} kcal</span> : null}
               </div>
             </Link>
           </li>

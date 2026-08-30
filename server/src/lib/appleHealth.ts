@@ -30,6 +30,7 @@ export interface HealthAutoExportWorkout {
   end: string;
   duration?: number;
   distance?: { qty: number; units: string };
+  activeEnergy?: { qty: number; units: string };
   heartRateData?: HeartRateSample[];
 }
 

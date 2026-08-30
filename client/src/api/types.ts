@@ -21,6 +21,9 @@ export interface Workout {
   hrZone3Min?: number | null;
   hrZone4Min?: number | null;
   hrZone5Min?: number | null;
+  calorieKcal?: number | null;
+  kilojoules?: number | null;
+  tss?: number | null;
 }
 
 export interface WorkoutSample {

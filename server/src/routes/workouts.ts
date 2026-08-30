@@ -4,6 +4,7 @@ import { WorkoutType } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, AuthedRequest } from '../middleware/auth.js';
 import { asString } from '../lib/params.js';
+import { recomputeTrainingLoad } from '../lib/trainingLoad.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -184,7 +185,7 @@ router.post('/', async (req: AuthedRequest, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { exercises, ...data } = parsed.data;
 
-  const workout = await prisma.workout.create({
+  const created = await prisma.workout.create({
     data: {
       ...data,
       date: new Date(data.date),
@@ -193,8 +194,9 @@ router.post('/', async (req: AuthedRequest, res) => {
         ? { create: exercises.map((e, order) => ({ ...e, order })) }
         : undefined,
     },
-    include: { exercises: true },
   });
+  await recomputeTrainingLoad(created.id);
+  const workout = await prisma.workout.findUnique({ where: { id: created.id }, include: { exercises: true } });
   res.status(201).json(workout);
 });
 
@@ -210,7 +212,7 @@ router.put('/:id', async (req: AuthedRequest, res) => {
   if (!existing) return res.status(404).json({ error: 'Workout not found' });
 
   await prisma.exerciseEntry.deleteMany({ where: { workoutId: id } });
-  const workout = await prisma.workout.update({
+  await prisma.workout.update({
     where: { id },
     data: {
       ...data,
@@ -219,8 +221,9 @@ router.put('/:id', async (req: AuthedRequest, res) => {
         ? { create: exercises.map((e, order) => ({ ...e, order })) }
         : undefined,
     },
-    include: { exercises: true },
   });
+  await recomputeTrainingLoad(id);
+  const workout = await prisma.workout.findUnique({ where: { id }, include: { exercises: true } });
   res.json(workout);
 });
 

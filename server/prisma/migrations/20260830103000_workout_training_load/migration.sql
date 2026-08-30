@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "Workout" ADD COLUMN     "calorieKcal" DOUBLE PRECISION,
+ADD COLUMN     "kilojoules" DOUBLE PRECISION,
+ADD COLUMN     "tss" DOUBLE PRECISION;

@@ -112,6 +112,17 @@ export async function getActivityStreams(accessToken: string, activityId: number
   }));
 }
 
+// Calories only appear on the detailed activity representation, not the list
+// endpoint — this costs one extra request per newly-imported activity.
+export async function getActivityCalories(accessToken: string, activityId: number): Promise<number | undefined> {
+  const res = await fetch(`https://www.strava.com/api/v3/activities/${activityId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) return undefined;
+  const detail = (await res.json()) as { calories?: number };
+  return detail.calories;
+}
+
 const STRAVA_TYPE_MAP: Record<string, WorkoutType> = {
   run: 'RUN',
   trailrun: 'RUN',

@@ -1,8 +1,10 @@
 import { prisma } from './prisma.js';
 import { computeHrZoneMinutesFromOffsets, type HrZoneThresholds } from './appleHealth.js';
 import { createDedupedWorkout } from './workoutDedup.js';
+import { recomputeTrainingLoad } from './trainingLoad.js';
 import {
   exchangeCodeForTokens,
+  getActivityCalories,
   getActivityStreams,
   listActivities,
   mapStravaActivityType,
@@ -82,7 +84,14 @@ async function importStravaActivity(
     console.error(`[strava-sync] failed to fetch streams for activity ${activity.id}:`, err);
   }
 
-  return createDedupedWorkout({
+  let calorieKcal: number | undefined;
+  try {
+    calorieKcal = await getActivityCalories(accessToken, activity.id);
+  } catch (err) {
+    console.error(`[strava-sync] failed to fetch calories for activity ${activity.id}:`, err);
+  }
+
+  const result = await createDedupedWorkout({
     userId,
     type,
     date,
@@ -91,9 +100,14 @@ async function importStravaActivity(
     notes: type === 'OTHER' ? activity.name : undefined,
     source: 'strava',
     externalId,
+    calorieKcal,
     zoneFields,
     samples,
   });
+
+  if (result.workoutId) await recomputeTrainingLoad(result.workoutId);
+
+  return result.outcome;
 }
 
 type StravaSampleWithZone = { offsetSec: number; heartRate?: number; speedMps?: number; powerWatts?: number };

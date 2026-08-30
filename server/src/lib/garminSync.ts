@@ -1,6 +1,7 @@
 import { prisma } from './prisma.js';
 import { computeHrZoneMinutes, type HrZoneThresholds } from './appleHealth.js';
 import { createDedupedWorkout } from './workoutDedup.js';
+import { recomputeTrainingLoad } from './trainingLoad.js';
 import { beginGarminLogin, completeGarminMfaLogin } from './garminAuth.js';
 import {
   extractGarminActivitySamples,
@@ -53,6 +54,7 @@ interface GarminActivitySummary {
   startTimeGMT: string;
   duration: number;
   distance: number;
+  calories?: number;
   activityType?: { typeKey: string };
 }
 
@@ -100,11 +102,14 @@ async function importGarminActivity(
     notes: type === 'OTHER' ? activity.activityName : undefined,
     source: 'garmin',
     externalId,
+    calorieKcal: activity.calories,
     zoneFields,
     samples: activitySamples,
   });
 
-  return result === 'created' || result === 'replaced-duplicate';
+  if (result.workoutId) await recomputeTrainingLoad(result.workoutId);
+
+  return result.outcome === 'created' || result.outcome === 'replaced-duplicate';
 }
 
 export async function runGarminSyncForUser(userId: string, options: { force?: boolean } = {}) {

@@ -122,6 +122,24 @@ export default function WorkoutDetail() {
               <span className="workout-stat-label">{isRide ? 'Avg speed' : 'Avg pace'}</span>
             </div>
           )}
+          {workout.calorieKcal != null && (
+            <div className="workout-stat">
+              <span className="workout-stat-value">{Math.round(workout.calorieKcal)}</span>
+              <span className="workout-stat-label">Calories</span>
+            </div>
+          )}
+          {workout.tss != null && (
+            <div className="workout-stat">
+              <span className="workout-stat-value">{Math.round(workout.tss)}</span>
+              <span className="workout-stat-label">TSS</span>
+            </div>
+          )}
+          {workout.kilojoules != null && (
+            <div className="workout-stat">
+              <span className="workout-stat-value">{Math.round(workout.kilojoules)}</span>
+              <span className="workout-stat-label">Kilojoules</span>
+            </div>
+          )}
         </div>
 
         {workout.notes && workout.type !== 'OTHER' && <p className="muted">{workout.notes}</p>}

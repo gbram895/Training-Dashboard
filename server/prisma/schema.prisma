@@ -59,6 +59,14 @@ model Workout {
   exercises   ExerciseEntry[]
   samples     WorkoutSample[]
 
+  // Calories are sourced from Garmin/Strava/Apple Health directly (we have no way
+  // to estimate them ourselves). Kilojoules and TSS are derived by us from the
+  // stored samples (Ride) or duration+distance+threshold pace (Run) — see
+  // lib/trainingLoad.ts — and recomputed whenever the workout is (re)synced.
+  calorieKcal Float?
+  kilojoules  Float?
+  tss         Float?
+
   // Minutes spent in each heart-rate zone, computed at import time from raw
   // per-workout HR samples (Apple Health only) using the user's zone thresholds
   hrZone1Min  Float?

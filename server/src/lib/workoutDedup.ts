@@ -41,8 +41,14 @@ export interface IncomingWorkout {
   notes?: string;
   source: string;
   externalId: string;
+  calorieKcal?: number;
   zoneFields?: Record<string, number | undefined>;
   samples: IncomingSample[];
+}
+
+export interface DedupResult {
+  outcome: 'created' | 'replaced-duplicate' | 'skipped-duplicate';
+  workoutId: string | null;
 }
 
 /**
@@ -52,9 +58,7 @@ export interface IncomingWorkout {
  * Callers should only reach this after confirming no workout already has this
  * exact externalId (that case is a same-source re-sync, handled by the caller).
  */
-export async function createDedupedWorkout(
-  incoming: IncomingWorkout,
-): Promise<'created' | 'replaced-duplicate' | 'skipped-duplicate'> {
+export async function createDedupedWorkout(incoming: IncomingWorkout): Promise<DedupResult> {
   const windowStart = new Date(incoming.date.getTime() - DUPLICATE_WINDOW_MIN * 60_000);
   const windowEnd = new Date(incoming.date.getTime() + DUPLICATE_WINDOW_MIN * 60_000);
 
@@ -65,7 +69,7 @@ export async function createDedupedWorkout(
 
   if (duplicate) {
     if (richnessScore(incoming.samples) <= richnessScore(duplicate.samples)) {
-      return 'skipped-duplicate';
+      return { outcome: 'skipped-duplicate', workoutId: null };
     }
     await prisma.workout.delete({ where: { id: duplicate.id } });
   }
@@ -80,6 +84,7 @@ export async function createDedupedWorkout(
       notes: incoming.notes,
       source: incoming.source,
       externalId: incoming.externalId,
+      calorieKcal: incoming.calorieKcal,
       ...incoming.zoneFields,
     },
   });
@@ -90,5 +95,5 @@ export async function createDedupedWorkout(
     });
   }
 
-  return duplicate ? 'replaced-duplicate' : 'created';
+  return { outcome: duplicate ? 'replaced-duplicate' : 'created', workoutId: workout.id };
 }

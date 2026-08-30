@@ -7,6 +7,13 @@ import {
   type HealthAutoExportFile,
 } from './appleHealth.js';
 import { createDedupedWorkout } from './workoutDedup.js';
+import { recomputeTrainingLoad } from './trainingLoad.js';
+
+function activeEnergyKcal(workout: { activeEnergy?: { qty: number; units: string } }): number | undefined {
+  const activeEnergy = workout.activeEnergy;
+  if (!activeEnergy) return undefined;
+  return activeEnergy.units.toLowerCase().startsWith('kj') ? activeEnergy.qty / 4.184 : activeEnergy.qty;
+}
 
 export async function applyHealthFiles(userId: string, files: HealthAutoExportFile[]) {
   const daily = aggregateHealthExports(files);
@@ -60,6 +67,7 @@ export async function applyHealthFiles(userId: string, files: HealthAutoExportFi
           heartRate: Math.round(s.Avg),
         }));
 
+      const calorieKcal = activeEnergyKcal(workout);
       const existing = await prisma.workout.findUnique({ where: { externalId } });
       if (existing) {
         await prisma.workout.update({
@@ -69,6 +77,7 @@ export async function applyHealthFiles(userId: string, files: HealthAutoExportFi
             durationMin,
             distanceKm,
             notes: type === 'OTHER' && !existing.notes ? workout.name : undefined,
+            calorieKcal,
             ...zoneFields,
           },
         });
@@ -76,8 +85,9 @@ export async function applyHealthFiles(userId: string, files: HealthAutoExportFi
           await prisma.workoutSample.deleteMany({ where: { workoutId: existing.id } });
           await prisma.workoutSample.createMany({ data: samples.map((s) => ({ workoutId: existing.id, ...s })) });
         }
+        await recomputeTrainingLoad(existing.id);
       } else {
-        await createDedupedWorkout({
+        const result = await createDedupedWorkout({
           userId,
           type,
           date: new Date(workout.start),
@@ -86,9 +96,11 @@ export async function applyHealthFiles(userId: string, files: HealthAutoExportFi
           notes: type === 'OTHER' ? workout.name : undefined,
           source: 'apple_health',
           externalId,
+          calorieKcal,
           zoneFields,
           samples,
         });
+        if (result.workoutId) await recomputeTrainingLoad(result.workoutId);
       }
 
       workoutsImported += 1;
