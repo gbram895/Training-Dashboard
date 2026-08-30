@@ -8,6 +8,7 @@ import type {
   FitnessPoint,
   Goal,
   HrZoneWeek,
+  PlannedDay,
   SelectedWorkout,
   Workout,
 } from '../api/types';
@@ -44,6 +45,7 @@ export default function Dashboard() {
   const [recent, setRecent] = useState<Workout[]>([]);
   const [syncStatus, setSyncStatus] = useState<DropboxSyncStatus | null>(null);
   const [todaysWorkout, setTodaysWorkout] = useState<SelectedWorkout | null>(null);
+  const [plannedToday, setPlannedToday] = useState<PlannedDay | null>(null);
   const [fitness, setFitness] = useState<FitnessPoint[] | null>(null);
 
   function load() {
@@ -54,6 +56,7 @@ export default function Dashboard() {
     apiFetch<Workout[]>('/workouts?limit=5').then(setRecent);
     apiFetch<DropboxSyncStatus>('/health/dropbox/status').then(setSyncStatus);
     apiFetch<SelectedWorkout | null>('/workout-library/selected').then(setTodaysWorkout);
+    apiFetch<PlannedDay | null>('/training-plan/today').then(setPlannedToday);
     apiFetch<FitnessPoint[]>('/workouts/fitness').then(setFitness);
   }
 
@@ -76,7 +79,7 @@ export default function Dashboard() {
 
           <SummaryBar stats={disciplineStats} />
 
-          <TodaysWorkoutCard workout={todaysWorkout} onCleared={load} />
+          <TodaysWorkoutCard workout={todaysWorkout} plannedToday={plannedToday} onCleared={load} />
 
           <DropboxSyncBar status={syncStatus} />
 

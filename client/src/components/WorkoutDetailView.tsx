@@ -17,6 +17,7 @@ export default function WorkoutDetailView({
   selecting,
   onBack,
   onSelect,
+  hideSelectButton,
 }: {
   workout: LibraryWorkout | SelectedWorkout;
   thresholds: ThresholdSettings | null;
@@ -24,6 +25,7 @@ export default function WorkoutDetailView({
   selecting: boolean;
   onBack: () => void;
   onSelect: () => void;
+  hideSelectButton?: boolean;
 }) {
   const segments = workout.segments ?? [];
 
@@ -143,9 +145,11 @@ export default function WorkoutDetailView({
         </div>
       )}
 
-      <button type="button" className={isSelected ? 'secondary' : ''} disabled={selecting} onClick={onSelect}>
-        {isSelected ? 'Selected as today’s workout ✓' : 'Set as today’s workout'}
-      </button>
+      {!hideSelectButton && (
+        <button type="button" className={isSelected ? 'secondary' : ''} disabled={selecting} onClick={onSelect}>
+          {isSelected ? 'Selected as today’s workout ✓' : 'Set as today’s workout'}
+        </button>
+      )}
     </div>
   );
 }

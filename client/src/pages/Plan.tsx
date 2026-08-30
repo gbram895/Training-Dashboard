@@ -1,10 +1,20 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiFetch, ApiError } from '../api/client';
-import type { LibraryWorkout, PlannedDiscipline, SelectedWorkout, ThresholdSettings, WorkoutCategory } from '../api/types';
+import type {
+  LibraryWorkout,
+  PlannedDay,
+  PlannedDiscipline,
+  SelectedWorkout,
+  ThresholdSettings,
+  TrainingPlanConfig,
+  WorkoutCategory,
+} from '../api/types';
 import { formatDuration } from '../lib/format';
 import BarScale from '../components/BarScale';
 import WorkoutDetailView from '../components/WorkoutDetailView';
 import WorkoutProfileChart from '../components/WorkoutProfileChart';
+import NewPlanModal from '../components/NewPlanModal';
 
 const CATEGORY_INFO: { key: WorkoutCategory | 'OTHER'; label: string; icon: string; description: string }[] = [
   { key: 'VO2MAX', label: 'VO2Max', icon: '💨', description: 'Short, maximal efforts that push your aerobic ceiling.' },
@@ -24,7 +34,35 @@ const CATEGORY_INFO: { key: WorkoutCategory | 'OTHER'; label: string; icon: stri
   { key: 'OTHER', label: 'Other', icon: '📋', description: "Workouts without enough data to classify." },
 ];
 
+function todayKey(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function weekdayLabel(dateStr: string): { name: string; date: string; isToday: boolean } {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  return {
+    name: d.toLocaleDateString(undefined, { weekday: 'long', timeZone: 'UTC' }),
+    date: d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' }),
+    isToday: dateStr === todayKey(),
+  };
+}
+
+function plannedDayToLibraryWorkout(day: PlannedDay): LibraryWorkout {
+  return {
+    path: day.sourcePath ?? '',
+    name: day.name ?? 'Workout',
+    discipline: (day.discipline ?? 'BIKE') as PlannedDiscipline,
+    durationMin: day.durationMin ?? undefined,
+    intensity: day.intensity ?? undefined,
+    trainingStress: day.trainingStress ?? undefined,
+    profile: day.profile ?? undefined,
+    segments: day.segments ?? undefined,
+    category: day.category ?? undefined,
+  };
+}
+
 export default function Plan() {
+  const navigate = useNavigate();
   const [workouts, setWorkouts] = useState<LibraryWorkout[] | null>(null);
   const [selected, setSelected] = useState<SelectedWorkout | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +71,11 @@ export default function Plan() {
   const [category, setCategory] = useState<WorkoutCategory | 'OTHER' | null>(null);
   const [detailPath, setDetailPath] = useState<string | null>(null);
   const [thresholds, setThresholds] = useState<ThresholdSettings | null>(null);
+
+  const [planConfig, setPlanConfig] = useState<TrainingPlanConfig | null | undefined>(undefined);
+  const [planWeek, setPlanWeek] = useState<PlannedDay[]>([]);
+  const [showPlanModal, setShowPlanModal] = useState(false);
+  const [previewDay, setPreviewDay] = useState<PlannedDay | null>(null);
 
   function load() {
     apiFetch<LibraryWorkout[]>('/workout-library')
@@ -43,6 +86,18 @@ export default function Plan() {
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Failed to load workout library'));
     apiFetch<SelectedWorkout | null>('/workout-library/selected').then(setSelected);
     apiFetch<ThresholdSettings>('/settings/thresholds').then(setThresholds);
+    loadPlan();
+  }
+
+  function loadPlan() {
+    apiFetch<TrainingPlanConfig | null>('/training-plan/config').then((config) => {
+      setPlanConfig(config);
+      if (config) {
+        apiFetch<PlannedDay[]>('/training-plan/week').then(setPlanWeek);
+      } else {
+        setPlanWeek([]);
+      }
+    });
   }
 
   useEffect(load, []);
@@ -60,9 +115,35 @@ export default function Plan() {
     }
   }
 
+  function openPlanDay(day: PlannedDay) {
+    if (day.isRestDay) return;
+    const { isToday } = weekdayLabel(day.date);
+    if (isToday) {
+      navigate('/plan/today');
+    } else {
+      setPreviewDay(day);
+    }
+  }
+
   const byDiscipline = workouts?.filter((w) => w.discipline === discipline) ?? null;
   const inCategory = category ? (byDiscipline ?? []).filter((w) => (w.category ?? 'OTHER') === category) : [];
   const detailWorkout = detailPath ? (workouts ?? []).find((w) => w.path === detailPath) ?? null : null;
+
+  if (previewDay) {
+    return (
+      <div className="page">
+        <WorkoutDetailView
+          workout={plannedDayToLibraryWorkout(previewDay)}
+          thresholds={thresholds}
+          isSelected={false}
+          selecting={false}
+          onBack={() => setPreviewDay(null)}
+          onSelect={() => {}}
+          hideSelectButton
+        />
+      </div>
+    );
+  }
 
   if (detailWorkout) {
     return (
@@ -84,6 +165,73 @@ export default function Plan() {
       <header className="page-header">
         <h1>Plan</h1>
       </header>
+
+      {planConfig !== undefined && (
+        <section className="card">
+          <div className="plan-week-header">
+            <h2>Your plan</h2>
+            <button type="button" className="secondary" onClick={() => setShowPlanModal(true)}>
+              {planConfig ? 'Edit plan' : 'New plan'}
+            </button>
+          </div>
+
+          {!planConfig ? (
+            <p className="muted">
+              Set a weekly training rhythm and the app will pick a workout — or a rest day — for you every day, based
+              on your fitness and recovery.
+            </p>
+          ) : planWeek.length === 0 ? (
+            <p className="muted">Building your plan…</p>
+          ) : (
+            <div className="plan-week-grid">
+              {planWeek.map((day) => {
+                const { name, date, isToday } = weekdayLabel(day.date);
+                return (
+                  <div
+                    key={day.id}
+                    className={`plan-week-day${isToday ? ' plan-week-day-today' : ''}`}
+                    onClick={() => openPlanDay(day)}
+                    style={{ cursor: day.isRestDay ? 'default' : 'pointer' }}
+                  >
+                    <div className="plan-week-day-label">
+                      <span className="plan-week-day-name">
+                        {isToday ? 'Today' : name}
+                      </span>
+                      <span className="plan-week-day-date">{date}</span>
+                    </div>
+                    <div className="plan-week-day-body">
+                      {day.isRestDay ? (
+                        <span className="plan-week-day-rest">{day.restReason ?? 'Rest day'}</span>
+                      ) : (
+                        <>
+                          <span className="plan-week-day-title">{day.name}</span>
+                          <span className="plan-week-day-meta">
+                            {day.durationMin != null ? formatDuration(day.durationMin) : ''}
+                            {day.category ? ` · ${day.category}` : ''}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
+
+      {showPlanModal && (
+        <NewPlanModal
+          initialConfig={planConfig ?? null}
+          onClose={() => setShowPlanModal(false)}
+          onSaved={() => {
+            setShowPlanModal(false);
+            loadPlan();
+          }}
+        />
+      )}
+
+      <h2 className="plan-category-heading">Workout library</h2>
 
       {error ? (
         <p className="muted">{error}</p>

@@ -22,6 +22,8 @@ model User {
   garminSync   GarminSyncConfig?
   stravaSync   StravaSyncConfig?
   selectedWorkout SelectedWorkout?
+  trainingPlanConfig TrainingPlanConfig?
+  plannedDays  PlannedDay[]
 
   // Heart-rate zone thresholds (bpm) — upper bound of zones 1-4; zone 5 is everything above z4Max
   hrZone1Max   Int                 @default(114)
@@ -190,6 +192,53 @@ model SelectedWorkout {
   sourcePath     String
   segments       Json?
   selectedAt     DateTime          @default(now())
+}
+
+// Standing weekly rhythm the user configures once ("New Plan"): how many hours
+// to train each day of the week, and which of those days (if any) are runs
+// rather than rides. Drives the daily auto-generation in lib/trainingPlan.ts.
+model TrainingPlanConfig {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weeklyHours    Float
+  mondayHours    Float    @default(0)
+  tuesdayHours   Float    @default(0)
+  wednesdayHours Float    @default(0)
+  thursdayHours  Float    @default(0)
+  fridayHours    Float    @default(0)
+  saturdayHours  Float    @default(0)
+  sundayHours    Float    @default(0)
+  includeRunning Boolean  @default(false)
+  // Days of the week that should be a run instead of a ride, JS Date.getDay()
+  // convention: 0=Sunday .. 6=Saturday.
+  runDays        Int[]    @default([])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+// One row per calendar day: either a rest day, or a specific workout picked
+// from the Dropbox workout library for that day. Regenerated daily on a
+// rolling basis from the TrainingPlanConfig plus the user's current fitness.
+model PlannedDay {
+  id             String             @id @default(uuid())
+  userId         String
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date           DateTime
+  isRestDay      Boolean            @default(false)
+  restReason     String?
+  sourcePath     String?
+  name           String?
+  discipline     PlannedDiscipline?
+  durationMin    Int?
+  intensity      Int?
+  trainingStress Int?
+  profile        String?
+  segments       Json?
+  category       String?
+  generatedAt    DateTime           @default(now())
+
+  @@unique([userId, date])
 }
 
 model Goal {

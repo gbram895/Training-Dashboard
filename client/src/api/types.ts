@@ -78,6 +78,36 @@ export interface SelectedWorkout {
   selectedAt: string;
 }
 
+export interface TrainingPlanConfig {
+  id: string;
+  weeklyHours: number;
+  mondayHours: number;
+  tuesdayHours: number;
+  wednesdayHours: number;
+  thursdayHours: number;
+  fridayHours: number;
+  saturdayHours: number;
+  sundayHours: number;
+  includeRunning: boolean;
+  runDays: number[];
+}
+
+export interface PlannedDay {
+  id: string;
+  date: string;
+  isRestDay: boolean;
+  restReason?: string | null;
+  sourcePath?: string | null;
+  name?: string | null;
+  discipline?: PlannedDiscipline | null;
+  durationMin?: number | null;
+  intensity?: number | null;
+  trainingStress?: number | null;
+  profile?: string | null;
+  segments?: WorkoutProfileSegment[] | null;
+  category?: WorkoutCategory | null;
+}
+
 export interface DisciplineTotals {
   distanceKm: number;
   durationMin: number;

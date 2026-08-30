@@ -10,11 +10,13 @@ import goalsRouter from './routes/goals.js';
 import healthRouter from './routes/health.js';
 import settingsRouter from './routes/settings.js';
 import workoutLibraryRouter from './routes/workoutLibrary.js';
+import trainingPlanRouter from './routes/trainingPlan.js';
 import { dropboxConfigured } from './lib/dropbox.js';
 import { runAllSyncs } from './lib/healthSyncJob.js';
 import { runAllGarminSyncs } from './lib/garminSync.js';
 import { stravaConfigured } from './lib/strava.js';
 import { runAllStravaSyncs } from './lib/stravaSync.js';
+import { regenerateAllPlans } from './lib/trainingPlan.js';
 
 const app = express();
 const PORT = process.env.PORT ?? 4000;
@@ -39,6 +41,7 @@ app.use('/api/goals', goalsRouter);
 app.use('/api/health', healthRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/workout-library', workoutLibraryRouter);
+app.use('/api/training-plan', trainingPlanRouter);
 
 if (process.env.NODE_ENV === 'production') {
   const clientDist = path.resolve(__dirname, '../../client/dist');
@@ -88,6 +91,15 @@ app.listen(PORT, () => {
       runAllStravaSyncs().catch((err) => console.error('[strava-sync] initial run failed:', err));
     }, 25_000);
   }
+
+  const planSchedule = process.env.TRAINING_PLAN_CRON ?? '0 4 * * *';
+  cron.schedule(planSchedule, () => {
+    regenerateAllPlans().catch((err) => console.error('[training-plan] run failed:', err));
+  });
+  console.log(`[training-plan] scheduled with cron "${planSchedule}"`);
+  setTimeout(() => {
+    regenerateAllPlans().catch((err) => console.error('[training-plan] initial run failed:', err));
+  }, 30_000);
 
   // Render's free tier spins the service down after 15 minutes with no incoming
   // requests. Pinging our own public URL well inside that window keeps it warm.

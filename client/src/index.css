@@ -1142,3 +1142,190 @@ button.icon-button {
   background: var(--bg);
   border-radius: 8px;
 }
+
+/* New-plan modal */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 19, 17, 0.45);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 50;
+  padding: 0;
+}
+
+@media (min-width: 640px) {
+  .modal-overlay {
+    align-items: center;
+    padding: 1rem;
+  }
+}
+
+.modal-card {
+  width: 100%;
+  max-width: 480px;
+  max-height: 92vh;
+  overflow-y: auto;
+  border-radius: 16px 16px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+@media (min-width: 640px) {
+  .modal-card {
+    border-radius: 16px;
+  }
+}
+
+.plan-slider-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.plan-slider-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+}
+
+.plan-slider-value {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.plan-slider-row input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.plan-allocated-note {
+  font-size: 0.8rem;
+  margin: -0.4rem 0 0;
+}
+
+.plan-day-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.8rem;
+  background: var(--bg);
+  border-radius: 10px;
+}
+
+.plan-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.plan-checkbox-row input {
+  width: 18px;
+  height: 18px;
+}
+
+.plan-run-days-panel {
+  padding: 0.8rem;
+  background: var(--accent-wash);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.plan-run-days-grid {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.plan-run-day-chip {
+  padding: 0.4rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.plan-run-day-chip-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* Weekly plan view */
+
+.plan-week-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.plan-week-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.plan-week-day {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.plan-week-day:last-child {
+  border-bottom: none;
+}
+
+.plan-week-day-today {
+  font-weight: 700;
+}
+
+.plan-week-day-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 90px;
+}
+
+.plan-week-day-name {
+  font-size: 0.95rem;
+}
+
+.plan-week-day-date {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.plan-week-day-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: right;
+}
+
+.plan-week-day-title {
+  font-weight: 600;
+}
+
+.plan-week-day-meta {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.plan-week-day-rest {
+  color: var(--text-muted);
+  font-style: italic;
+}
