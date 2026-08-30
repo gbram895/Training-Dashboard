@@ -1,5 +1,6 @@
 import { prisma } from './prisma.js';
 import { computeHrZoneMinutes, type HrZoneThresholds } from './appleHealth.js';
+import { createDedupedWorkout } from './workoutDedup.js';
 import { beginGarminLogin, completeGarminMfaLogin } from './garminAuth.js';
 import {
   extractGarminActivitySamples,
@@ -90,27 +91,20 @@ async function importGarminActivity(
     console.error(`[garmin-sync] failed to fetch activity details for activity ${activity.activityId}:`, err);
   }
 
-  const workout = await prisma.workout.create({
-    data: {
-      userId,
-      type,
-      date,
-      durationMin,
-      distanceKm,
-      notes: type === 'OTHER' ? activity.activityName : undefined,
-      source: 'garmin',
-      externalId,
-      ...zoneFields,
-    },
+  const result = await createDedupedWorkout({
+    userId,
+    type,
+    date,
+    durationMin,
+    distanceKm,
+    notes: type === 'OTHER' ? activity.activityName : undefined,
+    source: 'garmin',
+    externalId,
+    zoneFields,
+    samples: activitySamples,
   });
 
-  if (activitySamples.length > 0) {
-    await prisma.workoutSample.createMany({
-      data: activitySamples.map((s) => ({ workoutId: workout.id, ...s })),
-    });
-  }
-
-  return true;
+  return result === 'created' || result === 'replaced-duplicate';
 }
 
 export async function runGarminSyncForUser(userId: string, options: { force?: boolean } = {}) {

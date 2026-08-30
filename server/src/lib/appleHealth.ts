@@ -48,7 +48,7 @@ export interface HrZoneMinutes {
   z5: number;
 }
 
-function zoneFor(bpm: number, t: HrZoneThresholds): keyof HrZoneMinutes {
+export function zoneFor(bpm: number, t: HrZoneThresholds): keyof HrZoneMinutes {
   if (bpm <= t.z1Max) return 'z1';
   if (bpm <= t.z2Max) return 'z2';
   if (bpm <= t.z3Max) return 'z3';
@@ -78,6 +78,29 @@ export function computeHrZoneMinutes(
     zones[zoneFor(current.bpm, thresholds)] += durationMin;
   }
 
+  return zones;
+}
+
+// Same bucketing as computeHrZoneMinutes, but for samples timestamped as an
+// offset in seconds from activity start (Garmin/Strava per-second streams)
+// rather than as absolute dates (Apple Health).
+export function computeHrZoneMinutesFromOffsets(
+  samples: { offsetSec: number; heartRate?: number | null }[],
+  totalDurationSec: number,
+  thresholds: HrZoneThresholds,
+): HrZoneMinutes | null {
+  const sorted = samples
+    .filter((s): s is { offsetSec: number; heartRate: number } => s.heartRate != null)
+    .sort((a, b) => a.offsetSec - b.offsetSec);
+  if (sorted.length === 0) return null;
+
+  const zones: HrZoneMinutes = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
+  for (let i = 0; i < sorted.length; i++) {
+    const current = sorted[i];
+    const nextOffset = i + 1 < sorted.length ? sorted[i + 1].offsetSec : totalDurationSec;
+    const durationMin = Math.max(0, (nextOffset - current.offsetSec) / 60);
+    zones[zoneFor(current.heartRate, thresholds)] += durationMin;
+  }
   return zones;
 }
 

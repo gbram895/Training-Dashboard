@@ -7,6 +7,8 @@ import type { HealthAutoExportFile } from '../lib/appleHealth.js';
 import { applyHealthFiles } from '../lib/healthImport.js';
 import { buildAuthorizeUrl, dropboxConfigured, exchangeCodeForTokens } from '../lib/dropbox.js';
 import { completeGarminAccountConnect, connectGarminAccountAndSave, runGarminSyncForUser } from '../lib/garminSync.js';
+import { buildAuthorizeUrl as buildStravaAuthorizeUrl, stravaConfigured } from '../lib/strava.js';
+import { connectStravaAccount, runStravaSyncForUser } from '../lib/stravaSync.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET is not set');
@@ -225,6 +227,80 @@ router.post('/garmin/sync-now', requireAuth, async (req: AuthedRequest, res) => 
   runGarminSyncForUser(userId, { force })
     .then((result) => console.log(`[garmin-sync] manual sync (force=${force}) for user ${userId}:`, result))
     .catch((err) => console.error(`[garmin-sync] manual sync for user ${userId} failed:`, err));
+});
+
+function stravaCallbackUrl(req: { protocol: string; get: (name: string) => string | undefined }) {
+  return `${req.protocol}://${req.get('host')}/api/health/strava/callback`;
+}
+
+router.get('/strava/status', requireAuth, async (req: AuthedRequest, res) => {
+  const config = await prisma.stravaSyncConfig.findUnique({ where: { userId: req.userId } });
+  res.json({
+    configured: stravaConfigured(),
+    connected: Boolean(config),
+    lastSyncedAt: config?.lastSyncedAt ?? null,
+    lastSyncError: config?.lastSyncError ?? null,
+  });
+});
+
+router.get('/strava/connect', async (req, res) => {
+  if (!stravaConfigured()) {
+    return res.status(500).send('Strava app credentials are not configured on this server.');
+  }
+  const token = req.query.token;
+  if (typeof token !== 'string') return res.status(401).send('Missing token');
+
+  let userId: string;
+  try {
+    userId = (jwt.verify(token, JWT_SECRET!) as { userId: string }).userId;
+  } catch {
+    return res.status(401).send('Invalid or expired token');
+  }
+
+  const state = jwt.sign({ userId, purpose: 'strava-connect' }, JWT_SECRET!, { expiresIn: '10m' });
+  const redirectUri = stravaCallbackUrl(req);
+  const authorizeUrl = buildStravaAuthorizeUrl(redirectUri, state);
+  console.log(`[strava] redirecting user ${userId} to Strava, redirect_uri=${redirectUri}`);
+  res.redirect(authorizeUrl);
+});
+
+router.get('/strava/callback', async (req, res) => {
+  const { code, state } = req.query;
+  if (typeof code !== 'string' || typeof state !== 'string') {
+    return res.status(400).send('Missing code or state');
+  }
+
+  let userId: string;
+  try {
+    const payload = jwt.verify(state, JWT_SECRET!) as { userId: string; purpose: string };
+    if (payload.purpose !== 'strava-connect') throw new Error('wrong purpose');
+    userId = payload.userId;
+  } catch {
+    return res.status(401).send('Invalid or expired state');
+  }
+
+  try {
+    await connectStravaAccount(userId, code);
+    console.log(`[strava] connected successfully for user ${userId}`);
+    res.redirect('/?strava=connected');
+  } catch (err) {
+    console.error(`[strava] callback failed for user ${userId}:`, err);
+    res.status(500).send(`Failed to connect Strava: ${err instanceof Error ? err.message : err}`);
+  }
+});
+
+router.post('/strava/disconnect', requireAuth, async (req: AuthedRequest, res) => {
+  await prisma.stravaSyncConfig.deleteMany({ where: { userId: req.userId } });
+  res.json({ connected: false });
+});
+
+router.post('/strava/sync-now', requireAuth, async (req: AuthedRequest, res) => {
+  const userId = req.userId!;
+  const force = req.query.force === 'true';
+  res.json({ started: true });
+  runStravaSyncForUser(userId, { force })
+    .then((result) => console.log(`[strava-sync] manual sync (force=${force}) for user ${userId}:`, result))
+    .catch((err) => console.error(`[strava-sync] manual sync for user ${userId} failed:`, err));
 });
 
 export default router;

@@ -13,6 +13,8 @@ import workoutLibraryRouter from './routes/workoutLibrary.js';
 import { dropboxConfigured } from './lib/dropbox.js';
 import { runAllSyncs } from './lib/healthSyncJob.js';
 import { runAllGarminSyncs } from './lib/garminSync.js';
+import { stravaConfigured } from './lib/strava.js';
+import { runAllStravaSyncs } from './lib/stravaSync.js';
 
 const app = express();
 const PORT = process.env.PORT ?? 4000;
@@ -75,6 +77,17 @@ app.listen(PORT, () => {
   setTimeout(() => {
     runAllGarminSyncs().catch((err) => console.error('[garmin-sync] initial run failed:', err));
   }, 20_000);
+
+  if (stravaConfigured()) {
+    const stravaSchedule = process.env.STRAVA_SYNC_CRON ?? '0 */6 * * *';
+    cron.schedule(stravaSchedule, () => {
+      runAllStravaSyncs().catch((err) => console.error('[strava-sync] run failed:', err));
+    });
+    console.log(`[strava-sync] scheduled with cron "${stravaSchedule}"`);
+    setTimeout(() => {
+      runAllStravaSyncs().catch((err) => console.error('[strava-sync] initial run failed:', err));
+    }, 25_000);
+  }
 
   // Render's free tier spins the service down after 15 minutes with no incoming
   // requests. Pinging our own public URL well inside that window keeps it warm.

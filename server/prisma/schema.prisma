@@ -20,6 +20,7 @@ model User {
   healthSync   HealthSyncConfig?
   syncedFiles  SyncedDropboxFile[]
   garminSync   GarminSyncConfig?
+  stravaSync   StravaSyncConfig?
   selectedWorkout SelectedWorkout?
 
   // Heart-rate zone thresholds (bpm) — upper bound of zones 1-4; zone 5 is everything above z4Max
@@ -133,6 +134,18 @@ model GarminSyncConfig {
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   oauth1Token   String
   oauth2Token   String
+  lastSyncedAt  DateTime?
+  lastSyncError String?
+  createdAt     DateTime  @default(now())
+}
+
+model StravaSyncConfig {
+  id            String    @id @default(uuid())
+  userId        String    @unique
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken   String
+  refreshToken  String
+  expiresAt     DateTime
   lastSyncedAt  DateTime?
   lastSyncError String?
   createdAt     DateTime  @default(now())

@@ -6,6 +6,7 @@ import {
   mapWorkoutType,
   type HealthAutoExportFile,
 } from './appleHealth.js';
+import { createDedupedWorkout } from './workoutDedup.js';
 
 export async function applyHealthFiles(userId: string, files: HealthAutoExportFile[]) {
   const daily = aggregateHealthExports(files);
@@ -51,7 +52,14 @@ export async function applyHealthFiles(userId: string, files: HealthAutoExportFi
         hrZone5Min: zones?.z5,
       };
 
-      let workoutId: string;
+      const startMs = new Date(workout.start).getTime();
+      const samples = (workout.heartRateData ?? [])
+        .filter((s): s is typeof s & { Avg: number } => s.Avg != null)
+        .map((s) => ({
+          offsetSec: Math.round((new Date(s.date).getTime() - startMs) / 1000),
+          heartRate: Math.round(s.Avg),
+        }));
+
       const existing = await prisma.workout.findUnique({ where: { externalId } });
       if (existing) {
         await prisma.workout.update({
@@ -64,37 +72,23 @@ export async function applyHealthFiles(userId: string, files: HealthAutoExportFi
             ...zoneFields,
           },
         });
-        workoutId = existing.id;
-      } else {
-        const created = await prisma.workout.create({
-          data: {
-            userId,
-            type,
-            date: new Date(workout.start),
-            durationMin,
-            distanceKm,
-            notes: type === 'OTHER' ? workout.name : undefined,
-            source: 'apple_health',
-            externalId,
-            ...zoneFields,
-          },
-        });
-        workoutId = created.id;
-      }
-
-      if (workout.heartRateData?.length) {
-        const startMs = new Date(workout.start).getTime();
-        const samples = workout.heartRateData
-          .filter((s): s is typeof s & { Avg: number } => s.Avg != null)
-          .map((s) => ({
-            workoutId,
-            offsetSec: Math.round((new Date(s.date).getTime() - startMs) / 1000),
-            heartRate: Math.round(s.Avg),
-          }));
         if (samples.length > 0) {
-          await prisma.workoutSample.deleteMany({ where: { workoutId } });
-          await prisma.workoutSample.createMany({ data: samples });
+          await prisma.workoutSample.deleteMany({ where: { workoutId: existing.id } });
+          await prisma.workoutSample.createMany({ data: samples.map((s) => ({ workoutId: existing.id, ...s })) });
         }
+      } else {
+        await createDedupedWorkout({
+          userId,
+          type,
+          date: new Date(workout.start),
+          durationMin,
+          distanceKm,
+          notes: type === 'OTHER' ? workout.name : undefined,
+          source: 'apple_health',
+          externalId,
+          zoneFields,
+          samples,
+        });
       }
 
       workoutsImported += 1;

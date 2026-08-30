@@ -145,6 +145,13 @@ export interface GarminSyncStatus {
   lastSyncError: string | null;
 }
 
+export interface StravaSyncStatus {
+  configured: boolean;
+  connected: boolean;
+  lastSyncedAt: string | null;
+  lastSyncError: string | null;
+}
+
 export interface AuthUser {
   id: string;
   email: string;
