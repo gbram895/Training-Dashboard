@@ -66,6 +66,8 @@ model Workout {
   calorieKcal Float?
   kilojoules  Float?
   tss         Float?
+  avgPowerWatts        Float?
+  normalizedPowerWatts Float?
 
   // Minutes spent in each heart-rate zone, computed at import time from raw
   // per-workout HR samples (Apple Health only) using the user's zone thresholds

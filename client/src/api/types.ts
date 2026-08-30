@@ -24,6 +24,15 @@ export interface Workout {
   calorieKcal?: number | null;
   kilojoules?: number | null;
   tss?: number | null;
+  avgPowerWatts?: number | null;
+  normalizedPowerWatts?: number | null;
+}
+
+export interface FitnessPoint {
+  date: string;
+  ctl: number;
+  atl: number;
+  tsb: number;
 }
 
 export interface WorkoutSample {

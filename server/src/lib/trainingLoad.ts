@@ -23,12 +23,17 @@ export function computeKilojoules(samples: PowerSample[]): number | null {
   return joules > 0 ? joules / 1000 : null;
 }
 
-// Coggan-style TSS from a power stream: 30-sample rolling average -> 4th-power
-// mean -> 4th root gives normalized power; TSS scales duration by how hard NP
-// was relative to FTP. Assumes ~1 sample/sec, which is what Garmin and Strava
-// both stream at.
-export function computeRideTss(samples: PowerSample[], ftpWatts: number): number | null {
-  if (!ftpWatts) return null;
+export function computeAvgPower(samples: PowerSample[]): number | null {
+  const powers = samples.map((s) => s.powerWatts).filter((p): p is number => p != null);
+  if (powers.length === 0) return null;
+  return powers.reduce((a, b) => a + b, 0) / powers.length;
+}
+
+// Coggan's normalized power: 30-sample rolling average -> 4th-power mean -> 4th
+// root. Weights sustained hard efforts more than a plain average would, which is
+// the point — 200W steady and 400W/0W intervals average the same but tax you very
+// differently. Assumes ~1 sample/sec, which is what Garmin and Strava both stream at.
+export function computeNormalizedPower(samples: PowerSample[]): number | null {
   const withPower = samples
     .filter((s): s is { offsetSec: number; powerWatts: number } => s.powerWatts != null)
     .sort((a, b) => a.offsetSec - b.offsetSec);
@@ -46,7 +51,18 @@ export function computeRideTss(samples: PowerSample[], ftpWatts: number): number
   }
 
   const avgFourthPower = rolling.reduce((acc, p) => acc + p ** 4, 0) / rolling.length;
-  const normalizedPower = avgFourthPower ** 0.25;
+  return avgFourthPower ** 0.25;
+}
+
+// TSS scales duration by how hard normalized power was relative to FTP.
+export function computeRideTss(samples: PowerSample[], ftpWatts: number): number | null {
+  if (!ftpWatts) return null;
+  const normalizedPower = computeNormalizedPower(samples);
+  if (normalizedPower == null) return null;
+
+  const withPower = samples
+    .filter((s): s is { offsetSec: number; powerWatts: number } => s.powerWatts != null)
+    .sort((a, b) => a.offsetSec - b.offsetSec);
   const intensityFactor = normalizedPower / ftpWatts;
   const durationSec = withPower[withPower.length - 1].offsetSec - withPower[0].offsetSec;
   if (durationSec <= 0) return null;
@@ -78,13 +94,20 @@ export async function recomputeTrainingLoad(workoutId: string): Promise<void> {
 
   let kilojoules: number | null = null;
   let tss: number | null = null;
+  let avgPowerWatts: number | null = null;
+  let normalizedPowerWatts: number | null = null;
 
   if (workout.type === 'RIDE') {
     kilojoules = computeKilojoules(workout.samples);
+    avgPowerWatts = computeAvgPower(workout.samples);
+    normalizedPowerWatts = computeNormalizedPower(workout.samples);
     tss = computeRideTss(workout.samples, user.ftpWatts);
   } else if (workout.type === 'RUN') {
     tss = computeRunTss(workout.durationMin, workout.distanceKm ?? 0, user.thresholdPaceSecPerKm);
   }
 
-  await prisma.workout.update({ where: { id: workoutId }, data: { kilojoules, tss } });
+  await prisma.workout.update({
+    where: { id: workoutId },
+    data: { kilojoules, tss, avgPowerWatts, normalizedPowerWatts },
+  });
 }

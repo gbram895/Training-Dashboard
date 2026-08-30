@@ -5,6 +5,7 @@ import type {
   DailyHealthSummary,
   DisciplineStats,
   DropboxSyncStatus,
+  FitnessPoint,
   Goal,
   HrZoneWeek,
   SelectedWorkout,
@@ -23,6 +24,7 @@ import HrvWeekCompareChart from '../components/dashboard/HrvWeekCompareChart';
 import SleepRhrCharts from '../components/dashboard/SleepRhrCharts';
 import HrZonesChart from '../components/dashboard/HrZonesChart';
 import DisciplineCharts from '../components/dashboard/DisciplineCharts';
+import FitnessChart from '../components/dashboard/FitnessChart';
 
 const WORKOUT_LABELS: Record<string, string> = {
   RUN: 'Run',
@@ -42,6 +44,7 @@ export default function Dashboard() {
   const [recent, setRecent] = useState<Workout[]>([]);
   const [syncStatus, setSyncStatus] = useState<DropboxSyncStatus | null>(null);
   const [todaysWorkout, setTodaysWorkout] = useState<SelectedWorkout | null>(null);
+  const [fitness, setFitness] = useState<FitnessPoint[] | null>(null);
 
   function load() {
     apiFetch<DailyHealthSummary[]>('/health/summary').then(setDays);
@@ -51,6 +54,7 @@ export default function Dashboard() {
     apiFetch<Workout[]>('/workouts?limit=5').then(setRecent);
     apiFetch<DropboxSyncStatus>('/health/dropbox/status').then(setSyncStatus);
     apiFetch<SelectedWorkout | null>('/workout-library/selected').then(setTodaysWorkout);
+    apiFetch<FitnessPoint[]>('/workouts/fitness').then(setFitness);
   }
 
   useEffect(load, []);
@@ -86,6 +90,8 @@ export default function Dashboard() {
           </div>
 
           <HrZonesChart weeks={hrZones} />
+
+          {fitness !== null && <FitnessChart series={fitness} />}
 
           <DisciplineCharts weekly={disciplineStats.weekly} />
 

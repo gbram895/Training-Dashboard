@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma.js';
 import { requireAuth, AuthedRequest } from '../middleware/auth.js';
 import { asString } from '../lib/params.js';
 import { recomputeTrainingLoad } from '../lib/trainingLoad.js';
+import { computeFitnessSeries } from '../lib/fitness.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -155,6 +156,11 @@ router.get('/hr-zones-weekly', async (req: AuthedRequest, res) => {
     .sort((a, b) => a.weekStart.localeCompare(b.weekStart));
 
   res.json(weekly);
+});
+
+router.get('/fitness', async (req: AuthedRequest, res) => {
+  const series = await computeFitnessSeries(req.userId!);
+  res.json(series);
 });
 
 router.get('/:id', async (req: AuthedRequest, res) => {

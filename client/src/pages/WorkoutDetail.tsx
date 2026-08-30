@@ -140,6 +140,18 @@ export default function WorkoutDetail() {
               <span className="workout-stat-label">Kilojoules</span>
             </div>
           )}
+          {workout.avgPowerWatts != null && (
+            <div className="workout-stat">
+              <span className="workout-stat-value">{Math.round(workout.avgPowerWatts)} W</span>
+              <span className="workout-stat-label">Avg power</span>
+            </div>
+          )}
+          {workout.normalizedPowerWatts != null && (
+            <div className="workout-stat">
+              <span className="workout-stat-value">{Math.round(workout.normalizedPowerWatts)} W</span>
+              <span className="workout-stat-label">Normalized power</span>
+            </div>
+          )}
         </div>
 
         {workout.notes && workout.type !== 'OTHER' && <p className="muted">{workout.notes}</p>}
