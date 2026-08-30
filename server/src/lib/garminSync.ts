@@ -180,6 +180,39 @@ export async function runGarminSyncForUser(userId: string, options: { force?: bo
   }
 }
 
+const CALORIE_BACKFILL_LIMIT = 100;
+
+/** One-off backfill for activities imported before calories were tracked — re-fetches each activity's own detail record. */
+export async function backfillGarminCalories(userId: string): Promise<number> {
+  const config = await prisma.garminSyncConfig.findUnique({ where: { userId } });
+  if (!config) return 0;
+
+  const tokens: GarminTokens = { oauth1: JSON.parse(config.oauth1Token), oauth2: JSON.parse(config.oauth2Token) };
+  const client = garminClientFromTokens(tokens);
+
+  const workouts = await prisma.workout.findMany({
+    where: { userId, source: 'garmin', calorieKcal: null, externalId: { not: null } },
+    take: CALORIE_BACKFILL_LIMIT,
+  });
+
+  let updated = 0;
+  for (const w of workouts) {
+    const activityId = Number(w.externalId!.split(':')[1]);
+    if (!Number.isFinite(activityId)) continue;
+    try {
+      const detail = await client.getActivity({ activityId });
+      if (detail.calories != null) {
+        await prisma.workout.update({ where: { id: w.id }, data: { calorieKcal: detail.calories } });
+        updated += 1;
+      }
+    } catch (err) {
+      console.error(`[garmin-sync] calorie backfill failed for activity ${activityId}:`, err);
+    }
+    await sleep(200);
+  }
+  return updated;
+}
+
 export async function runAllGarminSyncs() {
   const configs = await prisma.garminSyncConfig.findMany({ select: { userId: true } });
   for (const { userId } of configs) {

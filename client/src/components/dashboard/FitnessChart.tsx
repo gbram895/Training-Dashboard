@@ -1,15 +1,35 @@
+import { useState } from 'react';
 import { Bar, CartesianGrid, Cell, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { apiFetch } from '../../api/client';
 import type { FitnessPoint } from '../../api/types';
 import { formatDateUTC } from '../../lib/format';
 
-export default function FitnessChart({ series }: { series: FitnessPoint[] }) {
+export default function FitnessChart({ series, onBackfilled }: { series: FitnessPoint[]; onBackfilled: () => void }) {
+  const [backfilling, setBackfilling] = useState(false);
+
+  async function backfill() {
+    setBackfilling(true);
+    try {
+      await apiFetch('/workouts/backfill-training-load', { method: 'POST' });
+      onBackfilled();
+    } finally {
+      setBackfilling(false);
+    }
+  }
+
   if (series.length === 0) {
     return (
       <section className="card">
         <div className="card-header-row">
           <h2>Fitness</h2>
         </div>
-        <p className="muted">Not enough TSS data yet — sync or log some rides/runs to see your training load.</p>
+        <p className="muted">
+          Not enough TSS data yet — this needs at least one ride or run that was synced (or logged) after this feature
+          shipped. If you already have activities from before, backfill them below.
+        </p>
+        <button type="button" className="secondary" onClick={backfill} disabled={backfilling}>
+          {backfilling ? 'Backfilling…' : 'Backfill from existing activities'}
+        </button>
       </section>
     );
   }
@@ -21,6 +41,9 @@ export default function FitnessChart({ series }: { series: FitnessPoint[] }) {
     <section className="card">
       <div className="card-header-row">
         <h2>Fitness</h2>
+        <button type="button" className="secondary" onClick={backfill} disabled={backfilling}>
+          {backfilling ? 'Recalculating…' : 'Recalculate'}
+        </button>
       </div>
 
       <div className="workout-stat-tiles" style={{ marginBottom: '0.75rem' }}>

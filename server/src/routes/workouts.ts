@@ -4,8 +4,10 @@ import { WorkoutType } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, AuthedRequest } from '../middleware/auth.js';
 import { asString } from '../lib/params.js';
-import { recomputeTrainingLoad } from '../lib/trainingLoad.js';
+import { recomputeTrainingLoad, recomputeAllTrainingLoad } from '../lib/trainingLoad.js';
 import { computeFitnessSeries } from '../lib/fitness.js';
+import { backfillGarminCalories } from '../lib/garminSync.js';
+import { backfillStravaCalories } from '../lib/stravaSync.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -161,6 +163,25 @@ router.get('/hr-zones-weekly', async (req: AuthedRequest, res) => {
 router.get('/fitness', async (req: AuthedRequest, res) => {
   const series = await computeFitnessSeries(req.userId!);
   res.json(series);
+});
+
+router.post('/backfill-training-load', async (req: AuthedRequest, res) => {
+  const userId = req.userId!;
+  const recomputed = await recomputeAllTrainingLoad(userId);
+
+  let caloriesBackfilled = 0;
+  try {
+    caloriesBackfilled += await backfillGarminCalories(userId);
+  } catch (err) {
+    console.error(`[backfill] Garmin calorie backfill failed for user ${userId}:`, err);
+  }
+  try {
+    caloriesBackfilled += await backfillStravaCalories(userId);
+  } catch (err) {
+    console.error(`[backfill] Strava calorie backfill failed for user ${userId}:`, err);
+  }
+
+  res.json({ recomputed, caloriesBackfilled });
 });
 
 router.get('/:id', async (req: AuthedRequest, res) => {

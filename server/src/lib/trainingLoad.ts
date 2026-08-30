@@ -111,3 +111,15 @@ export async function recomputeTrainingLoad(workoutId: string): Promise<void> {
     data: { kilojoules, tss, avgPowerWatts, normalizedPowerWatts },
   });
 }
+
+/** Backfills kilojoules/TSS/power for every Ride/Run a user already has — for data synced before this feature existed. */
+export async function recomputeAllTrainingLoad(userId: string): Promise<number> {
+  const workouts = await prisma.workout.findMany({
+    where: { userId, type: { in: ['RIDE', 'RUN'] } },
+    select: { id: true },
+  });
+  for (const w of workouts) {
+    await recomputeTrainingLoad(w.id);
+  }
+  return workouts.length;
+}

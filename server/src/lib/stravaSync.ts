@@ -164,6 +164,37 @@ export async function runStravaSyncForUser(userId: string, options: { force?: bo
   }
 }
 
+const CALORIE_BACKFILL_LIMIT = 100;
+
+/** One-off backfill for activities imported before calories were tracked — re-fetches each activity's own detail record. */
+export async function backfillStravaCalories(userId: string): Promise<number> {
+  const config = await prisma.stravaSyncConfig.findUnique({ where: { userId } });
+  if (!config) return 0;
+  const accessToken = await getValidAccessToken(userId, config);
+
+  const workouts = await prisma.workout.findMany({
+    where: { userId, source: 'strava', calorieKcal: null, externalId: { not: null } },
+    take: CALORIE_BACKFILL_LIMIT,
+  });
+
+  let updated = 0;
+  for (const w of workouts) {
+    const activityId = Number(w.externalId!.split(':')[1]);
+    if (!Number.isFinite(activityId)) continue;
+    try {
+      const calories = await getActivityCalories(accessToken, activityId);
+      if (calories != null) {
+        await prisma.workout.update({ where: { id: w.id }, data: { calorieKcal: calories } });
+        updated += 1;
+      }
+    } catch (err) {
+      console.error(`[strava-sync] calorie backfill failed for activity ${activityId}:`, err);
+    }
+    await sleep(150);
+  }
+  return updated;
+}
+
 export async function runAllStravaSyncs() {
   const configs = await prisma.stravaSyncConfig.findMany({ select: { userId: true } });
   for (const { userId } of configs) {

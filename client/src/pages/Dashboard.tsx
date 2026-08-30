@@ -91,7 +91,7 @@ export default function Dashboard() {
 
           <HrZonesChart weeks={hrZones} />
 
-          {fitness !== null && <FitnessChart series={fitness} />}
+          {fitness !== null && <FitnessChart series={fitness} onBackfilled={load} />}
 
           <DisciplineCharts weekly={disciplineStats.weekly} />
 
