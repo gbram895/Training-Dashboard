@@ -79,7 +79,7 @@ app.listen(PORT, () => {
   }, 20_000);
 
   if (stravaConfigured()) {
-    const stravaSchedule = process.env.STRAVA_SYNC_CRON ?? '0 */6 * * *';
+    const stravaSchedule = process.env.STRAVA_SYNC_CRON ?? '*/15 * * * *';
     cron.schedule(stravaSchedule, () => {
       runAllStravaSyncs().catch((err) => console.error('[strava-sync] run failed:', err));
     });
