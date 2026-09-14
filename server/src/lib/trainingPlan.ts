@@ -131,12 +131,17 @@ function pickWorkout(
   const byDiscipline = library.filter((w) => w.discipline === discipline);
   if (byDiscipline.length === 0) return null;
 
+  // Never hand back something wildly longer than what was actually scheduled
+  // — a 3h ride on a day set for 1h is worse than no ride at all. A workout
+  // with no parsed duration can't be checked, so it's let through but ranked
+  // last (see distanceFrom below), rather than assumed to fit.
+  const maxAllowedMinutes = Math.max(targetMinutes * 1.5, targetMinutes + 20);
+  const withinTolerance = byDiscipline.filter((w) => w.durationMin == null || w.durationMin <= maxAllowedMinutes);
+  if (withinTolerance.length === 0) return null;
+
+  const distanceFrom = (w: ParsedWorkoutFile) => (w.durationMin == null ? Infinity : Math.abs(w.durationMin - targetMinutes));
   const closestIn = (pool: ParsedWorkoutFile[]) =>
-    pool.reduce((best, w) => {
-      const bestDiff = Math.abs((best.durationMin ?? targetMinutes) - targetMinutes);
-      const diff = Math.abs((w.durationMin ?? targetMinutes) - targetMinutes);
-      return diff < bestDiff ? w : best;
-    }, pool[0]);
+    pool.reduce((best, w) => (distanceFrom(w) < distanceFrom(best) ? w : best), pool[0]);
 
   // Prefer a workout not used in the last couple of days, so a library with
   // several options in the same category doesn't collapse to one repeat —
@@ -147,7 +152,7 @@ function pickWorkout(
     return closestIn(notRecent.length > 0 ? notRecent : pool);
   };
 
-  const inCategory = byDiscipline.filter((w) => (w.category ?? undefined) === category);
+  const inCategory = withinTolerance.filter((w) => (w.category ?? undefined) === category);
   if (inCategory.length > 0) return pickFrom(inCategory);
 
   // Fall back to the nearest category tier (both directions) before giving up
@@ -156,11 +161,11 @@ function pickWorkout(
   for (let radius = 1; radius < CATEGORY_ORDER.length; radius++) {
     const candidates = [CATEGORY_ORDER[idx - radius], CATEGORY_ORDER[idx + radius]]
       .filter((c): c is WorkoutCategory => c != null)
-      .flatMap((c) => byDiscipline.filter((w) => w.category === c));
+      .flatMap((c) => withinTolerance.filter((w) => w.category === c));
     if (candidates.length > 0) return pickFrom(candidates);
   }
 
-  return pickFrom(byDiscipline);
+  return pickFrom(withinTolerance);
 }
 
 interface GeneratedDay {
@@ -223,7 +228,7 @@ async function runProjection(
         : {
             date,
             isRestDay: true,
-            restReason: `No ${discipline === 'RUN' ? 'run' : 'ride'} workouts found in your library`,
+            restReason: `No ${discipline === 'RUN' ? 'run' : 'ride'} in your library short enough for ${targetHours}h — add a shorter one, or this stays a rest day`,
           };
     }
 
