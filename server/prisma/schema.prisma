@@ -24,6 +24,7 @@ model User {
   selectedWorkout SelectedWorkout?
   trainingPlanConfig TrainingPlanConfig?
   plannedDays  PlannedDay[]
+  cachedLibraryWorkouts CachedLibraryWorkout[]
 
   // Heart-rate zone thresholds (bpm) — upper bound of zones 1-4; zone 5 is everything above z4Max
   hrZone1Max   Int                 @default(114)
@@ -239,6 +240,27 @@ model PlannedDay {
   generatedAt    DateTime           @default(now())
 
   @@unique([userId, date])
+}
+
+// Caches a parsed Dropbox workout-library file (.fit/.zwo/.txt) so repeated
+// reads — browsing the Plan tab, generating the training plan on every cron
+// run — don't re-download and re-parse every file every time. A row is
+// reused as-is only while both the Dropbox file itself is unchanged
+// (serverModified) and the user's FTP/threshold pace are unchanged
+// (thresholdsKey) — .fit/.zwo parsing bakes those thresholds into each
+// segment's intensity fraction, so a settings change invalidates it same as
+// an edited file would.
+model CachedLibraryWorkout {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  path           String
+  serverModified DateTime
+  thresholdsKey  String
+  parsed         Json
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, path])
 }
 
 model Goal {

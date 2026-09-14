@@ -1,7 +1,26 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from './prisma.js';
-import { downloadFile, downloadFileBinary, listFolder, refreshAccessToken } from './dropbox.js';
+import { downloadFile, downloadFileBinary, listFolder, refreshAccessToken, type DropboxFileEntry } from './dropbox.js';
 import { parseFitWorkoutFile, parseZwoFile } from './workoutFormats.js';
 import { classifyWorkoutCategory, type WorkoutCategory, type WorkoutSegment } from './workoutIntensity.js';
+
+// Bounds how many files are downloaded+parsed concurrently on a cold cache
+// (e.g. right after a big batch of new files is added) — fast enough to not
+// take forever with a large library, gentle enough not to hammer Dropbox.
+const FETCH_CONCURRENCY = 8;
+
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
 
 const WORKOUT_LIBRARY_FOLDER = '/Workout Database';
 
@@ -121,6 +140,27 @@ export function parseWorkoutFile(path: string, content: string): ParsedWorkoutFi
   };
 }
 
+async function parseEntry(
+  accessToken: string,
+  entry: DropboxFileEntry,
+  thresholds: { ftpWatts: number; thresholdSpeedMps: number },
+): Promise<ParsedWorkoutFile | null> {
+  let parsed: ParsedWorkoutFile | null = null;
+  if (/\.fit$/i.test(entry.name)) {
+    const buffer = await downloadFileBinary(accessToken, entry.path_lower);
+    parsed = parseFitWorkoutFile(entry.path_lower, buffer, thresholds);
+  } else if (/\.zwo$/i.test(entry.name)) {
+    const content = await downloadFile(accessToken, entry.path_lower);
+    parsed = parseZwoFile(entry.path_lower, content);
+  } else {
+    const content = await downloadFile(accessToken, entry.path_lower);
+    parsed = parseWorkoutFile(entry.path_lower, content);
+  }
+
+  if (parsed) parsed.category = classifyWorkoutCategory(parsed.segments ?? [], parsed.intensity);
+  return parsed;
+}
+
 export async function fetchWorkoutLibrary(userId: string): Promise<ParsedWorkoutFile[]> {
   const config = await prisma.healthSyncConfig.findUnique({ where: { userId } });
   if (!config) throw new Error('Connect Dropbox first (from the dashboard) to load your workout library.');
@@ -133,6 +173,10 @@ export async function fetchWorkoutLibrary(userId: string): Promise<ParsedWorkout
     ftpWatts: user.ftpWatts,
     thresholdSpeedMps: user.thresholdPaceSecPerKm > 0 ? 1000 / user.thresholdPaceSecPerKm : 0,
   };
+  // .fit/.zwo parsing bakes FTP/threshold pace into each segment's intensity
+  // fraction, so a cached parse is only valid while these haven't changed —
+  // otherwise it's stale in exactly the way an edited source file would be.
+  const thresholdsKey = `${user.ftpWatts}:${user.thresholdPaceSecPerKm}`;
 
   const accessToken = await refreshAccessToken(config.dropboxRefreshToken);
 
@@ -151,36 +195,74 @@ export async function fetchWorkoutLibrary(userId: string): Promise<ParsedWorkout
     }
     throw err;
   }
-  console.log(
-    `[workout-library] found ${entries.length} file(s) in "${WORKOUT_LIBRARY_FOLDER}": ${entries.map((e) => e.name).join(', ') || '(none)'}`,
-  );
+  console.log(`[workout-library] found ${entries.length} file(s) in "${WORKOUT_LIBRARY_FOLDER}" for user ${userId}`);
   const supportedFiles = entries.filter((e) => /\.(txt|md|zwo|fit)$/i.test(e.name));
 
-  const workouts: ParsedWorkoutFile[] = [];
-  for (const entry of supportedFiles) {
-    try {
-      let parsed: ParsedWorkoutFile | null = null;
-      if (/\.fit$/i.test(entry.name)) {
-        const buffer = await downloadFileBinary(accessToken, entry.path_lower);
-        parsed = parseFitWorkoutFile(entry.path_lower, buffer, thresholds);
-      } else if (/\.zwo$/i.test(entry.name)) {
-        const content = await downloadFile(accessToken, entry.path_lower);
-        parsed = parseZwoFile(entry.path_lower, content);
-      } else {
-        const content = await downloadFile(accessToken, entry.path_lower);
-        parsed = parseWorkoutFile(entry.path_lower, content);
-      }
+  const cachedRows = await prisma.cachedLibraryWorkout.findMany({ where: { userId } });
+  const cacheByPath = new Map(cachedRows.map((c) => [c.path, c]));
 
-      if (parsed) {
-        parsed.category = classifyWorkoutCategory(parsed.segments ?? [], parsed.intensity);
-        workouts.push(parsed);
-      } else {
-        console.warn(`[workout-library] skipped ${entry.path_lower}: could not parse name/discipline`);
-      }
-    } catch (err) {
-      console.error(`[workout-library] failed to read ${entry.path_lower}:`, err);
+  const fresh: ParsedWorkoutFile[] = [];
+  const toFetch: DropboxFileEntry[] = [];
+
+  for (const entry of supportedFiles) {
+    const cached = cacheByPath.get(entry.path_lower);
+    const serverModified = new Date(entry.server_modified);
+    if (cached && cached.thresholdsKey === thresholdsKey && cached.serverModified.getTime() === serverModified.getTime()) {
+      fresh.push(cached.parsed as unknown as ParsedWorkoutFile);
+    } else {
+      toFetch.push(entry);
     }
   }
 
-  return workouts.sort((a, b) => a.name.localeCompare(b.name));
+  if (toFetch.length > 0) {
+    console.log(`[workout-library] ${toFetch.length} new/changed file(s) to parse (${fresh.length} served from cache)`);
+  }
+
+  const parsedResults = await mapWithConcurrency(toFetch, FETCH_CONCURRENCY, async (entry) => {
+    try {
+      const parsed = await parseEntry(accessToken, entry, thresholds);
+      if (!parsed) {
+        console.warn(`[workout-library] skipped ${entry.path_lower}: could not parse name/discipline`);
+        return null;
+      }
+      return { entry, parsed };
+    } catch (err) {
+      console.error(`[workout-library] failed to read ${entry.path_lower}:`, err);
+      return null;
+    }
+  });
+
+  const cacheWrites: Promise<unknown>[] = [];
+  for (const result of parsedResults) {
+    if (!result) continue;
+    fresh.push(result.parsed);
+    cacheWrites.push(
+      prisma.cachedLibraryWorkout.upsert({
+        where: { userId_path: { userId, path: result.entry.path_lower } },
+        create: {
+          userId,
+          path: result.entry.path_lower,
+          serverModified: new Date(result.entry.server_modified),
+          thresholdsKey,
+          parsed: result.parsed as unknown as Prisma.InputJsonValue,
+        },
+        update: {
+          serverModified: new Date(result.entry.server_modified),
+          thresholdsKey,
+          parsed: result.parsed as unknown as Prisma.InputJsonValue,
+        },
+      }),
+    );
+  }
+
+  const currentPaths = new Set(supportedFiles.map((e) => e.path_lower));
+  const stalePaths = cachedRows.map((c) => c.path).filter((p) => !currentPaths.has(p));
+  if (stalePaths.length > 0) {
+    cacheWrites.push(prisma.cachedLibraryWorkout.deleteMany({ where: { userId, path: { in: stalePaths } } }));
+  }
+  // Cache writes are a pure perf optimization for next time — worth doing
+  // best-effort, but a failure here shouldn't fail the actual library fetch.
+  await Promise.all(cacheWrites).catch((err) => console.error('[workout-library] cache write failed:', err));
+
+  return fresh.sort((a, b) => a.name.localeCompare(b.name));
 }
