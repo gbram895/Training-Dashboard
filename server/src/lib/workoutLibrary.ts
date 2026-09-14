@@ -264,5 +264,8 @@ export async function fetchWorkoutLibrary(userId: string): Promise<ParsedWorkout
   // best-effort, but a failure here shouldn't fail the actual library fetch.
   await Promise.all(cacheWrites).catch((err) => console.error('[workout-library] cache write failed:', err));
 
-  return fresh.sort((a, b) => a.name.localeCompare(b.name));
+  return fresh.sort((a, b) => {
+    const durationDiff = (a.durationMin ?? Infinity) - (b.durationMin ?? Infinity);
+    return durationDiff !== 0 ? durationDiff : a.name.localeCompare(b.name);
+  });
 }
