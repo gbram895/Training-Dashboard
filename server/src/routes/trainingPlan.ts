@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, AuthedRequest } from '../middleware/auth.js';
-import { ensurePlannedDay, generatePlanWindow } from '../lib/trainingPlan.js';
+import { generatePlanWindow, getPlannedDay, getPlannedWeek } from '../lib/trainingPlan.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -60,26 +60,12 @@ router.delete('/config', async (req: AuthedRequest, res) => {
 });
 
 router.get('/week', async (req: AuthedRequest, res) => {
-  const userId = req.userId!;
-  const config = await prisma.trainingPlanConfig.findUnique({ where: { userId } });
-  if (!config) return res.json([]);
-
-  const today = utcMidnight(new Date());
-  const days = [];
-  for (let i = 0; i < 7; i++) {
-    const date = new Date(today);
-    date.setUTCDate(date.getUTCDate() + i);
-    days.push(await ensurePlannedDay(userId, date));
-  }
-  res.json(days.filter(Boolean));
+  const week = await getPlannedWeek(req.userId!);
+  res.json(week);
 });
 
 router.get('/today', async (req: AuthedRequest, res) => {
-  const userId = req.userId!;
-  const config = await prisma.trainingPlanConfig.findUnique({ where: { userId } });
-  if (!config) return res.json(null);
-
-  const today = await ensurePlannedDay(userId, new Date());
+  const today = await getPlannedDay(req.userId!, new Date());
   res.json(today);
 });
 

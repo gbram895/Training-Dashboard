@@ -60,23 +60,20 @@ function downgrade(category: WorkoutCategory, steps: number): WorkoutCategory {
 // adaptive plans use.
 const FORCED_REST_TSB = -30;
 
-interface ReadinessInputs {
-  tsb: number | null;
-  hrvRatio: number | null; // last night's HRV vs its own 7-day rolling average
-  sleepHours: number | null;
+interface ReadinessModifiers {
+  hrvRatio: number | null; // most recent HRV vs its own 7-day rolling average
+  sleepHours: number | null; // most recent night's sleep
 }
 
-async function getReadiness(userId: string, forDate: Date): Promise<ReadinessInputs> {
-  const fitness = await computeFitnessSeries(userId);
-  const dateKey = forDate.toISOString().slice(0, 10);
-  // Use the most recent fitness point at or before the planned date — future
-  // days reuse today's most current TSB, since we can't know tomorrow's yet.
-  const point = [...fitness].reverse().find((p) => p.date <= dateKey) ?? fitness[fitness.length - 1] ?? null;
-
-  const since = new Date(forDate);
+// HRV/sleep can't be predicted for future days, so every day in a generated
+// window uses the same, most-recently-known readiness snapshot. TSB, on the
+// other hand, IS projected forward day by day (see runProjection below) since
+// it accumulates purely from the plan's own scheduled training load.
+async function getReadinessModifiers(userId: string): Promise<ReadinessModifiers> {
+  const since = new Date();
   since.setUTCDate(since.getUTCDate() - 8);
   const days = await prisma.dailyHealthSummary.findMany({
-    where: { userId, date: { gte: since, lt: forDate } },
+    where: { userId, date: { gte: since } },
     orderBy: { date: 'asc' },
     select: { avgHrv: true, sleepHours: true },
   });
@@ -88,11 +85,11 @@ async function getReadiness(userId: string, forDate: Date): Promise<ReadinessInp
 
   const lastSleep = days.length ? (days[days.length - 1].sleepHours ?? null) : null;
 
-  return { tsb: point?.tsb ?? null, hrvRatio, sleepHours: lastSleep };
+  return { hrvRatio, sleepHours: lastSleep };
 }
 
-function decideCategory(readiness: ReadinessInputs): WorkoutCategory {
-  let category = readiness.tsb != null ? categoryFromTsb(readiness.tsb) : 'TEMPO';
+function decideCategory(tsb: number | null, readiness: ReadinessModifiers): WorkoutCategory {
+  let category = tsb != null ? categoryFromTsb(tsb) : 'TEMPO';
 
   let downgradeSteps = 0;
   if (readiness.hrvRatio != null && readiness.hrvRatio < 0.8) downgradeSteps += 1;
@@ -102,11 +99,34 @@ function decideCategory(readiness: ReadinessInputs): WorkoutCategory {
   return category;
 }
 
+// Rough numeric TSS per 1-5 stress bucket (see workoutIntensity.ts's own
+// stressBucket thresholds — this just inverts them to a representative
+// midpoint), used only to project CTL/ATL forward for days that haven't
+// happened yet. The real, precise TSS from actual samples takes over once a
+// workout is logged (see trainingLoad.ts) — this is just a planning estimate.
+function estimatedTssForBucket(bucket: number | null | undefined): number {
+  switch (bucket) {
+    case 1:
+      return 25;
+    case 2:
+      return 55;
+    case 3:
+      return 85;
+    case 4:
+      return 120;
+    case 5:
+      return 160;
+    default:
+      return 50;
+  }
+}
+
 function pickWorkout(
   library: ParsedWorkoutFile[],
   discipline: PlannedDiscipline,
   targetMinutes: number,
   category: WorkoutCategory,
+  avoidPaths: string[],
 ): ParsedWorkoutFile | null {
   const byDiscipline = library.filter((w) => w.discipline === discipline);
   if (byDiscipline.length === 0) return null;
@@ -118,8 +138,17 @@ function pickWorkout(
       return diff < bestDiff ? w : best;
     }, pool[0]);
 
+  // Prefer a workout not used in the last couple of days, so a library with
+  // several options in the same category doesn't collapse to one repeat —
+  // but never refuse to plan a day just to avoid a repeat.
+  const pickFrom = (pool: ParsedWorkoutFile[]) => {
+    if (pool.length === 0) return null;
+    const notRecent = pool.filter((w) => !avoidPaths.includes(w.path));
+    return closestIn(notRecent.length > 0 ? notRecent : pool);
+  };
+
   const inCategory = byDiscipline.filter((w) => (w.category ?? undefined) === category);
-  if (inCategory.length > 0) return closestIn(inCategory);
+  if (inCategory.length > 0) return pickFrom(inCategory);
 
   // Fall back to the nearest category tier (both directions) before giving up
   // on the category entirely — an easier or harder session beats no session.
@@ -128,51 +157,92 @@ function pickWorkout(
     const candidates = [CATEGORY_ORDER[idx - radius], CATEGORY_ORDER[idx + radius]]
       .filter((c): c is WorkoutCategory => c != null)
       .flatMap((c) => byDiscipline.filter((w) => w.category === c));
-    if (candidates.length > 0) return closestIn(candidates);
+    if (candidates.length > 0) return pickFrom(candidates);
   }
 
-  return closestIn(byDiscipline);
+  return pickFrom(byDiscipline);
 }
 
 interface GeneratedDay {
+  date: Date;
   isRestDay: boolean;
   restReason?: string;
   workout?: ParsedWorkoutFile;
   category?: WorkoutCategory;
 }
 
-async function generateDay(
+const CTL_DECAY = 1 - Math.exp(-1 / 42);
+const ATL_DECAY = 1 - Math.exp(-1 / 7);
+const RECENT_PICKS_MEMORY = 2;
+
+/**
+ * Generates each day in order, carrying a running CTL/ATL projection forward
+ * from the athlete's real, current fitness — each day's own (estimated) TSS
+ * feeds into the next day's projected Form, the same way the actual PMC will
+ * once these are real, logged workouts. This is what makes the week vary
+ * (a hard day naturally lowers Form for the next), instead of every future
+ * day reusing today's exact TSB — which is what always produced the same
+ * pick before.
+ */
+async function runProjection(
   userId: string,
-  date: Date,
+  dates: Date[],
   config: PlanConfigHours & { includeRunning: boolean; runDays: number[] },
   library: ParsedWorkoutFile[],
-): Promise<GeneratedDay> {
-  const targetHours = config[dayKeyFor(date)];
-  if (!targetHours || targetHours <= 0) {
-    return { isRestDay: true, restReason: 'No training hours scheduled today' };
+): Promise<GeneratedDay[]> {
+  const fitness = await computeFitnessSeries(userId);
+  let ctl = fitness.length ? fitness[fitness.length - 1].ctl : 0;
+  let atl = fitness.length ? fitness[fitness.length - 1].atl : 0;
+  const readiness = await getReadinessModifiers(userId);
+
+  const recentPicks: string[] = [];
+  const results: GeneratedDay[] = [];
+
+  for (const date of dates) {
+    const tsb = ctl - atl;
+    const targetHours = config[dayKeyFor(date)];
+
+    let generated: GeneratedDay;
+    if (!targetHours || targetHours <= 0) {
+      generated = { date, isRestDay: true, restReason: 'No training hours scheduled today' };
+    } else if (tsb < FORCED_REST_TSB) {
+      generated = {
+        date,
+        isRestDay: true,
+        restReason: 'Fatigue is running high (low Form) — recovery takes priority today',
+      };
+    } else {
+      const category = decideCategory(tsb, readiness);
+      const discipline: PlannedDiscipline =
+        config.includeRunning && config.runDays.includes(date.getUTCDay()) ? 'RUN' : 'BIKE';
+      const targetMinutes = Math.round(targetHours * 60);
+      const workout = pickWorkout(library, discipline, targetMinutes, category, recentPicks);
+
+      generated = workout
+        ? { date, isRestDay: false, workout, category }
+        : {
+            date,
+            isRestDay: true,
+            restReason: `No ${discipline === 'RUN' ? 'run' : 'ride'} workouts found in your library`,
+          };
+    }
+
+    results.push(generated);
+
+    const dayTss = generated.isRestDay ? 0 : estimatedTssForBucket(generated.workout?.trainingStress);
+    ctl = ctl + (dayTss - ctl) * CTL_DECAY;
+    atl = atl + (dayTss - atl) * ATL_DECAY;
+
+    if (!generated.isRestDay && generated.workout) {
+      recentPicks.push(generated.workout.path);
+      if (recentPicks.length > RECENT_PICKS_MEMORY) recentPicks.shift();
+    }
   }
 
-  const readiness = await getReadiness(userId, date);
-  if (readiness.tsb != null && readiness.tsb < FORCED_REST_TSB) {
-    return { isRestDay: true, restReason: 'Fatigue is running high (low Form) — recovery takes priority today' };
-  }
-
-  const category = decideCategory(readiness);
-  const discipline: PlannedDiscipline = config.includeRunning && config.runDays.includes(date.getUTCDay()) ? 'RUN' : 'BIKE';
-  const targetMinutes = Math.round(targetHours * 60);
-
-  const workout = pickWorkout(library, discipline, targetMinutes, category);
-  if (!workout) {
-    return {
-      isRestDay: true,
-      restReason: `No ${discipline === 'RUN' ? 'run' : 'ride'} workouts found in your library`,
-    };
-  }
-
-  return { isRestDay: false, workout, category };
+  return results;
 }
 
-async function upsertPlannedDay(userId: string, date: Date, generated: GeneratedDay) {
+async function upsertPlannedDay(userId: string, generated: GeneratedDay) {
   const data = generated.isRestDay
     ? {
         isRestDay: true,
@@ -204,8 +274,8 @@ async function upsertPlannedDay(userId: string, date: Date, generated: Generated
       };
 
   await prisma.plannedDay.upsert({
-    where: { userId_date: { userId, date } },
-    create: { userId, date, ...data },
+    where: { userId_date: { userId, date: generated.date } },
+    create: { userId, date: generated.date, ...data },
     update: data,
   });
 }
@@ -220,27 +290,47 @@ export async function generatePlanWindow(userId: string, days = ROLLING_WINDOW_D
   const library = await fetchWorkoutLibrary(userId).catch(() => [] as ParsedWorkoutFile[]);
 
   const today = utcMidnight(new Date());
+  const dates: Date[] = [];
   for (let i = 0; i < days; i++) {
     const date = new Date(today);
     date.setUTCDate(date.getUTCDate() + i);
-    const generated = await generateDay(userId, date, config, library);
-    await upsertPlannedDay(userId, date, generated);
+    dates.push(date);
+  }
+
+  const generatedDays = await runProjection(userId, dates, config, library);
+  for (const generated of generatedDays) {
+    await upsertPlannedDay(userId, generated);
   }
 }
 
-/** Ensures a single date has a PlannedDay row, generating it on demand if missing. */
-export async function ensurePlannedDay(userId: string, date: Date) {
-  const day = utcMidnight(date);
-  const existing = await prisma.plannedDay.findUnique({ where: { userId_date: { userId, date: day } } });
-  if (existing) return existing;
-
+/** Ensures today's PlannedDay row (and the rest of the rolling window) exists, ignoring an inactive config. */
+async function ensureWindowGenerated(userId: string): Promise<boolean> {
   const config = await prisma.trainingPlanConfig.findUnique({ where: { userId } });
-  if (!config) return null;
+  if (!config) return false;
 
-  const library = await fetchWorkoutLibrary(userId).catch(() => [] as ParsedWorkoutFile[]);
-  const generated = await generateDay(userId, day, config, library);
-  await upsertPlannedDay(userId, day, generated);
-  return prisma.plannedDay.findUnique({ where: { userId_date: { userId, date: day } } });
+  const today = utcMidnight(new Date());
+  const existing = await prisma.plannedDay.findUnique({ where: { userId_date: { userId, date: today } } });
+  if (!existing) await generatePlanWindow(userId);
+  return true;
+}
+
+export async function getPlannedDay(userId: string, date: Date) {
+  const hasConfig = await ensureWindowGenerated(userId);
+  if (!hasConfig) return null;
+  return prisma.plannedDay.findUnique({ where: { userId_date: { userId, date: utcMidnight(date) } } });
+}
+
+export async function getPlannedWeek(userId: string) {
+  const hasConfig = await ensureWindowGenerated(userId);
+  if (!hasConfig) return [];
+
+  const today = utcMidnight(new Date());
+  const end = new Date(today);
+  end.setUTCDate(end.getUTCDate() + 6);
+  return prisma.plannedDay.findMany({
+    where: { userId, date: { gte: today, lte: end } },
+    orderBy: { date: 'asc' },
+  });
 }
 
 export async function regenerateAllPlans(): Promise<void> {
