@@ -1,6 +1,12 @@
 import type { WorkoutProfileSegment } from '../api/types';
 import { getTrainingZone } from '../lib/trainingZones';
 
+// A 6-second sprint block rounds to "0min" with a flat durationSec/60 —
+// show seconds instead for anything under a minute.
+function formatSegmentDuration(durationSec: number): string {
+  return durationSec < 60 ? `${Math.round(durationSec)}s` : `${Math.round(durationSec / 60)}min`;
+}
+
 export default function WorkoutProfileChart({
   segments,
   height = 110,
@@ -25,8 +31,8 @@ export default function WorkoutProfileChart({
       ? Math.max(baselineHeight, (segment.intensityFraction! / maxIntensity) * height)
       : baselineHeight;
     const label = hasTarget
-      ? `${Math.round(segment.durationSec / 60)}min @ ${Math.round(segment.intensityFraction! * 100)}%`
-      : `${Math.round(segment.durationSec / 60)}min`;
+      ? `${formatSegmentDuration(segment.durationSec)} @ ${Math.round(segment.intensityFraction! * 100)}%`
+      : formatSegmentDuration(segment.durationSec);
 
     return (
       <div

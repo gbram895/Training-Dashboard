@@ -10,6 +10,13 @@ function formatPace(secPerKm: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+// A 6-second sprint block rounds to "0 min" with a flat durationSec/60 — show
+// seconds instead for anything under a minute so short efforts don't vanish.
+function formatSegmentDuration(durationSec: number): { value: number; unit: string } {
+  if (durationSec < 60) return { value: Math.round(durationSec), unit: 'sec' };
+  return { value: Math.round(durationSec / 60), unit: 'min' };
+}
+
 export default function WorkoutDetailView({
   workout,
   thresholds,
@@ -75,13 +82,13 @@ export default function WorkoutDetailView({
       {segments.length > 0 && (
         <div className="workout-segment-list">
           {segments.map((segment, i) => {
-            const minutes = Math.round(segment.durationSec / 60);
+            const duration = formatSegmentDuration(segment.durationSec);
             if (segment.intensityFraction == null) {
               return (
                 <div key={i} className="workout-segment-card workout-segment-card-plain">
                   <span className="workout-segment-card-title">Free</span>
                   <span className="workout-segment-card-value">
-                    {minutes} <small>min</small>
+                    {duration.value} <small>{duration.unit}</small>
                   </span>
                 </div>
               );
@@ -108,7 +115,7 @@ export default function WorkoutDetailView({
                   </div>
                   <div className="workout-segment-card-stat">
                     <span className="workout-segment-card-value">
-                      {minutes} <small>min</small>
+                      {duration.value} <small>{duration.unit}</small>
                     </span>
                     <span className="workout-segment-card-label">Duration</span>
                   </div>
