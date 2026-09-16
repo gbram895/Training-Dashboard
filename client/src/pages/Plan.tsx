@@ -79,6 +79,8 @@ export default function Plan() {
   const [planWeek, setPlanWeek] = useState<PlannedDay[]>([]);
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [previewDay, setPreviewDay] = useState<PlannedDay | null>(null);
+  const [selectedDayIndex, setSelectedDayIndex] = useState(0);
+  const [showWhy, setShowWhy] = useState(false);
 
   function load() {
     apiFetch<LibraryWorkout[]>('/workout-library')
@@ -96,7 +98,10 @@ export default function Plan() {
     apiFetch<TrainingPlanConfig | null>('/training-plan/config').then((config) => {
       setPlanConfig(config);
       if (config) {
-        apiFetch<PlannedDay[]>('/training-plan/week').then(setPlanWeek);
+        apiFetch<PlannedDay[]>('/training-plan/week').then((week) => {
+          setPlanWeek(week);
+          setSelectedDayIndex(0);
+        });
       } else {
         setPlanWeek([]);
       }
@@ -127,6 +132,13 @@ export default function Plan() {
       setPreviewDay(day);
     }
   }
+
+  function selectDayTab(index: number) {
+    setSelectedDayIndex(index);
+    setShowWhy(false);
+  }
+
+  const selectedDay = planWeek[selectedDayIndex] ?? null;
 
   const byDiscipline = workouts?.filter((w) => w.discipline === discipline) ?? null;
   const inCategory = category ? (byDiscipline ?? []).filter((w) => (w.category ?? 'OTHER') === category) : [];
@@ -170,55 +182,127 @@ export default function Plan() {
       </header>
 
       {planConfig !== undefined && (
-        <section className="card">
-          <div className="plan-week-header">
-            <h2>Your plan</h2>
-            <button type="button" className="secondary" onClick={() => setShowPlanModal(true)}>
-              {planConfig ? 'Edit plan' : 'New plan'}
-            </button>
-          </div>
-
+        <section className="plan-hero-section">
           {!planConfig ? (
-            <p className="muted">
-              Set a weekly training rhythm and the app will pick a workout — or a rest day — for you every day, based
-              on your fitness and recovery.
-            </p>
-          ) : planWeek.length === 0 ? (
-            <p className="muted">Building your plan…</p>
-          ) : (
-            <div className="plan-week-grid">
-              {planWeek.map((day) => {
-                const { name, date, isToday } = weekdayLabel(day.date);
-                return (
-                  <div
-                    key={day.id}
-                    className={`plan-week-day${isToday ? ' plan-week-day-today' : ''}`}
-                    onClick={() => openPlanDay(day)}
-                    style={{ cursor: day.isRestDay ? 'default' : 'pointer' }}
-                  >
-                    <div className="plan-week-day-label">
-                      <span className="plan-week-day-name">
-                        {isToday ? 'Today' : name}
-                      </span>
-                      <span className="plan-week-day-date">{date}</span>
-                    </div>
-                    <div className="plan-week-day-body">
-                      {day.isRestDay ? (
-                        <span className="plan-week-day-rest">{day.restReason ?? 'Rest day'}</span>
-                      ) : (
-                        <>
-                          <span className="plan-week-day-title">{day.name}</span>
-                          <span className="plan-week-day-meta">
-                            {day.durationMin != null ? formatDuration(day.durationMin) : ''}
-                            {day.category ? ` · ${day.category}` : ''}
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="card">
+              <div className="plan-week-header">
+                <h2>Your plan</h2>
+                <button type="button" className="secondary" onClick={() => setShowPlanModal(true)}>
+                  New plan
+                </button>
+              </div>
+              <p className="muted">
+                Set a weekly training rhythm and the app will pick a workout — or a rest day — for you every day,
+                based on your fitness and recovery.
+              </p>
             </div>
+          ) : planWeek.length === 0 ? (
+            <div className="card">
+              <p className="muted">Building your plan…</p>
+            </div>
+          ) : (
+            <>
+              <div className="plan-hero-banner">
+                <div className="plan-hero-banner-top">
+                  <button type="button" className="plan-pill-button" onClick={() => setShowPlanModal(true)}>
+                    Edit plan
+                  </button>
+                </div>
+                <div className="plan-day-tabs">
+                  {planWeek.map((day, i) => {
+                    const { name, date, isToday } = weekdayLabel(day.date);
+                    return (
+                      <button
+                        type="button"
+                        key={day.id}
+                        className={`plan-day-tab${i === selectedDayIndex ? ' plan-day-tab-active' : ''}`}
+                        onClick={() => selectDayTab(i)}
+                      >
+                        <span className="plan-day-tab-name">{isToday ? 'Today' : name}</span>
+                        <span className="plan-day-tab-date">{date}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="plan-suggested-header">
+                <span className="plan-suggested-dot" />
+                <h2>Suggested training</h2>
+              </div>
+
+              {selectedDay &&
+                (selectedDay.isRestDay ? (
+                  <div className="card plan-hero-card plan-hero-card-rest">
+                    <span className="plan-hero-rest-icon">😌</span>
+                    <h2 className="plan-hero-title">Rest day</h2>
+                    <p className="muted">{selectedDay.restReason ?? 'No training scheduled today.'}</p>
+                  </div>
+                ) : (
+                  <div className="card plan-hero-card">
+                    <div className="plan-hero-card-top">
+                      <span className="plan-hero-discipline-icon">
+                        {selectedDay.discipline === 'RUN' ? '🏃' : '🚴'}
+                      </span>
+                      <button
+                        type="button"
+                        className="plan-icon-button"
+                        onClick={() => loadPlan()}
+                        aria-label="Refresh plan"
+                        title="Refresh"
+                      >
+                        ⟳
+                      </button>
+                    </div>
+
+                    {selectedDay.segments && selectedDay.segments.length > 0 && (
+                      <WorkoutProfileChart segments={selectedDay.segments} height={70} />
+                    )}
+
+                    <h2 className="plan-hero-title">{selectedDay.name}</h2>
+
+                    <div className="plan-hero-stats">
+                      <div className="plan-hero-stat">
+                        <span className="plan-hero-stat-value">
+                          {selectedDay.durationMin != null ? formatDuration(selectedDay.durationMin) : '—'}
+                        </span>
+                        <span className="plan-hero-stat-label">Duration</span>
+                      </div>
+                      <div className="plan-hero-stat">
+                        {selectedDay.intensity != null ? (
+                          <BarScale value={selectedDay.intensity} />
+                        ) : (
+                          <span className="plan-hero-stat-value">—</span>
+                        )}
+                        <span className="plan-hero-stat-label">Intensity</span>
+                      </div>
+                      <div className="plan-hero-stat">
+                        {selectedDay.trainingStress != null ? (
+                          <BarScale value={selectedDay.trainingStress} />
+                        ) : (
+                          <span className="plan-hero-stat-value">—</span>
+                        )}
+                        <span className="plan-hero-stat-label">Load</span>
+                      </div>
+                    </div>
+
+                    <button type="button" className="plan-cta-primary" onClick={() => openPlanDay(selectedDay)}>
+                      View workout
+                    </button>
+                    <button type="button" className="plan-cta-secondary" onClick={() => setShowWhy((w) => !w)}>
+                      Why this workout?
+                    </button>
+                    {showWhy && (
+                      <p className="plan-why-text">
+                        {selectedDay.category
+                          ? `Picked as a ${selectedDay.category.toLowerCase()} session based on your current fitness and recovery. `
+                          : ''}
+                        {selectedDay.profile ?? ''}
+                      </p>
+                    )}
+                  </div>
+                ))}
+            </>
           )}
         </section>
       )}

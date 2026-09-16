@@ -1268,64 +1268,232 @@ button.icon-button {
   gap: 0.75rem;
 }
 
-.plan-week-grid {
+/* Premium plan hero — day-tab carousel + suggested-training card */
+
+.plan-hero-section {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 1rem;
 }
 
-.plan-week-day {
+.plan-hero-banner {
+  background: #1c1c1e;
+  border-radius: 20px;
+  padding: 1rem 1rem 1.1rem;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.7rem 0;
-  border-bottom: 1px solid var(--border);
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.plan-hero-banner-top {
+  display: flex;
+}
+
+/* button.<class> (not just .<class>) beats the base button:hover/:disabled
+   rules above, which are element+pseudo and otherwise win the specificity
+   tie against a plain class on hover/disabled. */
+button.plan-pill-button {
+  border: none;
+  border-radius: 999px;
+  padding: 0.5rem 1rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+button.plan-pill-button:hover,
+button.plan-pill-button:active {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.plan-day-tabs {
+  display: flex;
+  gap: 0.6rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.plan-day-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+button.plan-day-tab {
+  flex: 0 0 auto;
+  min-width: 104px;
+  background: var(--surface);
+  border: none;
+  border-radius: 14px;
+  padding: 0.65rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
   cursor: pointer;
 }
 
-.plan-week-day:last-child {
-  border-bottom: none;
+button.plan-day-tab:hover {
+  background: var(--surface);
 }
 
-.plan-week-day-today {
-  font-weight: 700;
-}
-
-.plan-week-day-label {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 90px;
-}
-
-.plan-week-day-name {
-  font-size: 0.95rem;
-}
-
-.plan-week-day-date {
-  font-size: 0.78rem;
+.plan-day-tab-name {
+  font-size: 0.76rem;
   color: var(--text-muted);
 }
 
-.plan-week-day-body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  text-align: right;
+.plan-day-tab-date {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
 }
 
-.plan-week-day-title {
+.plan-day-tab-active {
+  box-shadow: 0 3px 0 0 var(--chart-swim);
+}
+
+.plan-day-tab-active .plan-day-tab-name {
+  color: var(--chart-swim);
   font-weight: 600;
 }
 
-.plan-week-day-meta {
-  font-size: 0.78rem;
+.plan-suggested-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.plan-suggested-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.plan-suggested-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+  flex-shrink: 0;
+}
+
+.plan-hero-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  border-radius: 20px;
+  padding: 1.15rem;
+  box-shadow: 0 4px 16px rgba(11, 11, 11, 0.08);
+}
+
+.plan-hero-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.plan-hero-discipline-icon {
+  font-size: 1.6rem;
+}
+
+button.plan-icon-button {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.05rem;
+  cursor: pointer;
+  color: var(--text);
+}
+
+button.plan-icon-button:hover {
+  background: var(--surface);
+}
+
+.plan-hero-title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.plan-hero-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+
+.plan-hero-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.plan-hero-stat-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.plan-hero-stat-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: var(--text-muted);
 }
 
-.plan-week-day-rest {
+button.plan-cta-primary {
+  border: none;
+  border-radius: 999px;
+  padding: 0.95rem;
+  background: var(--chart-swim);
+  color: #fff;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+button.plan-cta-primary:hover,
+button.plan-cta-primary:active {
+  background: var(--chart-swim);
+  opacity: 0.85;
+}
+
+button.plan-cta-secondary {
+  border: none;
+  border-radius: 999px;
+  padding: 0.85rem;
+  background: #1c1c1e;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+button.plan-cta-secondary:hover,
+button.plan-cta-secondary:active {
+  background: #1c1c1e;
+  opacity: 0.85;
+}
+
+.plan-why-text {
+  margin: -0.3rem 0 0;
+  font-size: 0.88rem;
   color: var(--text-muted);
-  font-style: italic;
+  line-height: 1.45;
+}
+
+.plan-hero-card-rest {
+  align-items: center;
+  text-align: center;
+  padding: 1.8rem 1.1rem;
+}
+
+.plan-hero-rest-icon {
+  font-size: 2.2rem;
 }
