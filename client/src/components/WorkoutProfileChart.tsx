@@ -20,6 +20,12 @@ export default function WorkoutProfileChart({
   const maxIntensity = Math.max(1, ...segments.map((s) => s.intensityFraction ?? 0));
   const baselineHeight = height * 0.12;
   const gap = 1;
+  // A short, sharp block (a 6s sprint in a 58min ride) can be well under 1px
+  // of proportional width and vanish entirely — floor every bar to a width
+  // that's still visible as a spike. Positions stay proportional, so a
+  // widened short bar can overlap its neighbor by a couple of pixels; a
+  // fine trade for "the sprint disappeared" in this sparkline-style chart.
+  const minWidthPx = 3;
 
   let cumX = 0;
   const bars = segments.map((segment, i) => {
@@ -42,6 +48,7 @@ export default function WorkoutProfileChart({
           position: 'absolute',
           left: `${x}%`,
           width: `calc(${widthPct}% - ${gap}px)`,
+          minWidth: minWidthPx,
           bottom: 0,
           height: barHeight,
           background: hasTarget ? getTrainingZone(segment.intensityFraction!).color : 'var(--border)',
