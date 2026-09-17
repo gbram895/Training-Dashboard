@@ -13,13 +13,19 @@ function formatSegmentDuration(durationSec: number): string {
 // regardless of whether it was 5s or 30s, and a 5s block could end up
 // looking like a fifth the width of a 5min one (should be ~1/60th).
 //
-// Square-root scaling (weight = durationSec^0.5) is the standard fix for
+// Power scaling (weight = durationSec^WIDTH_POWER) is the standard fix for
 // this — the same trick bubble charts use so area doesn't misrepresent
 // magnitude at the extremes. It keeps every segment's width honestly
 // ordered and distinct (a 5s and 15s segment no longer render identically),
 // compresses the range enough that short segments stay visible, and leaves
 // same-duration segments exactly as wide as each other either way.
-const WIDTH_POWER = 0.5;
+//
+// 0.5 (sqrt) still rendered short sprint blocks noticeably too wide next to
+// longer threshold/endurance blocks — at 0.5 a 5min block is only ~5x a 5s
+// block's width, when the true ratio is 60x. 0.75 pushes much closer to
+// true proportion (~11x) while still keeping sub-10s efforts a few px wide
+// instead of sub-pixel invisible.
+const WIDTH_POWER = 0.75;
 
 function computeBarWidths(segments: WorkoutProfileSegment[]): number[] {
   const weights = segments.map((s) => Math.max(0, s.durationSec) ** WIDTH_POWER);
