@@ -7,30 +7,25 @@ function formatSegmentDuration(durationSec: number): string {
   return durationSec < 60 ? `${Math.round(durationSec)}s` : `${Math.round(durationSec / 60)}min`;
 }
 
-// A short, sharp block (a 6s sprint in a 58min ride) can be well under 1% of
-// the chart's width and effectively vanish. Floor it to this share instead —
-// but the floored bars' extra width has to come from somewhere, or two
-// consecutive short bars overlap each other (a flat per-bar min-width does
-// exactly that). So every bar under the floor is set to it, and every bar
-// still above the floor shrinks just enough that the whole row still sums to
-// 100% with no overlap.
-const MIN_WIDTH_PCT = 1.5;
+// Pure linear width (durationSec / total) makes a 6s sprint in a 58min ride
+// under 0.2% wide — invisible. A flat minimum width fixed that but broke
+// proportion the other way: every short segment rendered the same width
+// regardless of whether it was 5s or 30s, and a 5s block could end up
+// looking like a fifth the width of a 5min one (should be ~1/60th).
+//
+// Square-root scaling (weight = durationSec^0.5) is the standard fix for
+// this — the same trick bubble charts use so area doesn't misrepresent
+// magnitude at the extremes. It keeps every segment's width honestly
+// ordered and distinct (a 5s and 15s segment no longer render identically),
+// compresses the range enough that short segments stay visible, and leaves
+// same-duration segments exactly as wide as each other either way.
+const WIDTH_POWER = 0.5;
 
-function computeBarWidths(segments: WorkoutProfileSegment[], totalSec: number): number[] {
-  const natural = segments.map((s) => (s.durationSec / totalSec) * 100);
-  const isFloored = natural.map((w) => w < MIN_WIDTH_PCT);
-  const flooredTotal = isFloored.filter(Boolean).length * MIN_WIDTH_PCT;
-
-  // Pathological case: too many tiny segments for the floor to fit inside
-  // 100% at all — split the row evenly rather than produce negative widths.
-  if (flooredTotal >= 100) {
-    return segments.map(() => 100 / segments.length);
-  }
-
-  const naturalRemainingTotal = natural.reduce((sum, w, i) => sum + (isFloored[i] ? 0 : w), 0);
-  const shrink = naturalRemainingTotal > 0 ? (100 - flooredTotal) / naturalRemainingTotal : 0;
-
-  return natural.map((w, i) => (isFloored[i] ? MIN_WIDTH_PCT : w * shrink));
+function computeBarWidths(segments: WorkoutProfileSegment[]): number[] {
+  const weights = segments.map((s) => Math.max(0, s.durationSec) ** WIDTH_POWER);
+  const total = weights.reduce((sum, w) => sum + w, 0);
+  if (total <= 0) return segments.map(() => 100 / segments.length);
+  return weights.map((w) => (w / total) * 100);
 }
 
 export default function WorkoutProfileChart({
@@ -46,7 +41,7 @@ export default function WorkoutProfileChart({
   const maxIntensity = Math.max(1, ...segments.map((s) => s.intensityFraction ?? 0));
   const baselineHeight = height * 0.12;
   const gap = 1;
-  const widths = computeBarWidths(segments, totalSec);
+  const widths = computeBarWidths(segments);
 
   let cumX = 0;
   const bars = segments.map((segment, i) => {
