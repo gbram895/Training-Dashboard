@@ -7,6 +7,32 @@ function formatSegmentDuration(durationSec: number): string {
   return durationSec < 60 ? `${Math.round(durationSec)}s` : `${Math.round(durationSec / 60)}min`;
 }
 
+// A short, sharp block (a 6s sprint in a 58min ride) can be well under 1% of
+// the chart's width and effectively vanish. Floor it to this share instead —
+// but the floored bars' extra width has to come from somewhere, or two
+// consecutive short bars overlap each other (a flat per-bar min-width does
+// exactly that). So every bar under the floor is set to it, and every bar
+// still above the floor shrinks just enough that the whole row still sums to
+// 100% with no overlap.
+const MIN_WIDTH_PCT = 1.5;
+
+function computeBarWidths(segments: WorkoutProfileSegment[], totalSec: number): number[] {
+  const natural = segments.map((s) => (s.durationSec / totalSec) * 100);
+  const isFloored = natural.map((w) => w < MIN_WIDTH_PCT);
+  const flooredTotal = isFloored.filter(Boolean).length * MIN_WIDTH_PCT;
+
+  // Pathological case: too many tiny segments for the floor to fit inside
+  // 100% at all — split the row evenly rather than produce negative widths.
+  if (flooredTotal >= 100) {
+    return segments.map(() => 100 / segments.length);
+  }
+
+  const naturalRemainingTotal = natural.reduce((sum, w, i) => sum + (isFloored[i] ? 0 : w), 0);
+  const shrink = naturalRemainingTotal > 0 ? (100 - flooredTotal) / naturalRemainingTotal : 0;
+
+  return natural.map((w, i) => (isFloored[i] ? MIN_WIDTH_PCT : w * shrink));
+}
+
 export default function WorkoutProfileChart({
   segments,
   height = 110,
@@ -20,16 +46,11 @@ export default function WorkoutProfileChart({
   const maxIntensity = Math.max(1, ...segments.map((s) => s.intensityFraction ?? 0));
   const baselineHeight = height * 0.12;
   const gap = 1;
-  // A short, sharp block (a 6s sprint in a 58min ride) can be well under 1px
-  // of proportional width and vanish entirely — floor every bar to a width
-  // that's still visible as a spike. Positions stay proportional, so a
-  // widened short bar can overlap its neighbor by a couple of pixels; a
-  // fine trade for "the sprint disappeared" in this sparkline-style chart.
-  const minWidthPx = 3;
+  const widths = computeBarWidths(segments, totalSec);
 
   let cumX = 0;
   const bars = segments.map((segment, i) => {
-    const widthPct = (segment.durationSec / totalSec) * 100;
+    const widthPct = widths[i];
     const x = cumX;
     cumX += widthPct;
     const hasTarget = segment.intensityFraction != null;
@@ -48,7 +69,6 @@ export default function WorkoutProfileChart({
           position: 'absolute',
           left: `${x}%`,
           width: `calc(${widthPct}% - ${gap}px)`,
-          minWidth: minWidthPx,
           bottom: 0,
           height: barHeight,
           background: hasTarget ? getTrainingZone(segment.intensityFraction!).color : 'var(--border)',
