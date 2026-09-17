@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import type { LibraryWorkout, SelectedWorkout, ThresholdSettings } from '../api/types';
+import { apiFetch, ApiError } from '../api/client';
 import { formatDuration } from '../lib/format';
 import { getTrainingZone } from '../lib/trainingZones';
 import BarScale from './BarScale';
@@ -35,6 +37,23 @@ export default function WorkoutDetailView({
   hideSelectButton?: boolean;
 }) {
   const segments = workout.segments ?? [];
+  const [garminState, setGarminState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [garminError, setGarminError] = useState<string | null>(null);
+
+  async function sendToGarmin() {
+    setGarminState('sending');
+    setGarminError(null);
+    try {
+      await apiFetch('/health/garmin/push-workout', {
+        method: 'POST',
+        body: JSON.stringify({ name: workout.name, discipline: workout.discipline, segments }),
+      });
+      setGarminState('sent');
+    } catch (err) {
+      setGarminState('error');
+      setGarminError(err instanceof ApiError ? err.message : 'Failed to send workout to Garmin');
+    }
+  }
 
   return (
     <div className="workout-detail">
@@ -148,6 +167,23 @@ export default function WorkoutDetailView({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {workout.discipline === 'BIKE' && segments.length > 0 && (
+        <div className="garmin-push-row">
+          <button
+            type="button"
+            className="secondary"
+            disabled={garminState === 'sending'}
+            onClick={sendToGarmin}
+          >
+            {garminState === 'sending' ? 'Sending to Garmin…' : garminState === 'sent' ? 'Sent to Garmin ✓' : 'Send to Garmin'}
+          </button>
+          {garminState === 'error' && <p className="garmin-push-error">{garminError}</p>}
+          {garminState === 'sent' && (
+            <p className="garmin-push-hint">It’ll show up on your bike computer next time it syncs with Garmin Connect.</p>
+          )}
         </div>
       )}
 

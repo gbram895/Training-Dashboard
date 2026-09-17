@@ -7,6 +7,7 @@ import type { HealthAutoExportFile } from '../lib/appleHealth.js';
 import { applyHealthFiles } from '../lib/healthImport.js';
 import { buildAuthorizeUrl, dropboxConfigured, exchangeCodeForTokens } from '../lib/dropbox.js';
 import { completeGarminAccountConnect, connectGarminAccountAndSave, runGarminSyncForUser } from '../lib/garminSync.js';
+import { pushWorkoutToGarmin } from '../lib/garminWorkoutPush.js';
 import { buildAuthorizeUrl as buildStravaAuthorizeUrl, stravaConfigured } from '../lib/strava.js';
 import { connectStravaAccount, runStravaSyncForUser } from '../lib/stravaSync.js';
 
@@ -227,6 +228,40 @@ router.post('/garmin/sync-now', requireAuth, async (req: AuthedRequest, res) => 
   runGarminSyncForUser(userId, { force })
     .then((result) => console.log(`[garmin-sync] manual sync (force=${force}) for user ${userId}:`, result))
     .catch((err) => console.error(`[garmin-sync] manual sync for user ${userId} failed:`, err));
+});
+
+const garminPushSegmentSchema = z.object({
+  durationSec: z.number().positive(),
+  intensityFraction: z.number().optional(),
+  intensityLow: z.number().optional(),
+  intensityHigh: z.number().optional(),
+  role: z.enum(['warmup', 'cooldown']).optional(),
+});
+
+const garminPushWorkoutSchema = z.object({
+  name: z.string().min(1),
+  discipline: z.enum(['BIKE', 'RUN']),
+  segments: z.array(garminPushSegmentSchema).min(1),
+});
+
+router.post('/garmin/push-workout', requireAuth, async (req: AuthedRequest, res) => {
+  const parsed = garminPushWorkoutSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  try {
+    const result = await pushWorkoutToGarmin(
+      req.userId!,
+      parsed.data.name,
+      parsed.data.discipline,
+      parsed.data.segments,
+    );
+    res.json({ pushed: true, workoutId: result.workoutId });
+  } catch (err) {
+    console.error(`[garmin] push workout failed for user ${req.userId}:`, err);
+    res.status(400).json({
+      error: err instanceof Error ? err.message : 'Failed to send workout to Garmin',
+    });
+  }
 });
 
 function stravaCallbackUrl(req: { protocol: string; get: (name: string) => string | undefined }) {

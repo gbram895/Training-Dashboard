@@ -984,6 +984,24 @@ button.icon-button {
   font-size: 1.6rem;
 }
 
+.garmin-push-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.garmin-push-error {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--danger, #e5484d);
+}
+
+.garmin-push-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
 .workout-segment-list {
   display: flex;
   flex-direction: column;
