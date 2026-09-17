@@ -1043,14 +1043,6 @@ button.icon-button {
   background: rgba(255, 255, 255, 0.3);
 }
 
-.workout-segment-card-on-light .workout-segment-card-label {
-  color: rgba(11, 11, 11, 0.6);
-}
-
-.workout-segment-card-on-light .workout-segment-card-divider {
-  background: rgba(11, 11, 11, 0.15);
-}
-
 /* Featured workout card (Today's Workout / Plan detail) */
 
 .workout-card-header {

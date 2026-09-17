@@ -9,14 +9,13 @@ export interface TrainingZone {
 // Z3 Tempo 76-90%, Z4 Threshold 91-105%, Z5 VO2max+ >105%. RPE ranges
 // follow the same zones on the Borg CR10 scale. `color` is the same zone
 // color used by the workout profile chart's bars, so a segment card and
-// the bar it corresponds to always match exactly; `textColor` switches to
-// dark ink on the two lightest zones (Recovery, Threshold) where white
-// text would be too low-contrast to read.
+// the bar it corresponds to always match exactly; `textColor` is white
+// on every zone for a consistent look across segment cards.
 const ZONES: TrainingZone[] = [
-  { label: 'Recovery', color: 'var(--chart-z1)', textColor: 'var(--text)', rpe: '2-3' },
+  { label: 'Recovery', color: 'var(--chart-z1)', textColor: '#fff', rpe: '2-3' },
   { label: 'Endurance', color: 'var(--chart-z2)', textColor: '#fff', rpe: '4-6' },
   { label: 'Tempo', color: 'var(--chart-z3)', textColor: '#fff', rpe: '7-8' },
-  { label: 'Threshold', color: 'var(--chart-z4)', textColor: 'var(--text)', rpe: '9' },
+  { label: 'Threshold', color: 'var(--chart-z4)', textColor: '#fff', rpe: '9' },
   { label: 'VO2max', color: 'var(--chart-z5)', textColor: '#fff', rpe: '10' },
 ];
 
