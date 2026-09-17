@@ -18,6 +18,7 @@ import HeaderSyncButtons from '../components/dashboard/HeaderSyncButtons';
 import TodaysWorkoutCard from '../components/dashboard/TodaysWorkoutCard';
 import DropboxSyncBar from '../components/dashboard/DropboxSyncBar';
 import StravaSyncBar from '../components/dashboard/StravaSyncBar';
+import GarminSyncBar from '../components/dashboard/GarminSyncBar';
 import SummaryBar from '../components/dashboard/SummaryBar';
 import StatTilesRow from '../components/dashboard/StatTilesRow';
 import HrvTrendChart from '../components/dashboard/HrvTrendChart';
@@ -113,6 +114,8 @@ export default function Dashboard() {
           </section>
 
           <StravaSyncBar onSynced={load} />
+
+          <GarminSyncBar onSynced={load} />
         </>
       )}
 

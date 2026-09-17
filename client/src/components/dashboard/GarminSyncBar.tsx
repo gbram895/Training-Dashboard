@@ -122,7 +122,10 @@ export default function GarminSyncBar({ onSynced }: { onSynced?: () => void }) {
     return (
       <section className="card sync-bar">
         <form onSubmit={connect} className="garmin-connect-form">
-          <p className="muted">Connect Garmin Connect to sync activities from your bike computer.</p>
+          <p className="muted">
+            Connect Garmin Connect to send structured workouts to your bike computer (activity sync now runs through
+            Strava instead — Garmin's own login can be blocked by its bot protection, so this is best-effort).
+          </p>
           <input
             type="email"
             placeholder="Garmin Connect email"
