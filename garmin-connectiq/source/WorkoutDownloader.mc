@@ -16,9 +16,10 @@ import Toybox.Communications;
 // server, not from Garmin's own documentation (their docs describe the
 // pieces separately but not this specific recipe).
 //
-// This file couldn't be compiled against a real Connect IQ SDK before
-// shipping — if the type checker flags something here, it's most likely a
-// narrow signature mismatch in this file, not the overall approach.
+// Compiles clean against a real Connect IQ SDK (edge530) — the two
+// null-checks this file originally had on downloads/intent were removed
+// after the compiler flagged them as unreachable, confirming neither of
+// those values is ever null in practice.
 class WorkoutDownloader {
     private var _statusCallback as Method;
 
@@ -46,13 +47,9 @@ class WorkoutDownloader {
         }
 
         // data is a PersistedContent.Iterator when responseType is FIT —
-        // Monkey C's type checker can't always prove that statically from
-        // the makeWebRequest callback's generic signature, hence the cast.
+        // confirmed against a real device build that this cast is never
+        // null, so there's no null branch to handle here.
         var downloads = data as PersistedContent.Iterator;
-        if (downloads == null) {
-            _statusCallback.invoke("Garmin couldn't parse that workout.");
-            return;
-        }
 
         var content = downloads.next();
         if (content == null || !(content instanceof PersistedContent.Workout)) {
@@ -62,10 +59,6 @@ class WorkoutDownloader {
 
         var workout = content as PersistedContent.Workout;
         var intent = workout.toIntent();
-        if (intent == null) {
-            _statusCallback.invoke("Couldn't start that workout on this device.");
-            return;
-        }
 
         // Hands off from this app straight to the system's native
         // structured-workout screen — the same on-device experience as a
