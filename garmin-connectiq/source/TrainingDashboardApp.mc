@@ -1,12 +1,13 @@
 import Toybox.Application;
 import Toybox.Lang;
+import Toybox.WatchUi;
 
 class TrainingDashboardApp extends Application.AppBase {
     function initialize() {
         AppBase.initialize();
     }
 
-    function getInitialView() as [Views] or [Views, InputDelegates] {
+    function getInitialView() as [WatchUi.Views] or [WatchUi.Views, WatchUi.InputDelegates] {
         var view = new TrainingDashboardView();
         return [view, new TrainingDashboardDelegate(view)];
     }

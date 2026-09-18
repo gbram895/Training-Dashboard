@@ -1,5 +1,6 @@
 import Toybox.Communications;
 import Toybox.Application;
+import Toybox.Application.Properties;
 import Toybox.Lang;
 
 // Talks to the same Express API the web dashboard and Apple Watch companion
