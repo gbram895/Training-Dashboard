@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, AuthedRequest } from '../middleware/auth.js';
 import { generatePlanWindow, getPlannedDay, getPlannedWeek } from '../lib/trainingPlan.js';
+import { buildFitWorkoutFile } from '../lib/garminFitWorkout.js';
+import { loadAthleteSpeedThresholds, type GarminPushSegment } from '../lib/garminWorkoutPush.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -66,7 +68,21 @@ router.get('/week', async (req: AuthedRequest, res) => {
 
 router.get('/today', async (req: AuthedRequest, res) => {
   const today = await getPlannedDay(req.userId!, new Date());
-  res.json(today);
+  if (req.query.format !== 'fit') return res.json(today);
+
+  if (!today || today.isRestDay || today.discipline !== 'BIKE' || !Array.isArray(today.segments) || !today.segments.length) {
+    return res.status(404).json({ error: 'No bike workout planned for today' });
+  }
+  const thresholds = await loadAthleteSpeedThresholds(req.userId!);
+  const bytes = buildFitWorkoutFile(
+    today.name ?? 'Planned workout',
+    'BIKE',
+    today.segments as unknown as GarminPushSegment[],
+    thresholds,
+  );
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Content-Disposition', 'attachment; filename="today.fit"');
+  res.send(Buffer.from(bytes));
 });
 
 export default router;

@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { apiFetch, ApiError } from '../api/client';
 import type { HrZoneSettings, ThresholdSettings } from '../api/types';
+import ApiTokenCard from '../components/settings/ApiTokenCard';
 
 function paceToString(secPerKm: number): string {
   const min = Math.floor(secPerKm / 60);
@@ -175,6 +176,8 @@ export default function Settings() {
           </button>
         </div>
       </form>
+
+      <ApiTokenCard />
     </div>
   );
 }

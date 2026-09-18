@@ -4,6 +4,8 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, AuthedRequest } from '../middleware/auth.js';
 import { fetchWorkoutLibrary } from '../lib/workoutLibrary.js';
+import { buildFitWorkoutFile } from '../lib/garminFitWorkout.js';
+import { loadAthleteSpeedThresholds, type GarminPushSegment } from '../lib/garminWorkoutPush.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -11,6 +13,20 @@ router.use(requireAuth);
 router.get('/', async (req: AuthedRequest, res) => {
   try {
     const workouts = await fetchWorkoutLibrary(req.userId!);
+
+    if (req.query.format === 'fit') {
+      const path = typeof req.query.path === 'string' ? req.query.path : '';
+      const workout = workouts.find((w) => w.path === path);
+      if (!workout || workout.discipline !== 'BIKE' || !workout.segments?.length) {
+        return res.status(404).json({ error: 'No bike workout found at that path' });
+      }
+      const thresholds = await loadAthleteSpeedThresholds(req.userId!);
+      const bytes = buildFitWorkoutFile(workout.name, 'BIKE', workout.segments as GarminPushSegment[], thresholds);
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Content-Disposition', 'attachment; filename="workout.fit"');
+      return res.send(Buffer.from(bytes));
+    }
+
     res.json(workouts);
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to load workout library' });

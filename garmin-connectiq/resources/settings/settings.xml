@@ -1,0 +1,8 @@
+<settings>
+    <setting propertyKey="@Properties.serverBaseUrl" title="@Strings.ServerUrlTitle">
+        <settingConfig type="alphaNumeric" maxLength="120"/>
+    </setting>
+    <setting propertyKey="@Properties.apiToken" title="@Strings.ApiTokenTitle">
+        <settingConfig type="alphaNumeric" maxLength="512"/>
+    </setting>
+</settings>

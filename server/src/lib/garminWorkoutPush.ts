@@ -141,6 +141,18 @@ export function buildGarminWorkoutPayload(
   };
 }
 
+/** Same fraction-of-threshold basis the web dashboard uses for Garmin/WorkoutKit targets. */
+export async function loadAthleteSpeedThresholds(userId: string): Promise<AthleteSpeedThresholds> {
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: userId },
+    select: { ftpWatts: true, thresholdPaceSecPerKm: true },
+  });
+  return {
+    ftpWatts: user.ftpWatts,
+    thresholdSpeedMps: user.thresholdPaceSecPerKm > 0 ? 1000 / user.thresholdPaceSecPerKm : 0,
+  };
+}
+
 export async function pushWorkoutToGarmin(
   userId: string,
   name: string,
@@ -150,14 +162,7 @@ export async function pushWorkoutToGarmin(
   const config = await prisma.garminSyncConfig.findUnique({ where: { userId } });
   if (!config) throw new Error('Garmin is not connected for this account');
 
-  const user = await prisma.user.findUniqueOrThrow({
-    where: { id: userId },
-    select: { ftpWatts: true, thresholdPaceSecPerKm: true },
-  });
-  const thresholds: AthleteSpeedThresholds = {
-    ftpWatts: user.ftpWatts,
-    thresholdSpeedMps: user.thresholdPaceSecPerKm > 0 ? 1000 / user.thresholdPaceSecPerKm : 0,
-  };
+  const thresholds = await loadAthleteSpeedThresholds(userId);
 
   const tokens: GarminTokens = { oauth1: JSON.parse(config.oauth1Token), oauth2: JSON.parse(config.oauth2Token) };
   const client = garminClientFromTokens(tokens);

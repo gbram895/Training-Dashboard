@@ -1,0 +1,8 @@
+<properties>
+    <!-- Defaults to the same Render deployment the web dashboard and Apple
+         Watch companion talk to — override in the Garmin Connect Mobile
+         app's per-device settings if pointing at a different server. -->
+    <property id="serverBaseUrl" type="string">https://training-dashboard-peiv.onrender.com</property>
+    <!-- Paste the token from the web dashboard's Settings > API access card. -->
+    <property id="apiToken" type="string"></property>
+</properties>

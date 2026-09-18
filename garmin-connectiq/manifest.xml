@@ -1,0 +1,36 @@
+<!--
+  This is a TEMPLATE, not a ready-to-build file. Connect IQ's project wizard
+  (SDK Manager or the VS Code Monkey C extension's "New Connect IQ Project")
+  generates the real manifest.xml — with a proper random application id and
+  the exact device-product strings for whatever device(s) you pick — and
+  hand-typing those is more likely to be wrong than trusting the wizard.
+
+  Create the project through the wizard (type: Widget, pick your Edge model),
+  then edit ITS generated manifest.xml to match this one's:
+    - entry="TrainingDashboardApp"
+    - the two <iq:uses-permission> lines under <iq:permissions>
+  Everything else (id, products, minSdkVersion) should come from the wizard.
+-->
+<iq:manifest xmlns:iq="http://www.garmin.com/xml/connectiq" version="3">
+    <iq:application
+        id="00000000-0000-0000-0000-000000000000"
+        type="widget"
+        name="@Strings.AppName"
+        entry="TrainingDashboardApp"
+        minSdkVersion="3.2.0">
+        <iq:products>
+            <!-- Replace with your actual Edge model(s) — the wizard fills
+                 this in correctly when you pick a device. -->
+            <iq:product id="edge840"/>
+            <iq:product id="edge540"/>
+            <iq:product id="edge1040"/>
+        </iq:products>
+        <iq:permissions>
+            <iq:uses-permission id="Communications"/>
+            <iq:uses-permission id="PersistedContent"/>
+        </iq:permissions>
+        <iq:languages>
+            <iq:language>eng</iq:language>
+        </iq:languages>
+    </iq:application>
+</iq:manifest>
