@@ -22,13 +22,15 @@ struct LoginView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.emailAddress)
+                        .textContentType(.emailAddress)
                     SecureField("Password", text: $password)
+                        .textContentType(.password)
                 }
                 if let errorMessage {
                     Text(errorMessage).foregroundStyle(.red)
                 }
                 Button(isLoading ? "Signing in…" : "Sign in") {
-                    Task { await login() }
+                    Task { @MainActor in await login() }
                 }
                 .disabled(isLoading || email.isEmpty || password.isEmpty || serverURL.isEmpty)
             }
@@ -37,14 +39,18 @@ struct LoginView: View {
         }
     }
 
+    @MainActor
     private func login() async {
         isLoading = true
         errorMessage = nil
+        let previousURL = appState.baseURLString
         appState.baseURLString = serverURL
         do {
             try await appState.login(email: email, password: password)
         } catch {
             errorMessage = error.localizedDescription
+            // Don't leave a bad URL saved behind a failed sign-in.
+            appState.baseURLString = previousURL
         }
         isLoading = false
     }

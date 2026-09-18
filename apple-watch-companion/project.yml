@@ -1,0 +1,30 @@
+# Fallback for regenerating TrainingDashboardWatch.xcodeproj from scratch:
+#   brew install xcodegen && cd apple-watch-companion && xcodegen generate
+# The checked-in .xcodeproj was written by hand (no Mac was available), so if
+# Xcode ever refuses to open it, delete it and run the command above.
+name: TrainingDashboardWatch
+options:
+  bundleIdPrefix: com.trainingdashboard
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+targets:
+  TrainingDashboardWatch:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources/TrainingDashboardWatch
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.trainingdashboard.companion
+        GENERATE_INFOPLIST_FILE: true
+        CODE_SIGN_STYLE: Automatic
+        TARGETED_DEVICE_FAMILY: "1"
+        ENABLE_PREVIEWS: true
+        INFOPLIST_KEY_UILaunchScreen_Generation: true
+        INFOPLIST_KEY_NSHealthShareUsageDescription: Used to schedule your planned workouts on your Apple Watch.
+        INFOPLIST_KEY_NSHealthUpdateUsageDescription: Used to schedule your planned workouts on your Apple Watch.
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown

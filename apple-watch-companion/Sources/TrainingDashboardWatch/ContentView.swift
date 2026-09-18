@@ -21,16 +21,26 @@ struct ContentView: View {
 
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
+    @State private var serverURL = ""
 
     var body: some View {
         NavigationStack {
             Form {
                 Section("Server") {
-                    Text(appState.baseURLString).foregroundStyle(.secondary)
+                    TextField("https://your-app.onrender.com", text: $serverURL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                        .onSubmit { appState.baseURLString = serverURL }
+                    Button("Use this server") { appState.baseURLString = serverURL }
+                        .disabled(serverURL.isEmpty || serverURL == appState.baseURLString)
                 }
-                Button("Sign out", role: .destructive) { appState.logout() }
+                Section {
+                    Button("Sign out", role: .destructive) { appState.logout() }
+                }
             }
             .navigationTitle("Settings")
+            .onAppear { serverURL = appState.baseURLString }
         }
     }
 }

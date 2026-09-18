@@ -18,6 +18,9 @@ enum KeychainStore {
 
         var attributes = query
         attributes[kSecValueData as String] = data
+        // The app can be launched by the system before the first unlock; the
+        // default accessibility would make the token unreadable there.
+        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
         SecItemAdd(attributes as CFDictionary, nil)
     }
 

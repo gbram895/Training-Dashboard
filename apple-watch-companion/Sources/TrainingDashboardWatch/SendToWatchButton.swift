@@ -27,6 +27,11 @@ struct SendToWatchButton: View {
             }
             .disabled(state == .sending || thresholds == nil)
 
+            if thresholds == nil {
+                Text("Waiting on your threshold pace and FTP — pull to refresh.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             if case .failed(let message) = state {
                 Text(message).font(.caption).foregroundStyle(.red)
             }
@@ -41,7 +46,8 @@ struct SendToWatchButton: View {
     private func send() {
         guard let thresholds else { return }
         state = .sending
-        Task {
+        // `@MainActor` because this task writes `state`, which drives the view.
+        Task { @MainActor in
             do {
                 try await WorkoutKitBridge.sendToWatch(workout, thresholds: thresholds)
                 state = .sent

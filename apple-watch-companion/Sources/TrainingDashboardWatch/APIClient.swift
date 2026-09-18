@@ -8,7 +8,8 @@ enum APIError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidURL: return "Invalid server URL — check it in Settings."
-        case .server(_, let message): return message
+        case .server(let status, let message):
+            return status == 401 ? "Your session expired — sign in again." : message
         case .decoding: return "The server sent back something this app didn't expect."
         }
     }
@@ -22,7 +23,9 @@ struct APIClient {
     let token: String?
 
     private func request(_ path: String, method: String = "GET", body: Data? = nil) -> URLRequest? {
-        guard let url = URL(string: baseURLString + "/api" + path) else { return nil }
+        // A trailing slash on the saved base URL would produce "…//api/…".
+        let base = baseURLString.hasSuffix("/") ? String(baseURLString.dropLast()) : baseURLString
+        guard let url = URL(string: base + "/api" + path), url.scheme != nil, url.host != nil else { return nil }
         var req = URLRequest(url: url)
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -31,7 +34,7 @@ struct APIClient {
         return req
     }
 
-    private func send<T: Decodable>(_ path: String, method: String = "GET", body: Data? = nil) async throws -> T {
+    private func rawData(_ path: String, method: String, body: Data?) async throws -> Data {
         guard let req = request(path, method: method, body: body) else { throw APIError.invalidURL }
         let (data, response) = try await URLSession.shared.data(for: req)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
@@ -40,6 +43,25 @@ struct APIClient {
                 ?? "Request failed (\(status))"
             throw APIError.server(status: status, message: message)
         }
+        return data
+    }
+
+    private func send<T: Decodable>(_ path: String, method: String = "GET", body: Data? = nil) async throws -> T {
+        let data = try await rawData(path, method: method, body: body)
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            throw APIError.decoding(error)
+        }
+    }
+
+    /// For endpoints that answer with a bare `null` when there's nothing to
+    /// return — decoding a top-level JSON fragment into `T?` is doable but
+    /// fiddly, so check for it up front instead.
+    private func sendOptional<T: Decodable>(_ path: String) async throws -> T? {
+        let data = try await rawData(path, method: "GET", body: nil)
+        let trimmed = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || trimmed == "null" { return nil }
         do {
             return try JSONDecoder().decode(T.self, from: data)
         } catch {
@@ -52,8 +74,9 @@ struct APIClient {
         return try await send("/auth/login", method: "POST", body: body)
     }
 
+    /// `null` when the account has no training-plan config yet.
     func fetchToday() async throws -> PlannedDayDTO? {
-        try await send("/training-plan/today")
+        try await sendOptional("/training-plan/today")
     }
 
     func fetchLibrary() async throws -> [LibraryWorkoutDTO] {

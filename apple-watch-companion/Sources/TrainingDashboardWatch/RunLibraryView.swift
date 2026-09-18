@@ -9,10 +9,12 @@ struct RunLibraryView: View {
 
     var body: some View {
         NavigationStack {
-            content
-                .navigationTitle("Run Library")
-                .task { await load() }
-                .refreshable { await load() }
+            List {
+                content
+            }
+            .navigationTitle("Run Library")
+            .task { await load() }
+            .refreshable { await load() }
         }
     }
 
@@ -25,7 +27,7 @@ struct RunLibraryView: View {
         } else if runWorkouts.isEmpty {
             ContentUnavailableView("No run workouts", systemImage: "figure.run")
         } else {
-            List(runWorkouts) { workout in
+            ForEach(runWorkouts) { workout in
                 if let runnable = RunnableWorkout(from: workout) {
                     Section {
                         VStack(alignment: .leading, spacing: 6) {
@@ -41,17 +43,19 @@ struct RunLibraryView: View {
         }
     }
 
+    @MainActor
     private func load() async {
         isLoading = true
         errorMessage = nil
         do {
             async let libraryResult = appState.api.fetchLibrary()
             async let thresholdsResult = appState.api.fetchThresholds()
-            let library = try await libraryResult
+            let (library, loadedThresholds) = try await (libraryResult, thresholdsResult)
             runWorkouts = library.filter { $0.discipline == .run && ($0.segments?.isEmpty == false) }
-            thresholds = try await thresholdsResult
+            thresholds = loadedThresholds
         } catch {
             errorMessage = error.localizedDescription
+            appState.handleIfUnauthorized(error)
         }
         isLoading = false
     }

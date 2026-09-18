@@ -15,49 +15,71 @@ button on the web dashboard (compare: the dashboard's "Send to Garmin"
 button works from the browser, because Garmin Connect has an account-level
 API; Apple doesn't expose an equivalent).
 
-## Important: this was written without a Mac/Xcode to compile it against
+## Status: reviewed against Apple's docs, still not compiled
 
-I don't have a macOS/Xcode toolchain in this sandbox, so none of this Swift
-has been compiled. The architecture and control flow are solid — API calls,
-auth, SwiftUI navigation are all ordinary Swift/Foundation and should just
-work. The one file that's genuinely uncertain is `WorkoutKitBridge.swift`:
-it's written from memory of WorkoutKit's WWDC23 announcement and docs, and
-Apple's exact case/initializer names (e.g. whether it's
-`WorkoutGoal.time(_:_:)` taking a unit case, or something slightly
-different) could be off in small ways.
+The first draft of `WorkoutKitBridge.swift` was written from memory of the
+WWDC23 announcement, and several calls in it were wrong. Every WorkoutKit
+symbol has since been checked against Apple's published declarations for
+iOS 17, and the file corrected:
 
-**If Xcode shows errors in `WorkoutKitBridge.swift`, that's expected on the
-first build** — paste me the exact error text and I'll fix the signature.
-Everything else should build clean.
+| Was | Is | Why |
+|---|---|---|
+| `SpeedRangeAlert(range:metric:)` | `SpeedRangeAlert(target:metric:)` | the parameter is `target:` |
+| `PowerRangeAlert(range:metric:)` | `PowerRangeAlert(target:metric:)` | same |
+| `try await …schedule(plan, at: Date())` | `await …schedule(plan, at: DateComponents)` | `schedule(_:at:)` takes `DateComponents` and doesn't throw |
+| one `IntervalBlock` per segment | warm-up and cool-down in `CustomWorkout`'s own slots, the rest one block | matches how the Watch shows a workout, and how "Send to Garmin" already tags those segments |
+| range built straight from low/high | bounds sorted first | a reversed `ClosedRange` traps at runtime |
+| no support checks | `WorkoutScheduler.isSupported`, `CustomWorkout.supportsActivity`, `supportsAlert` | a device with no paired Watch, or an alert the activity won't take, now fails with a readable message instead of silently |
 
-## Setup
+`WorkoutStep(goal:alert:)`, `IntervalBlock(steps:iterations:)`,
+`IntervalStep(_:step:)`, `WorkoutGoal.time(_:_:)`, `WorkoutPlan(.custom(_:))`
+and `CustomWorkout(activity:location:displayName:warmup:blocks:cooldown:)`
+were checked too and were already right.
 
-1. Open Xcode → File → New → Project → iOS → App.
-   - Interface: SwiftUI. Language: Swift.
-   - Product name: `TrainingDashboardWatch` (or whatever you like).
-   - **Minimum deployment target: iOS 17.0** (WorkoutKit requires it).
-2. Delete the template's default `ContentView.swift` and `*App.swift`,
-   then drag every file from `Sources/TrainingDashboardWatch/` in this
-   folder into the Xcode project (check "Copy items if needed").
-3. **Add capabilities** — select the project → target → Signing & Capabilities → `+ Capability`:
-   - **HealthKit** (WorkoutKit is layered on HealthKit's authorization and
-     needs this enabled even though the app never reads health data directly).
-4. **Add Info.plist entries** (target → Info tab → `+`):
-   - `Privacy - Health Share Usage Description` → e.g. "Used to schedule your planned workouts on your Apple Watch."
-   - `Privacy - Health Update Usage Description` → same idea.
-5. Set your Apple ID / team under Signing & Capabilities so it can install
-   to your own iPhone (a free personal-team signing certificate is enough
-   for a device you own — no paid Apple Developer account required, though
-   you'll need to re-install every 7 days on a free account, or pay for the
-   $99/yr program for a year-long signature).
-6. Build and run on your iPhone (not the Simulator — Watch pairing and
-   WorkoutKit scheduling need a real device paired to a real Watch).
-7. On first launch, sign in with your Training Dashboard account (same
-   email/password as the web app) and the server URL — defaults to your
-   Render deployment, editable in Settings if you ever point it at a local
-   dev server instead.
-8. Grant the Health/Workout authorization prompt when it appears (this is
-   what `WorkoutKitBridge.requestAuthorizationIfNeeded()` triggers on first send).
+**None of this has been through a Swift compiler.** There's no macOS
+toolchain in the environment this was written in — the sources pass a
+balanced-delimiter check and the API signatures match Apple's docs, and
+that's as far as verification goes. Expect to fix something on the first
+build; paste the exact error text back and it's a quick fix.
+
+## Setup — the parts that need your Mac
+
+Everything below needs macOS with Xcode 16 or newer, an iPhone, and a Watch
+paired to it. None of it can be done from a browser.
+
+1. **Open the project.** `apple-watch-companion/TrainingDashboardWatch.xcodeproj`
+   — double-click it. The target is already configured: iOS 17 deployment
+   target, SwiftUI app, sources picked up from `Sources/TrainingDashboardWatch/`
+   via an Xcode 16 synchronized folder, so there's no file-by-file setup.
+
+   The `.xcodeproj` was hand-written without a Mac to test it on. If Xcode
+   refuses to open it, delete it and regenerate:
+   `brew install xcodegen && cd apple-watch-companion && xcodegen generate`
+   — `project.yml` in this folder describes the same target.
+
+2. **Set your signing team.** Select the project → the
+   `TrainingDashboardWatch` target → Signing & Capabilities → Team. A free
+   personal Apple ID is enough for a device you own; you'll just have to
+   reinstall every 7 days. Change `PRODUCT_BUNDLE_IDENTIFIER`
+   (currently `com.trainingdashboard.companion`) if Xcode says the id is
+   already taken.
+
+3. **Build and run on your iPhone, not the Simulator.** Watch pairing and
+   WorkoutKit scheduling need real hardware.
+
+4. **Sign in** with your Training Dashboard email and password — the same
+   ones as the web app. The server URL defaults to the Render deployment and
+   is editable on the sign-in screen and in Settings.
+
+5. **Allow the scheduling prompt** the first time you tap "Send to Apple
+   Watch". That's `WorkoutKitBridge.requestAuthorizationIfNeeded()` asking.
+
+   WorkoutKit's own authorization is what that prompt is; Apple's docs don't
+   list a HealthKit entitlement as a requirement, so the target ships without
+   the HealthKit capability to keep free-team signing simple. If the prompt
+   never appears or authorization comes back denied, add it: target →
+   Signing & Capabilities → `+ Capability` → HealthKit. The two Health usage
+   descriptions are already set as build settings, so nothing else is needed.
 
 ## What it does
 
@@ -68,22 +90,27 @@ Everything else should build clean.
   workouts, each with its own "Send to Apple Watch" button — for sending
   something other than today's plan.
 - **Send to Apple Watch** — converts the workout's segments into a
-  WorkoutKit `CustomWorkout` (one `IntervalBlock` per segment, a `.time`
-  goal per segment, and a pace-range alert computed from your threshold
-  pace — same fraction-of-threshold math the web dashboard already uses for
-  Garmin), then schedules it for right now via `WorkoutScheduler`. It shows
-  up in the Watch's own Workout app, ready to start.
+  WorkoutKit `CustomWorkout` (a `.time` goal per segment and a pace-range
+  alert computed from your threshold pace — the same fraction-of-threshold
+  maths `server/src/lib/garminWorkoutPush.ts` uses for Garmin), then
+  schedules it for right now via `WorkoutScheduler`. It shows up in the
+  Watch's own Workout app, ready to start.
+
+  Segments with no `intensityFraction` get no alert and are marked as
+  recovery, matching what the Garmin path does with them.
 
 ## Files
 
 | File | What it does |
 |---|---|
+| `TrainingDashboardWatch.xcodeproj` | The Xcode project — open this |
+| `project.yml` | XcodeGen spec, to regenerate the project if it won't open |
 | `TrainingDashboardWatchApp.swift` | App entry point |
 | `AppState.swift` | Holds login state, server URL, hands out an `APIClient` |
 | `KeychainStore.swift` | Stores the JWT in the Keychain (not UserDefaults) |
 | `APIClient.swift` | Talks to the same Express API the web dashboard uses |
 | `Models.swift` | Codable DTOs mirroring `client/src/api/types.ts` |
-| `WorkoutKitBridge.swift` | Segments → `CustomWorkout` → scheduled on Watch (see caveat above) |
+| `WorkoutKitBridge.swift` | Segments → `CustomWorkout` → scheduled on Watch |
 | `LoginView.swift` | Email/password + server URL sign-in |
 | `TodayView.swift` | Today's planned workout |
 | `RunLibraryView.swift` | Full run library |

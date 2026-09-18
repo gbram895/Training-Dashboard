@@ -9,10 +9,12 @@ struct TodayView: View {
 
     var body: some View {
         NavigationStack {
-            content
-                .navigationTitle("Today")
-                .task { await load() }
-                .refreshable { await load() }
+            List {
+                content
+            }
+            .navigationTitle("Today")
+            .task { await load() }
+            .refreshable { await load() }
         }
     }
 
@@ -26,13 +28,11 @@ struct TodayView: View {
             ContentUnavailableView("Rest day", systemImage: "moon.zzz", description: Text(day.restReason ?? "Nothing planned today."))
         } else if let day, let workout = RunnableWorkout(from: day) {
             if workout.discipline == .run {
-                List {
-                    Section(workout.name) {
-                        if let minutes = day.durationMin {
-                            Text("\(minutes) min")
-                        }
-                        SendToWatchButton(workout: workout, thresholds: thresholds)
+                Section(workout.name) {
+                    if let minutes = day.durationMin {
+                        Text("\(minutes) min")
                     }
+                    SendToWatchButton(workout: workout, thresholds: thresholds)
                 }
             } else {
                 ContentUnavailableView(
@@ -41,21 +41,32 @@ struct TodayView: View {
                     description: Text("Use \u{201c}Send to Garmin\u{201d} on the dashboard for \(workout.name).")
                 )
             }
+        } else if let day, day.discipline != nil {
+            // A planned day exists but carries no segments — the source file
+            // parsed without a structure the Watch can follow.
+            ContentUnavailableView(
+                "No structure for today's workout",
+                systemImage: "questionmark.square.dashed",
+                description: Text("\(day.name ?? "Today's workout") has no segments, so there's nothing to send.")
+            )
         } else {
             ContentUnavailableView("No plan for today", systemImage: "calendar")
         }
     }
 
+    @MainActor
     private func load() async {
         isLoading = true
         errorMessage = nil
         do {
             async let dayResult = appState.api.fetchToday()
             async let thresholdsResult = appState.api.fetchThresholds()
-            day = try await dayResult
-            thresholds = try await thresholdsResult
+            let (loadedDay, loadedThresholds) = try await (dayResult, thresholdsResult)
+            day = loadedDay
+            thresholds = loadedThresholds
         } catch {
             errorMessage = error.localizedDescription
+            appState.handleIfUnauthorized(error)
         }
         isLoading = false
     }
