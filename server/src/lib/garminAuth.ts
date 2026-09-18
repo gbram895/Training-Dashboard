@@ -119,10 +119,39 @@ export interface GarminLoginResult {
   pendingId?: string;
 }
 
+// The garmin-connect package formats every non-2xx response the same way —
+// "ERROR: (<status>), <statusText>, <body>" — regardless of which of its many
+// internal requests failed. A 429 here is Garmin's own server throttling us
+// (their SSO sits behind bot protection that's markedly stricter about
+// cloud-hosting IP ranges like Render's than a home IP), not a bug in this
+// flow — surfacing the raw message left users staring at an opaque string
+// with no idea whether to retry or wait.
+export function isGarminRateLimited(err: unknown): boolean {
+  return err instanceof Error && /\(429\)/.test(err.message);
+}
+
+export function friendlyGarminAuthError(err: unknown): string {
+  if (isGarminRateLimited(err)) {
+    return "Garmin is rate-limiting connection attempts from this server right now. This isn't something retrying immediately fixes — wait at least 30-60 minutes before trying again, since repeated attempts while rate-limited risk a longer block.";
+  }
+  return err instanceof Error ? err.message : String(err);
+}
+
 async function finishGarminLogin(client: GarminConnect, ticket: string): Promise<GarminTokens> {
   const http = client.client;
-  const oauth1 = await http.getOauth1Token(ticket);
-  await http.exchange(oauth1);
+  let oauth1;
+  try {
+    oauth1 = await http.getOauth1Token(ticket);
+  } catch (err) {
+    console.error('[garmin-auth] oauth1 token exchange failed:', err instanceof Error ? err.message : err);
+    throw err;
+  }
+  try {
+    await http.exchange(oauth1);
+  } catch (err) {
+    console.error('[garmin-auth] oauth2 exchange failed:', err instanceof Error ? err.message : err);
+    throw err;
+  }
   return client.exportToken();
 }
 
@@ -240,15 +269,21 @@ export async function completeGarminMfaLogin(pendingId: string, code: string): P
     fromPage: 'setupEnterMfaCode',
   }).toString();
 
-  const mfaRes = await http.client.post<string>(mfaUrl, mfaBody, {
-    headers: browserHeaders({
-      Cookie: jar.header(),
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Origin: url.GARMIN_SSO_ORIGIN,
-      Referer: pending.signinUrl,
-      'Sec-Fetch-User': '?1',
-    }),
-  });
+  let mfaRes;
+  try {
+    mfaRes = await http.client.post<string>(mfaUrl, mfaBody, {
+      headers: browserHeaders({
+        Cookie: jar.header(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Origin: url.GARMIN_SSO_ORIGIN,
+        Referer: pending.signinUrl,
+        'Sec-Fetch-User': '?1',
+      }),
+    });
+  } catch (err) {
+    console.error('[garmin-auth] MFA code submission failed:', err instanceof Error ? err.message : err);
+    throw err;
+  }
   const mfaResult = mfaRes.data;
 
   const ticketMatch = TICKET_RE.exec(mfaResult);

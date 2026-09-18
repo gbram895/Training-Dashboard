@@ -8,6 +8,7 @@ import { applyHealthFiles } from '../lib/healthImport.js';
 import { buildAuthorizeUrl, dropboxConfigured, exchangeCodeForTokens } from '../lib/dropbox.js';
 import { completeGarminAccountConnect, connectGarminAccountAndSave, runGarminSyncForUser } from '../lib/garminSync.js';
 import { pushWorkoutToGarmin } from '../lib/garminWorkoutPush.js';
+import { friendlyGarminAuthError } from '../lib/garminAuth.js';
 import { buildAuthorizeUrl as buildStravaAuthorizeUrl, stravaConfigured } from '../lib/strava.js';
 import { connectStravaAccount, runStravaSyncForUser } from '../lib/stravaSync.js';
 
@@ -190,9 +191,7 @@ router.post('/garmin/connect', requireAuth, async (req: AuthedRequest, res) => {
     res.json(result.mfaRequired ? { mfaRequired: true, pendingId: result.pendingId } : { connected: true });
   } catch (err) {
     console.error(`[garmin] login failed for user ${req.userId}:`, err);
-    res.status(400).json({
-      error: `Garmin login failed: ${err instanceof Error ? err.message : String(err)}`,
-    });
+    res.status(400).json({ error: `Garmin login failed: ${friendlyGarminAuthError(err)}` });
   }
 });
 
@@ -210,9 +209,7 @@ router.post('/garmin/verify-mfa', requireAuth, async (req: AuthedRequest, res) =
     res.json({ connected: true });
   } catch (err) {
     console.error(`[garmin] MFA verification failed for user ${req.userId}:`, err);
-    res.status(400).json({
-      error: err instanceof Error ? err.message : 'Garmin MFA verification failed',
-    });
+    res.status(400).json({ error: friendlyGarminAuthError(err) });
   }
 });
 
