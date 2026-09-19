@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { apiFetch, ApiError } from '../api/client';
 import type { HrZoneSettings, ThresholdSettings } from '../api/types';
 import ApiTokenCard from '../components/settings/ApiTokenCard';
+import { useAuth } from '../context/AuthContext';
 
 function paceToString(secPerKm: number): string {
   const min = Math.floor(secPerKm / 60);
@@ -16,6 +17,7 @@ function paceToSeconds(value: string): number | null {
 }
 
 export default function Settings() {
+  const { logout } = useAuth();
   const [zones, setZones] = useState<HrZoneSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -178,6 +180,13 @@ export default function Settings() {
       </form>
 
       <ApiTokenCard />
+
+      <section className="card">
+        <h2>Account</h2>
+        <button type="button" className="secondary" onClick={logout}>
+          Log out
+        </button>
+      </section>
     </div>
   );
 }
