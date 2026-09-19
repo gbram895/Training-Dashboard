@@ -39,12 +39,35 @@ export default function DashboardHero({
 
   const active = workout ?? (plannedToday && !plannedToday.isRestDay ? plannedToday : null);
 
+  const ring =
+    readiness != null ? (
+      <ProgressRing percent={readiness} gradientId="heroRingGrad">
+        <span className="gd-num">{readiness}%</span>
+        <span className="gd-unit">ready</span>
+      </ProgressRing>
+    ) : (
+      <ProgressRing percent={0} gradientId="heroRingGrad">
+        <span className="gd-unit">—</span>
+      </ProgressRing>
+    );
+
   if (!active) {
     return (
       <div className="gd-hero">
-        <p className="muted" style={{ margin: 0 }}>
-          No workout planned for today. <Link to="/plan">Pick one from your plan</Link>.
-        </p>
+        <div className="gd-hero-top">
+          <span className="gd-hero-label">Today's session</span>
+        </div>
+        <div className="gd-hero-body">
+          {ring}
+          <div className="gd-hero-info">
+            <h2>No workout planned</h2>
+            <div className="gd-meta">
+              <span>
+                <Link to="/plan">Pick one from your plan</Link>
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -60,16 +83,7 @@ export default function DashboardHero({
         <span className="gd-hero-tag">On plan</span>
       </div>
       <div className="gd-hero-body">
-        {readiness != null ? (
-          <ProgressRing percent={readiness} gradientId="heroRingGrad">
-            <span className="gd-num">{readiness}%</span>
-            <span className="gd-unit">ready</span>
-          </ProgressRing>
-        ) : (
-          <ProgressRing percent={0} gradientId="heroRingGrad">
-            <span className="gd-unit">—</span>
-          </ProgressRing>
-        )}
+        {ring}
         <div className="gd-hero-info">
           <h2>{active.name ?? 'Workout'}</h2>
           <div className="gd-meta">

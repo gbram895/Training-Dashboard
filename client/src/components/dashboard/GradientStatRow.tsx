@@ -5,7 +5,6 @@ import { formatDuration } from '../../lib/format';
 export default function GradientStatRow({ days, fitness }: { days: DailyHealthSummary[]; fitness: FitnessPoint[] | null }) {
   const lastNight = days.length ? days[days.length - 1].sleepHours ?? null : null;
   const sleepPct = lastNight != null ? Math.max(4, Math.min(100, (lastNight / 8) * 100)) : 0;
-  const sleepColor = lastNight != null && lastNight >= 7 ? 'var(--good)' : 'var(--warn)';
   const sleepNote = lastNight == null ? 'No sleep data' : lastNight >= 7 ? 'Good recovery' : 'Below target';
 
   const hrvValues = days.map((d) => d.avgHrv ?? null);
@@ -25,7 +24,7 @@ export default function GradientStatRow({ days, fitness }: { days: DailyHealthSu
         <span className="gd-stat-label">Sleep</span>
         <div className="gd-stat-value mono">{lastNight != null ? formatDuration(lastNight * 60) : '—'}</div>
         <div className="gd-mini-bar">
-          <span style={{ width: `${sleepPct}%`, background: sleepColor }} />
+          <span style={{ width: `${sleepPct}%`, background: 'var(--good)' }} />
         </div>
         <div className="gd-stat-sub">{sleepNote}</div>
       </div>

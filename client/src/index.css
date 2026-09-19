@@ -1740,7 +1740,7 @@ button.plan-cta-secondary:active {
 .gd-stat-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  gap: 6px;
   margin-bottom: 16px;
 }
 
