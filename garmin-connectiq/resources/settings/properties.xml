@@ -4,5 +4,5 @@
          app's per-device settings if pointing at a different server. -->
     <property id="serverBaseUrl" type="string">https://training-dashboard-peiv.onrender.com</property>
     <!-- Paste the token from the web dashboard's Settings > API access card. -->
-    <property id="apiToken" type="string"></property>
+    <property id="apiToken" type="string">paste-your-token-here</property>
 </properties>

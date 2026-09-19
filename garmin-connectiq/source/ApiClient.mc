@@ -11,6 +11,10 @@ import Toybox.Lang;
 // personal single-user app, and Monkey C has no good way to build a text
 // login form on a device with no keyboard.
 class ApiClient {
+    // Matches properties.xml's default value — a real token pasted in from
+    // the dashboard will never equal this, so it doubles as an "unset" check.
+    private const UNSET_TOKEN = "paste-your-token-here";
+
     private var _baseUrl as String;
     private var _token as String;
 
@@ -20,7 +24,8 @@ class ApiClient {
     }
 
     function isConfigured() as Boolean {
-        return _baseUrl != null && _baseUrl.length() > 0 && _token != null && _token.length() > 0;
+        return _baseUrl != null && _baseUrl.length() > 0
+            && _token != null && _token.length() > 0 && !_token.equals(UNSET_TOKEN);
     }
 
     // responseType Communications.HTTP_RESPONSE_CONTENT_TYPE_FIT tells the
