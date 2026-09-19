@@ -1,4 +1,5 @@
 const TOKEN_KEY = 'training-dashboard.token';
+const USER_KEY = 'training-dashboard.user';
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -32,6 +33,16 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   const body = await res.json().catch(() => undefined);
 
   if (!res.ok) {
+    // A dead/expired token (e.g. the server's signing secret rotated, or the
+    // token's own 30-day expiry passed) otherwise left the app stuck showing
+    // stale "logged in" state from localStorage forever, spinning on
+    // whatever loading screen depended on this request succeeding — send the
+    // user back to a real login instead.
+    if (res.status === 401 && path !== '/auth/login' && path !== '/auth/register') {
+      setToken(null);
+      localStorage.removeItem(USER_KEY);
+      window.location.href = '/login';
+    }
     const message = body?.error?.formErrors?.[0] ?? body?.error ?? res.statusText;
     throw new ApiError(res.status, typeof message === 'string' ? message : 'Request failed');
   }
