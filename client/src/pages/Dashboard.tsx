@@ -99,31 +99,33 @@ export default function Dashboard() {
         <p className="muted">Loading…</p>
       ) : (
         <>
-          <PageHead
-            title={timeOfDayGreeting()}
-            greeting={formatDateUTC(new Date(), { weekday: 'long', month: 'short', day: 'numeric' })}
-            name={user?.name}
-          />
+          <div className="gd-dashboard-top">
+            <PageHead
+              title={timeOfDayGreeting()}
+              greeting={formatDateUTC(new Date(), { weekday: 'long', month: 'short', day: 'numeric' })}
+              name={user?.name}
+            />
 
-          <DashboardHero workout={todaysWorkout} plannedToday={plannedToday} readiness={readiness} onCleared={load} />
+            <DashboardHero workout={todaysWorkout} plannedToday={plannedToday} readiness={readiness} onCleared={load} />
 
-          <GradientStatRow days={days} fitness={fitness} />
+            <GradientStatRow days={days} fitness={fitness} />
 
-          <div className="gd-section-head">
-            <h3>This week</h3>
-            <Link to="/plan" className="gd-link">
-              Plan
-            </Link>
+            <div className="gd-section-head">
+              <h3>This week</h3>
+              <Link to="/plan" className="gd-link">
+                Plan
+              </Link>
+            </div>
+            <WeekStrip planWeek={planWeek} recentWorkouts={recent} />
+
+            <div className="gd-section-head">
+              <h3>Recent activity</h3>
+              <Link to="/workouts" className="gd-link">
+                See all
+              </Link>
+            </div>
+            <GradientActivityList workouts={recent.slice(0, 3)} />
           </div>
-          <WeekStrip planWeek={planWeek} recentWorkouts={recent} />
-
-          <div className="gd-section-head">
-            <h3>Recent activity</h3>
-            <Link to="/workouts" className="gd-link">
-              See all
-            </Link>
-          </div>
-          <GradientActivityList workouts={recent.slice(0, 3)} />
 
           <div className="gd-legacy-divider">More</div>
 
