@@ -37,6 +37,23 @@ export function formatDateUTC(
   return new Date(date).toLocaleDateString(undefined, { ...options, timeZone: 'UTC' });
 }
 
+// "Today" / "Yesterday" / weekday name / short date, in UTC calendar days —
+// same UTC-anchoring reasoning as formatDateUTC above.
+export function formatRelativeDay(date: string | Date): string {
+  const target = dateOnlyUTC(new Date(date));
+  const today = dateOnlyUTC(new Date());
+  const diffDays = Math.round((today.getTime() - target.getTime()) / 86_400_000);
+
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays > 1 && diffDays < 7) return formatDateUTC(date, { weekday: 'short' });
+  return formatDateUTC(date);
+}
+
+function dateOnlyUTC(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
 export function formatTimeUTC(
   date: string | Date,
   options: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', hour12: false },

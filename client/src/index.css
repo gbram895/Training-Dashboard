@@ -1,16 +1,38 @@
 :root {
-  --bg: #f9f9f7;
-  --surface: #fcfcfb;
-  --border: rgba(11, 11, 11, 0.1);
-  --grid-line: #e1e0d9;
-  --text: #0b0b0b;
-  --text-muted: #52514e;
-  --text-faint: #898781;
-  --accent: #2a78d6;
-  --accent-strong: #1c5cab;
-  --accent-wash: rgba(42, 120, 214, 0.12);
-  --danger: #d03b3b;
-  --danger-wash: rgba(208, 59, 59, 0.08);
+  /* Gradient design system — see design/gradient-mockup for the source spec.
+     These are the real tokens; the block below aliases the app's older
+     token names onto them so not-yet-migrated screens keep working. */
+  --bg: #f6f7f6;
+  --surface: #ffffff;
+  --surface-sunken: #eff2f1;
+  --border: #e4e8e7;
+  --text: #101514;
+  --text-dim: #66716e;
+  --text-faint: #9aa3a0;
+  --accent-a: #06aed5;
+  --accent-b: #0c8c7d;
+  --accent-solid: #0a93a8;
+  --accent-wash: #e3f6f5;
+  --good: #1e9e5a;
+  --good-wash: #e4f5eb;
+  --warn: #c97a1e;
+  --warn-wash: #fbf0e1;
+  --crit: #d14343;
+  --crit-wash: #fbe7e7;
+  --shadow:
+    0 1px 2px rgba(16, 21, 20, 0.04),
+    0 8px 24px rgba(16, 21, 20, 0.06);
+  --join-blue: #8fd9ee;
+  --join-green: #57d9a3;
+  --join-panel: #e7f8f0;
+
+  /* Aliases: old token names some not-yet-migrated components still use. */
+  --grid-line: var(--border);
+  --text-muted: var(--text-dim);
+  --accent: var(--accent-solid);
+  --accent-strong: var(--accent-b);
+  --danger: var(--crit);
+  --danger-wash: var(--crit-wash);
   --chart-sleep: #4a3aa7;
   --chart-heart-rate: #e34948;
   --chart-hrv: #eb6834;
@@ -24,6 +46,35 @@
   --chart-z4: #f2cb55;
   --chart-z5: #ef7b72;
   color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #111514;
+    --surface: #1a1f1e;
+    --surface-sunken: #212827;
+    --border: #2b3332;
+    --text: #f2f5f4;
+    --text-dim: #9ba6a3;
+    --text-faint: #6d7876;
+    --accent-a: #22c7e8;
+    --accent-b: #16b39f;
+    --accent-solid: #3fd0c9;
+    --accent-wash: #16302e;
+    --good: #3fbe7b;
+    --good-wash: #122a20;
+    --warn: #e0a23f;
+    --warn-wash: #2b2013;
+    --crit: #e5696a;
+    --crit-wash: #2b1616;
+    --shadow:
+      0 1px 2px rgba(0, 0, 0, 0.4),
+      0 8px 28px rgba(0, 0, 0, 0.45);
+    --join-blue: #4fb6d6;
+    --join-green: #2fae84;
+    --join-panel: #132821;
+    color-scheme: dark;
+  }
 }
 
 * {
@@ -1506,4 +1557,371 @@ button.plan-cta-secondary:active {
 
 .plan-hero-rest-icon {
   font-size: 2.2rem;
+}
+
+/* ===== Gradient design system — new UI, rolled out screen by screen.
+   "gd-" prefix keeps these from colliding with older, differently-styled
+   classes of similar names (e.g. the existing .stat-tile). ===== */
+
+.mono {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+.gd-page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 10px 2px 16px;
+}
+
+.gd-page-head h1 {
+  font-size: 22px;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.gd-page-head .gd-hello {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin: 0 0 2px;
+}
+
+.gd-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-a), var(--accent-b));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: 'IBM Plex Mono', monospace;
+  flex-shrink: 0;
+}
+
+.gd-hero {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 26px;
+  padding: 20px;
+  box-shadow: var(--shadow);
+  margin-bottom: 14px;
+}
+
+.gd-hero-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.gd-hero-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent-solid);
+}
+
+.gd-hero-tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--good);
+  background: var(--good-wash);
+  padding: 3px 9px;
+  border-radius: 100px;
+}
+
+.gd-hero-body {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-block: 10px 6px;
+}
+
+.gd-ring-wrap {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  flex-shrink: 0;
+}
+
+.gd-ring-wrap svg {
+  transform: rotate(-90deg);
+}
+
+.gd-ring-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.gd-ring-center .gd-num {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.gd-ring-center .gd-unit {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.gd-hero-info h2 {
+  font-size: 19px;
+  margin: 0 0 4px;
+  letter-spacing: -0.01em;
+}
+
+.gd-hero-info .gd-meta {
+  font-size: 13px;
+  color: var(--text-dim);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.gd-hero-info .gd-meta b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.gd-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.gd-hero-cta {
+  width: 100%;
+  margin-top: 14px;
+  border: none;
+  border-radius: 14px;
+  padding: 13px;
+  background: linear-gradient(135deg, var(--accent-a), var(--accent-b));
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.gd-hero-cta:hover {
+  background: linear-gradient(135deg, var(--accent-a), var(--accent-b));
+  filter: brightness(1.04);
+}
+
+.gd-hero-rest {
+  align-items: center;
+  text-align: center;
+  padding: 8px 4px 4px;
+}
+
+.gd-hero-rest .gd-hero-rest-icon {
+  font-size: 2.1rem;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.gd-stat-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.gd-stat-tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 12px 12px 13px;
+}
+
+.gd-stat-tile .gd-stat-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.gd-stat-tile .gd-stat-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 17px;
+  font-weight: 600;
+  margin-top: 10px;
+}
+
+.gd-stat-tile .gd-stat-sub {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  margin-top: 2px;
+}
+
+.gd-mini-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-sunken);
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.gd-mini-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+}
+
+.gd-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: 2px 0 10px;
+}
+
+.gd-section-head h3 {
+  font-size: 15px;
+  margin: 0;
+  letter-spacing: -0.005em;
+}
+
+.gd-section-head .gd-link {
+  font-size: 12.5px;
+  color: var(--accent-solid);
+  font-weight: 600;
+}
+
+.gd-week-strip {
+  display: flex;
+  justify-content: space-between;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 14px 10px;
+  margin-bottom: 16px;
+}
+
+.gd-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  color: var(--text-dim);
+  width: 32px;
+}
+
+.gd-day .gd-d-label {
+  font-weight: 600;
+}
+
+.gd-day .gd-d-dot {
+  width: 26px;
+  height: 26px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gd-day.today .gd-d-label {
+  color: var(--text);
+}
+
+.gd-day.today .gd-d-dot {
+  background: linear-gradient(135deg, var(--accent-a), var(--accent-b));
+}
+
+.gd-day.rest .gd-d-dot {
+  background: var(--surface-sunken);
+}
+
+.gd-day.done .gd-d-dot {
+  background: var(--surface-sunken);
+}
+
+.gd-day.done .gd-d-dot svg {
+  stroke: var(--good);
+}
+
+.gd-day.planned .gd-d-dot {
+  background: var(--accent-wash);
+}
+
+.gd-activity-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+
+.gd-activity-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: var(--surface-sunken);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 17px;
+}
+
+.gd-activity-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.gd-activity-info .gd-a-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 2px;
+}
+
+.gd-activity-info .gd-a-meta {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.gd-activity-tss {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  color: var(--text-dim);
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.gd-legacy-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 22px 2px 14px;
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.gd-legacy-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
 }

@@ -12,10 +12,18 @@ import type {
   SelectedWorkout,
   Workout,
 } from '../api/types';
+import { useAuth } from '../context/AuthContext';
+import { computeReadiness } from '../lib/readiness';
+import { average } from '../lib/hrv';
+import { formatDateUTC } from '../lib/format';
+import PageHead from '../components/PageHead';
 import WorkoutList from '../components/WorkoutList';
+import DashboardHero from '../components/dashboard/DashboardHero';
+import GradientStatRow from '../components/dashboard/GradientStatRow';
+import WeekStrip from '../components/dashboard/WeekStrip';
+import GradientActivityList from '../components/dashboard/GradientActivityList';
 import DashboardHeader from '../components/dashboard/DashboardHeader';
 import HeaderSyncButtons from '../components/dashboard/HeaderSyncButtons';
-import TodaysWorkoutCard from '../components/dashboard/TodaysWorkoutCard';
 import DropboxSyncBar from '../components/dashboard/DropboxSyncBar';
 import StravaSyncBar from '../components/dashboard/StravaSyncBar';
 import GarminSyncBar from '../components/dashboard/GarminSyncBar';
@@ -38,7 +46,15 @@ const WORKOUT_LABELS: Record<string, string> = {
   OTHER: 'Other',
 };
 
+function timeOfDayGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Morning';
+  if (hour < 18) return 'Afternoon';
+  return 'Evening';
+}
+
 export default function Dashboard() {
+  const { user } = useAuth();
   const [days, setDays] = useState<DailyHealthSummary[] | null>(null);
   const [disciplineStats, setDisciplineStats] = useState<DisciplineStats | null>(null);
   const [hrZones, setHrZones] = useState<HrZoneWeek[] | null>(null);
@@ -47,6 +63,7 @@ export default function Dashboard() {
   const [syncStatus, setSyncStatus] = useState<DropboxSyncStatus | null>(null);
   const [todaysWorkout, setTodaysWorkout] = useState<SelectedWorkout | null>(null);
   const [plannedToday, setPlannedToday] = useState<PlannedDay | null>(null);
+  const [planWeek, setPlanWeek] = useState<PlannedDay[]>([]);
   const [fitness, setFitness] = useState<FitnessPoint[] | null>(null);
 
   function load() {
@@ -54,10 +71,11 @@ export default function Dashboard() {
     apiFetch<DisciplineStats>('/workouts/discipline-stats').then(setDisciplineStats);
     apiFetch<HrZoneWeek[]>('/workouts/hr-zones-weekly').then(setHrZones);
     apiFetch<Goal[]>('/goals').then(setGoals);
-    apiFetch<Workout[]>('/workouts?limit=5').then(setRecent);
+    apiFetch<Workout[]>('/workouts?limit=10').then(setRecent);
     apiFetch<DropboxSyncStatus>('/health/dropbox/status').then(setSyncStatus);
     apiFetch<SelectedWorkout | null>('/workout-library/selected').then(setTodaysWorkout);
     apiFetch<PlannedDay | null>('/training-plan/today').then(setPlannedToday);
+    apiFetch<PlannedDay[]>('/training-plan/week').then(setPlanWeek);
     apiFetch<FitnessPoint[]>('/workouts/fitness').then(setFitness);
   }
 
@@ -65,12 +83,50 @@ export default function Dashboard() {
 
   const loading = days === null || disciplineStats === null || hrZones === null;
 
+  const hrvValues = days?.map((d) => d.avgHrv ?? null) ?? [];
+  const readiness = days
+    ? computeReadiness({
+        todayHrv: hrvValues.length ? hrvValues[hrvValues.length - 1] : null,
+        hrvBaseline: average(hrvValues.slice(-8, -1)),
+        sleepHours: days.length ? (days[days.length - 1].sleepHours ?? null) : null,
+        tsb: fitness && fitness.length ? fitness[fitness.length - 1].tsb : null,
+      })
+    : null;
+
   return (
     <div className="page">
       {loading ? (
         <p className="muted">Loading…</p>
       ) : (
         <>
+          <PageHead
+            title={timeOfDayGreeting()}
+            greeting={formatDateUTC(new Date(), { weekday: 'long', month: 'short', day: 'numeric' })}
+            name={user?.name}
+          />
+
+          <DashboardHero workout={todaysWorkout} plannedToday={plannedToday} readiness={readiness} onCleared={load} />
+
+          <GradientStatRow days={days} fitness={fitness} />
+
+          <div className="gd-section-head">
+            <h3>This week</h3>
+            <Link to="/plan" className="gd-link">
+              Plan
+            </Link>
+          </div>
+          <WeekStrip planWeek={planWeek} recentWorkouts={recent} />
+
+          <div className="gd-section-head">
+            <h3>Recent activity</h3>
+            <Link to="/workouts" className="gd-link">
+              See all
+            </Link>
+          </div>
+          <GradientActivityList workouts={recent.slice(0, 3)} />
+
+          <div className="gd-legacy-divider">More</div>
+
           <DashboardHeader
             latestDataDate={days.length ? days[days.length - 1].date : null}
             lastSyncedAt={syncStatus?.lastSyncedAt ?? null}
@@ -79,8 +135,6 @@ export default function Dashboard() {
           />
 
           <SummaryBar stats={disciplineStats} />
-
-          <TodaysWorkoutCard workout={todaysWorkout} plannedToday={plannedToday} onCleared={load} />
 
           <DropboxSyncBar status={syncStatus} />
 
