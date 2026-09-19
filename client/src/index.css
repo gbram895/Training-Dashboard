@@ -1725,22 +1725,10 @@ button.plan-cta-secondary:active {
   filter: brightness(1.04);
 }
 
-.gd-hero-rest {
-  align-items: center;
-  text-align: center;
-  padding: 8px 4px 4px;
-}
-
-.gd-hero-rest .gd-hero-rest-icon {
-  font-size: 2.1rem;
-  display: block;
-  margin-bottom: 8px;
-}
-
 .gd-stat-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
+  gap: 10px;
   margin-bottom: 16px;
 }
 

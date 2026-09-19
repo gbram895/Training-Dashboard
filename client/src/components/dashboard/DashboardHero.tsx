@@ -25,19 +25,8 @@ export default function DashboardHero({
     onCleared();
   }
 
-  if (!workout && plannedToday?.isRestDay) {
-    return (
-      <div className="gd-hero gd-hero-rest">
-        <span className="gd-hero-rest-icon">😌</span>
-        <h2 style={{ margin: '0 0 4px', fontSize: 19 }}>Rest day</h2>
-        <p className="muted" style={{ margin: 0 }}>
-          {plannedToday.restReason ?? 'No training scheduled today — recover up.'}
-        </p>
-      </div>
-    );
-  }
-
   const active = workout ?? (plannedToday && !plannedToday.isRestDay ? plannedToday : null);
+  const isRestDay = !workout && !!plannedToday?.isRestDay;
 
   const ring =
     readiness != null ? (
@@ -50,6 +39,25 @@ export default function DashboardHero({
         <span className="gd-unit">—</span>
       </ProgressRing>
     );
+
+  if (isRestDay) {
+    return (
+      <div className="gd-hero">
+        <div className="gd-hero-top">
+          <span className="gd-hero-label">Today's session</span>
+        </div>
+        <div className="gd-hero-body">
+          {ring}
+          <div className="gd-hero-info">
+            <h2>Rest day</h2>
+            <div className="gd-meta">
+              <span>{plannedToday!.restReason ?? 'No training scheduled today — recover up.'}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!active) {
     return (
