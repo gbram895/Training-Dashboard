@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { LibraryWorkout, SelectedWorkout, ThresholdSettings } from '../api/types';
-import { apiFetch, ApiError } from '../api/client';
+import { apiFetch, ApiError, getToken } from '../api/client';
 import { formatDuration } from '../lib/format';
 import { getTrainingZone } from '../lib/trainingZones';
 import BarScale from './BarScale';
@@ -37,8 +37,38 @@ export default function WorkoutDetailView({
   hideSelectButton?: boolean;
 }) {
   const segments = workout.segments ?? [];
+  const workoutPath = 'path' in workout ? workout.path : workout.sourcePath;
   const [garminState, setGarminState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [garminError, setGarminError] = useState<string | null>(null);
+  const [fitDownloadError, setFitDownloadError] = useState<string | null>(null);
+
+  // No login, no companion app — for a bike computer that's easier to plug
+  // in over USB than to fight Garmin's account login or a Monkey C toolchain
+  // with, this just hands over the same .fit file a Garmin Connect–authored
+  // workout would produce, to be copied on manually.
+  async function downloadFitFile() {
+    setFitDownloadError(null);
+    try {
+      const params = new URLSearchParams({ format: 'fit' });
+      if (workoutPath) params.set('path', workoutPath);
+      const res = await fetch(`/api/workout-library?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => undefined);
+        throw new Error(body?.error ?? 'Failed to download workout file');
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${workout.name.replace(/[^a-z0-9]+/gi, '-')}.fit`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setFitDownloadError(err instanceof Error ? err.message : 'Failed to download workout file');
+    }
+  }
 
   async function sendToGarmin() {
     setGarminState('sending');
@@ -167,6 +197,19 @@ export default function WorkoutDetailView({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {workout.discipline === 'BIKE' && segments.length > 0 && (
+        <div className="garmin-push-row">
+          <button type="button" className="secondary" onClick={downloadFitFile}>
+            Download for bike computer (.fit)
+          </button>
+          <p className="garmin-push-hint">
+            No account login needed — plug your Edge into your computer via USB and copy the downloaded file into
+            its <code>GARMIN/Workouts</code> folder.
+          </p>
+          {fitDownloadError && <p className="garmin-push-error">{fitDownloadError}</p>}
         </div>
       )}
 
