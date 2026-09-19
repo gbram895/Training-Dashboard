@@ -32,6 +32,7 @@ function targetFields(
     if (thresholds.ftpWatts <= 0) return { targetType: 'open' };
     return {
       targetType: 'power',
+      targetValue: 0,
       customTargetValueLow: WATTS_OFFSET + Math.round(low * thresholds.ftpWatts),
       customTargetValueHigh: WATTS_OFFSET + Math.round(high * thresholds.ftpWatts),
     };
@@ -40,6 +41,7 @@ function targetFields(
   if (thresholds.thresholdSpeedMps <= 0) return { targetType: 'open' };
   return {
     targetType: 'speed',
+    targetValue: 0,
     customTargetValueLow: Math.round(low * thresholds.thresholdSpeedMps * SPEED_SCALE),
     customTargetValueHigh: Math.round(high * thresholds.thresholdSpeedMps * SPEED_SCALE),
   };

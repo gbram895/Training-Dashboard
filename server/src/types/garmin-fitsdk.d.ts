@@ -61,6 +61,13 @@ declare module '@garmin/fitsdk' {
     durationValue?: number;
     intensity?: Intensity;
     targetType?: WktStepTarget;
+    // The zone-number field (aliased on read as targetPowerZone/
+    // targetSpeedZone/etc.) — the FIT profile's own doc comment says
+    // "Custom = 0", meaning a custom low/high range (not a 1-7 zone) must
+    // set this to 0 explicitly. Leaving it unset is what produced "Zone -1
+    // (0-0W)" on a real device: it read as an invalid zone number instead
+    // of "no zone, use the custom range."
+    targetValue?: number;
     customTargetValueLow?: number;
     customTargetValueHigh?: number;
   }
