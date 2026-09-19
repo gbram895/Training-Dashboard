@@ -1,5 +1,3 @@
 <strings>
     <string id="AppName">Training Dashboard</string>
-    <string id="ServerUrlTitle">Server URL</string>
-    <string id="ApiTokenTitle">API Token</string>
 </strings>

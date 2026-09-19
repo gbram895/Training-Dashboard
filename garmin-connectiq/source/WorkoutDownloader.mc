@@ -30,7 +30,7 @@ class WorkoutDownloader {
     function start() as Void {
         var client = new ApiClient();
         if (!client.isConfigured()) {
-            _statusCallback.invoke("Set server URL + token in this app's settings (Garmin Connect app > Device > Apps).");
+            _statusCallback.invoke("Edit ApiClient.mc's TOKEN constant with your real token, then rebuild.");
             return;
         }
         client.fetchTodayWorkoutFit(method(:onDownload));

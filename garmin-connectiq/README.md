@@ -82,21 +82,30 @@ API client) is ordinary Monkey C and should build clean.
    (This repo's own `manifest.xml` is a template showing what the result
    should look like — see the comment at its top for why it isn't used
    directly.)
-4. Build and run in the Connect IQ Simulator first to catch compile errors —
+4. Open `source/ApiClient.mc` and replace the `TOKEN` constant with the
+   token from the web dashboard's **Settings > API access** card. Change
+   `BASE_URL` too if you're not using the default Render deployment.
+
+   **Why this is hardcoded instead of a Garmin Connect Mobile setting**:
+   Garmin Connect Mobile only shows a settings screen for apps published to
+   the official Connect IQ Store — confirmed against multiple reports on
+   Garmin's own developer forum that a sideloaded app's settings.xml are
+   silently ignored no matter how correctly they're built. Since this app
+   is never going through the Store, there's no phone-based settings screen
+   to use — edit the source and rebuild instead, same as changing any other
+   constant.
+5. Build and run in the Connect IQ Simulator first to catch compile errors —
    but `PersistedContent`/`System.exitTo()` behavior is unreliable in the
    simulator, so final verification needs a real device.
-5. Sideload to your Edge over USB (VS Code's "Monkey C: Run" with a device
+6. Sideload to your Edge over USB (VS Code's "Monkey C: Run" with a device
    target, or manually copy the built `.prg` into `GARMIN/APPS/`).
-6. Open the app on the Edge, then in **Garmin Connect Mobile > Devices >
-   [your Edge] > App Settings > Training Dashboard**, set:
-   - **Server URL** — defaults to the Render deployment; change only if
-     pointing at a different server.
-   - **API Token** — copy this from the web dashboard's **Settings > API
-     access** card.
 7. On the Edge: open the widget, press **SELECT**. It fetches today's ride
    and launches it natively. Requires the Edge to have connectivity — either
    its own WiFi, or Bluetooth to a phone running Garmin Connect Mobile with
    internet (the same pairing your activity sync already depends on).
+8. If you ever need to change the token (e.g. it's rotated), edit the
+   constant and rebuild — there's no other way to update it on a sideloaded
+   app.
 
 ## Scope
 
@@ -114,13 +123,11 @@ would just need a second method calling that instead of `/training-plan/today`.
 | File | What it does |
 |---|---|
 | `manifest.xml` | Template — see setup step 3 for why it isn't used as-is |
-| `resources/strings/strings.xml` | App name + settings labels |
-| `resources/settings/properties.xml` | Default server URL, empty token slot |
-| `resources/settings/settings.xml` | The Garmin Connect Mobile settings form |
+| `resources/strings/strings.xml` | App name |
 | `source/TrainingDashboardApp.mc` | App entry point |
 | `source/TrainingDashboardView.mc` | Status text view |
 | `source/TrainingDashboardDelegate.mc` | Wires the SELECT button to the download flow |
-| `source/ApiClient.mc` | The authenticated `makeWebRequest` call |
+| `source/ApiClient.mc` | The authenticated `makeWebRequest` call — edit its BASE_URL/TOKEN constants |
 | `source/WorkoutDownloader.mc` | FIT response → `PersistedContent.Workout` → `System.exitTo()` |
 
 ## Keeping this in sync with the server
