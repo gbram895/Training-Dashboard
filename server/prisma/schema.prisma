@@ -25,6 +25,7 @@ model User {
   trainingPlanConfig    TrainingPlanConfig?
   plannedDays           PlannedDay[]
   cachedLibraryWorkouts CachedLibraryWorkout[]
+  pushSubscriptions     PushSubscription[]
 
   // Heart-rate zone thresholds (bpm) — upper bound of zones 1-4; zone 5 is everything above z4Max
   hrZone1Max Int @default(114)
@@ -280,4 +281,18 @@ model Goal {
   deadline     DateTime?
   notes        String?
   createdAt    DateTime  @default(now())
+}
+
+// One row per browser/device the user has enabled notifications on (a
+// PushSubscription is tied to a specific browser install, not the account —
+// re-enabling from a new browser or after clearing site data creates a new
+// endpoint). See lib/webPush.ts for how these are used.
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
 }

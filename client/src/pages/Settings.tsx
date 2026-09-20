@@ -6,6 +6,7 @@ import PageHead from '../components/PageHead';
 import { useAuth } from '../context/AuthContext';
 import { useCachedState } from '../lib/pageCache';
 import { getStoredTheme, setTheme, type Theme } from '../lib/theme';
+import { getExistingSubscription, pushSupported, subscribeToPush, unsubscribeFromPush } from '../lib/push';
 
 const THEME_OPTIONS: { key: Theme; label: string }[] = [
   { key: 'light', label: 'Light' },
@@ -39,13 +40,36 @@ export default function Settings() {
   const [thresholdSaved, setThresholdSaved] = useState(false);
   const [thresholdError, setThresholdError] = useState<string | null>(null);
 
+  const [pushSubscribed, setPushSubscribed] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState<string | null>(null);
+
   useEffect(() => {
     apiFetch<HrZoneSettings>('/settings/hr-zones').then(setZones);
     apiFetch<ThresholdSettings>('/settings/thresholds').then((t) => {
       setThresholds(t);
       setPaceInput(paceToString(t.thresholdPaceSecPerKm));
     });
+    getExistingSubscription().then((sub) => setPushSubscribed(!!sub));
   }, []);
+
+  async function togglePushReminder() {
+    setPushBusy(true);
+    setPushError(null);
+    try {
+      if (pushSubscribed) {
+        await unsubscribeFromPush();
+        setPushSubscribed(false);
+      } else {
+        await subscribeToPush();
+        setPushSubscribed(true);
+      }
+    } catch (err) {
+      setPushError(err instanceof Error ? err.message : 'Something went wrong');
+    } finally {
+      setPushBusy(false);
+    }
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -120,6 +144,28 @@ export default function Settings() {
             ))}
           </div>
         </div>
+
+        {pushSupported() && (
+          <div className="gd-set-group">
+            <p className="gd-set-group-label">Notifications</p>
+            <div className="gd-set-list">
+              <div className="gd-set-row">
+                <span className="gd-set-label">Daily workout reminder</span>
+                <button
+                  type="button"
+                  className={`gd-toggle${pushSubscribed ? ' gd-on' : ''}`}
+                  onClick={togglePushReminder}
+                  disabled={pushBusy}
+                  aria-pressed={pushSubscribed}
+                  aria-label="Daily workout reminder"
+                >
+                  <span />
+                </button>
+              </div>
+            </div>
+            {pushError && <p className="gd-set-note gd-set-danger">{pushError}</p>}
+          </div>
+        )}
 
         <div className="gd-set-group">
           <p className="gd-set-group-label">Account</p>

@@ -11,12 +11,14 @@ import healthRouter from './routes/health.js';
 import settingsRouter from './routes/settings.js';
 import workoutLibraryRouter from './routes/workoutLibrary.js';
 import trainingPlanRouter from './routes/trainingPlan.js';
+import pushRouter from './routes/push.js';
 import { dropboxConfigured } from './lib/dropbox.js';
 import { runAllSyncs } from './lib/healthSyncJob.js';
 import { runAllGarminSyncs } from './lib/garminSync.js';
 import { stravaConfigured } from './lib/strava.js';
 import { runAllStravaSyncs } from './lib/stravaSync.js';
 import { regenerateAllPlans } from './lib/trainingPlan.js';
+import { pushConfigured, sendDailyWorkoutReminders } from './lib/webPush.js';
 
 const app = express();
 const PORT = process.env.PORT ?? 4000;
@@ -42,6 +44,7 @@ app.use('/api/health', healthRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/workout-library', workoutLibraryRouter);
 app.use('/api/training-plan', trainingPlanRouter);
+app.use('/api/push', pushRouter);
 
 if (process.env.NODE_ENV === 'production') {
   const clientDist = path.resolve(__dirname, '../../client/dist');
@@ -100,6 +103,17 @@ app.listen(PORT, () => {
   setTimeout(() => {
     regenerateAllPlans().catch((err) => console.error('[training-plan] initial run failed:', err));
   }, 30_000);
+
+  if (pushConfigured()) {
+    // After the training-plan cron above so the day's plan is already fresh.
+    const reminderSchedule = process.env.WORKOUT_REMINDER_CRON ?? '0 7 * * *';
+    cron.schedule(reminderSchedule, () => {
+      sendDailyWorkoutReminders().catch((err) => console.error('[push] daily reminder run failed:', err));
+    });
+    console.log(`[push] daily reminder scheduled with cron "${reminderSchedule}"`);
+  } else {
+    console.log('[push] VAPID keys not set — daily workout reminders disabled');
+  }
 
   // Render's free tier spins the service down after 15 minutes with no incoming
   // requests. Pinging our own public URL well inside that window keeps it warm.

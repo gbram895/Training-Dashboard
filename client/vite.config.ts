@@ -7,11 +7,16 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      // injectManifest (a service worker we write ourselves, precaching wired
+      // in via self.__WB_MANIFEST) instead of generateSW, so it can also
+      // handle push/notificationclick for web push notifications — generateSW
+      // only ever produces a precaching worker with no room for custom event
+      // listeners.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       registerType: 'autoUpdate',
       includeAssets: ['icon-192.png', 'icon-512.png'],
-      workbox: {
-        navigateFallbackDenylist: [/^\/api\//],
-      },
       manifest: {
         name: 'Training Dashboard',
         short_name: 'Training',
