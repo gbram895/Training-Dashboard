@@ -132,21 +132,37 @@ a {
 
 .main-content {
   flex: 1;
-  padding: 1rem 1rem calc(84px + env(safe-area-inset-bottom));
+  padding: 1rem 1rem calc(112px + env(safe-area-inset-bottom));
   max-width: 720px;
   margin: 0 auto;
   width: 100%;
 }
 
+/* Floating "Liquid Glass" dock — inset from the edges, translucent and
+   blurred rather than an opaque edge-to-edge bar. color-mix over --surface
+   (rather than a fixed rgba) keeps it correct in both themes automatically,
+   the same technique the Gradient mockup itself used for .plan-fab. */
 .bottom-nav {
   position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  left: 16px;
+  right: 16px;
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  max-width: 480px;
+  margin: 0 auto;
   display: flex;
-  background: var(--surface);
-  border-top: 1px solid var(--border);
-  padding-bottom: env(safe-area-inset-bottom);
+  justify-content: space-around;
+  align-items: center;
+  gap: 2px;
+  padding: 8px;
+  background: color-mix(in srgb, var(--surface) 68%, transparent);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+  border-radius: 28px;
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.16),
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 color-mix(in srgb, white 45%, transparent);
   z-index: 10;
 }
 
@@ -155,14 +171,18 @@ a {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 2px;
-  padding: 10px 0 8px;
-  color: var(--text-muted);
-  font-size: 0.75rem;
+  padding: 7px 4px 6px;
+  border-radius: 20px;
+  color: var(--text-faint);
+  font-size: 0.66rem;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .bottom-nav-link.active {
-  color: var(--accent);
+  background: var(--accent-wash);
+  color: var(--accent-solid);
   font-weight: 600;
 }
 
@@ -170,8 +190,8 @@ a {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
+  width: 32px;
+  height: 32px;
 }
 
 .nav-icon-badge img {
@@ -573,7 +593,7 @@ button.icon-button {
 .fab {
   position: fixed;
   right: 1.25rem;
-  bottom: calc(90px + env(safe-area-inset-bottom));
+  bottom: calc(96px + env(safe-area-inset-bottom));
   width: 56px;
   height: 56px;
   border-radius: 50%;
