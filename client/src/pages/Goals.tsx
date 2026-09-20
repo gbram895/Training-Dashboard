@@ -1,12 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { apiFetch } from '../api/client';
 import type { Goal } from '../api/types';
+import { useCachedState } from '../lib/pageCache';
 import PageHead from '../components/PageHead';
 import ProgressRing from '../components/ProgressRing';
 
 export default function Goals() {
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [goals, setGoals] = useCachedState<Goal[] | null>('goals.list', null);
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState('');
   const [targetValue, setTargetValue] = useState('');
@@ -22,8 +22,11 @@ export default function Goals() {
   }
 
   useEffect(() => {
-    reload().then(() => setLoading(false));
+    reload();
   }, []);
+
+  const loading = goals === null;
+  const list = goals ?? [];
 
   function resetForm() {
     setTitle('');
@@ -100,11 +103,11 @@ export default function Goals() {
 
         {loading ? (
           <p className="muted">Loading…</p>
-        ) : goals.length === 0 && !showForm ? (
+        ) : list.length === 0 && !showForm ? (
           <p className="muted">No goals yet.</p>
         ) : (
           <div className="goal-grid">
-            {goals.map((g) => {
+            {list.map((g) => {
               const pct = Math.min(100, Math.round((g.currentValue / g.targetValue) * 100));
               return (
                 <div className="gd-goal-card" key={g.id}>

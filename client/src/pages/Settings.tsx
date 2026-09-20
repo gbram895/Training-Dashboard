@@ -4,6 +4,7 @@ import type { HrZoneSettings, ThresholdSettings } from '../api/types';
 import ApiTokenCard from '../components/settings/ApiTokenCard';
 import PageHead from '../components/PageHead';
 import { useAuth } from '../context/AuthContext';
+import { useCachedState } from '../lib/pageCache';
 
 function paceToString(secPerKm: number): string {
   const min = Math.floor(secPerKm / 60);
@@ -19,13 +20,13 @@ function paceToSeconds(value: string): number | null {
 
 export default function Settings() {
   const { user, logout } = useAuth();
-  const [zones, setZones] = useState<HrZoneSettings | null>(null);
+  const [zones, setZones] = useCachedState<HrZoneSettings | null>('settings.zones', null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [thresholds, setThresholds] = useState<ThresholdSettings | null>(null);
-  const [paceInput, setPaceInput] = useState('');
+  const [thresholds, setThresholds] = useCachedState<ThresholdSettings | null>('settings.thresholds', null);
+  const [paceInput, setPaceInput] = useState(() => (thresholds ? paceToString(thresholds.thresholdPaceSecPerKm) : ''));
   const [thresholdSaving, setThresholdSaving] = useState(false);
   const [thresholdSaved, setThresholdSaved] = useState(false);
   const [thresholdError, setThresholdError] = useState<string | null>(null);

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../api/client';
 import type {
@@ -13,6 +13,7 @@ import type {
   Workout,
 } from '../api/types';
 import { useAuth } from '../context/AuthContext';
+import { useCachedState } from '../lib/pageCache';
 import { computeReadiness } from '../lib/readiness';
 import { average } from '../lib/hrv';
 import { formatDateUTC } from '../lib/format';
@@ -55,16 +56,16 @@ function timeOfDayGreeting(): string {
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const [days, setDays] = useState<DailyHealthSummary[] | null>(null);
-  const [disciplineStats, setDisciplineStats] = useState<DisciplineStats | null>(null);
-  const [hrZones, setHrZones] = useState<HrZoneWeek[] | null>(null);
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [recent, setRecent] = useState<Workout[]>([]);
-  const [syncStatus, setSyncStatus] = useState<DropboxSyncStatus | null>(null);
-  const [todaysWorkout, setTodaysWorkout] = useState<SelectedWorkout | null>(null);
-  const [plannedToday, setPlannedToday] = useState<PlannedDay | null>(null);
-  const [planWeek, setPlanWeek] = useState<PlannedDay[]>([]);
-  const [fitness, setFitness] = useState<FitnessPoint[] | null>(null);
+  const [days, setDays] = useCachedState<DailyHealthSummary[] | null>('dash.days', null);
+  const [disciplineStats, setDisciplineStats] = useCachedState<DisciplineStats | null>('dash.disciplineStats', null);
+  const [hrZones, setHrZones] = useCachedState<HrZoneWeek[] | null>('dash.hrZones', null);
+  const [goals, setGoals] = useCachedState<Goal[]>('dash.goals', []);
+  const [recent, setRecent] = useCachedState<Workout[]>('dash.recent', []);
+  const [syncStatus, setSyncStatus] = useCachedState<DropboxSyncStatus | null>('dash.syncStatus', null);
+  const [todaysWorkout, setTodaysWorkout] = useCachedState<SelectedWorkout | null>('dash.todaysWorkout', null);
+  const [plannedToday, setPlannedToday] = useCachedState<PlannedDay | null>('dash.plannedToday', null);
+  const [planWeek, setPlanWeek] = useCachedState<PlannedDay[]>('dash.planWeek', []);
+  const [fitness, setFitness] = useCachedState<FitnessPoint[] | null>('dash.fitness', null);
 
   function load() {
     apiFetch<DailyHealthSummary[]>('/health/summary').then(setDays);

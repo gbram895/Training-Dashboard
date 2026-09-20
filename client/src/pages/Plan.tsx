@@ -16,6 +16,7 @@ import WorkoutDetailView from '../components/WorkoutDetailView';
 import WorkoutProfileChart from '../components/WorkoutProfileChart';
 import NewPlanModal from '../components/NewPlanModal';
 import PageHead from '../components/PageHead';
+import { useCachedState } from '../lib/pageCache';
 
 const CATEGORY_INFO: { key: WorkoutCategory | 'OTHER'; label: string; icon: string; description: string }[] = [
   { key: 'VO2MAX', label: 'VO2Max', icon: '💨', description: 'Short, maximal efforts that push your aerobic ceiling.' },
@@ -67,17 +68,17 @@ function plannedDayToLibraryWorkout(day: PlannedDay): LibraryWorkout {
 
 export default function Plan() {
   const navigate = useNavigate();
-  const [workouts, setWorkouts] = useState<LibraryWorkout[] | null>(null);
-  const [selected, setSelected] = useState<SelectedWorkout | null>(null);
+  const [workouts, setWorkouts] = useCachedState<LibraryWorkout[] | null>('plan.workouts', null);
+  const [selected, setSelected] = useCachedState<SelectedWorkout | null>('plan.selected', null);
   const [error, setError] = useState<string | null>(null);
   const [selectingPath, setSelectingPath] = useState<string | null>(null);
   const [discipline, setDiscipline] = useState<PlannedDiscipline>('BIKE');
   const [category, setCategory] = useState<WorkoutCategory | 'OTHER' | null>(null);
   const [detailPath, setDetailPath] = useState<string | null>(null);
-  const [thresholds, setThresholds] = useState<ThresholdSettings | null>(null);
+  const [thresholds, setThresholds] = useCachedState<ThresholdSettings | null>('plan.thresholds', null);
 
-  const [planConfig, setPlanConfig] = useState<TrainingPlanConfig | null | undefined>(undefined);
-  const [planWeek, setPlanWeek] = useState<PlannedDay[]>([]);
+  const [planConfig, setPlanConfig] = useCachedState<TrainingPlanConfig | null | undefined>('plan.config', undefined);
+  const [planWeek, setPlanWeek] = useCachedState<PlannedDay[]>('plan.week', []);
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [previewDay, setPreviewDay] = useState<PlannedDay | null>(null);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);

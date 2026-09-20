@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { apiFetch } from '../api/client';
 import type { Workout, WorkoutType } from '../api/types';
 import { mondayOf } from '../lib/week';
+import { useCachedState } from '../lib/pageCache';
 import PageHead from '../components/PageHead';
 import GradientActivityList, { TYPE_ICON, TYPE_LABEL } from '../components/dashboard/GradientActivityList';
 
@@ -17,21 +18,20 @@ function weekLabel(date: string, thisMonday: number, lastMonday: number): string
 }
 
 export default function Workouts() {
-  const [workouts, setWorkouts] = useState<Workout[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [workouts, setWorkouts] = useCachedState<Workout[] | null>('workouts.list', null);
   const [filter, setFilter] = useState<WorkoutType | 'ALL'>('ALL');
 
   useEffect(() => {
-    apiFetch<Workout[]>('/workouts').then((data) => {
-      setWorkouts(data);
-      setLoading(false);
-    });
+    apiFetch<Workout[]>('/workouts').then(setWorkouts);
   }, []);
 
-  const presentTypes = new Set(workouts.map((w) => w.type));
+  const loading = workouts === null;
+  const list = workouts ?? [];
+
+  const presentTypes = new Set(list.map((w) => w.type));
   const filterTypes = FILTER_ORDER.filter((t) => presentTypes.has(t));
 
-  const filtered = filter === 'ALL' ? workouts : workouts.filter((w) => w.type === filter);
+  const filtered = filter === 'ALL' ? list : list.filter((w) => w.type === filter);
 
   const thisMonday = mondayOf(new Date()).getTime();
   const lastMonday = thisMonday - 7 * 86_400_000;
@@ -73,7 +73,7 @@ export default function Workouts() {
 
         {loading ? (
           <p className="muted">Loading…</p>
-        ) : workouts.length === 0 ? (
+        ) : list.length === 0 ? (
           <p className="muted">No workouts yet. Tap + to log your first session.</p>
         ) : filtered.length === 0 ? (
           <p className="muted">No {TYPE_LABEL[filter as WorkoutType]?.toLowerCase()} workouts yet.</p>
