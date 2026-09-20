@@ -77,6 +77,37 @@
   }
 }
 
+/* Explicit "Dark" choice from the Settings appearance toggle — same values as
+   the media-query block above, but applied regardless of the OS preference
+   (the media query alone can't force dark mode when the system is in light
+   mode). See lib/theme.ts. */
+:root[data-theme='dark'] {
+  --bg: #111514;
+  --surface: #1a1f1e;
+  --surface-sunken: #212827;
+  --border: #2b3332;
+  --text: #f2f5f4;
+  --text-dim: #9ba6a3;
+  --text-faint: #6d7876;
+  --accent-a: #22c7e8;
+  --accent-b: #16b39f;
+  --accent-solid: #3fd0c9;
+  --accent-wash: #16302e;
+  --good: #3fbe7b;
+  --good-wash: #122a20;
+  --warn: #e0a23f;
+  --warn-wash: #2b2013;
+  --crit: #e5696a;
+  --crit-wash: #2b1616;
+  --shadow:
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    0 8px 28px rgba(0, 0, 0, 0.45);
+  --join-blue: #4fb6d6;
+  --join-green: #2fae84;
+  --join-panel: #132821;
+  color-scheme: dark;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -2093,6 +2124,35 @@ button.gd-filter-chip.gd-on {
 
 .gd-set-group {
   margin-bottom: 18px;
+}
+
+/* Light/Dark/System segmented control (appearance setting) */
+
+.gd-segmented {
+  display: flex;
+  background: var(--surface-sunken);
+  border-radius: 12px;
+  padding: 3px;
+}
+
+button.gd-segmented-option {
+  flex: 1;
+  text-align: center;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 7px 0;
+  border-radius: 9px;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+button.gd-segmented-option.gd-on {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
 }
 
 .gd-set-group-label {

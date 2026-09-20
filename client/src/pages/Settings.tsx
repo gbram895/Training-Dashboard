@@ -5,6 +5,13 @@ import ApiTokenCard from '../components/settings/ApiTokenCard';
 import PageHead from '../components/PageHead';
 import { useAuth } from '../context/AuthContext';
 import { useCachedState } from '../lib/pageCache';
+import { getStoredTheme, setTheme, type Theme } from '../lib/theme';
+
+const THEME_OPTIONS: { key: Theme; label: string }[] = [
+  { key: 'light', label: 'Light' },
+  { key: 'dark', label: 'Dark' },
+  { key: 'system', label: 'System' },
+];
 
 function paceToString(secPerKm: number): string {
   const min = Math.floor(secPerKm / 60);
@@ -20,6 +27,7 @@ function paceToSeconds(value: string): number | null {
 
 export default function Settings() {
   const { user, logout } = useAuth();
+  const [theme, setThemeState] = useState<Theme>(getStoredTheme);
   const [zones, setZones] = useCachedState<HrZoneSettings | null>('settings.zones', null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -85,12 +93,33 @@ export default function Settings() {
     }
   }
 
+  function changeTheme(next: Theme) {
+    setThemeState(next);
+    setTheme(next);
+  }
+
   if (!zones || !thresholds) return <div className="page">Loading…</div>;
 
   return (
     <div className="page">
       <div className="gd-settings-top">
         <PageHead title="Settings" />
+
+        <div className="gd-set-group">
+          <p className="gd-set-group-label">Appearance</p>
+          <div className="gd-segmented">
+            {THEME_OPTIONS.map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                className={`gd-segmented-option${theme === opt.key ? ' gd-on' : ''}`}
+                onClick={() => changeTheme(opt.key)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <div className="gd-set-group">
           <p className="gd-set-group-label">Account</p>
