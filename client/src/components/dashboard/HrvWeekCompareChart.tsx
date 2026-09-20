@@ -1,10 +1,11 @@
+import { memo } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { DailyHealthSummary } from '../../api/types';
 import { mondayOf, dateKey } from '../../lib/week';
 
 const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-export default function HrvWeekCompareChart({ days }: { days: DailyHealthSummary[] }) {
+function HrvWeekCompareChart({ days }: { days: DailyHealthSummary[] }) {
   const byDate = new Map(days.map((d) => [dateKey(new Date(d.date)), d.avgHrv ?? null]));
   const thisMonday = mondayOf(new Date());
   const lastMonday = new Date(thisMonday);
@@ -56,3 +57,5 @@ export default function HrvWeekCompareChart({ days }: { days: DailyHealthSummary
     </section>
   );
 }
+
+export default memo(HrvWeekCompareChart);

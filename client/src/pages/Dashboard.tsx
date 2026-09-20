@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../api/client';
 import type {
@@ -67,7 +67,11 @@ export default function Dashboard() {
   const [planWeek, setPlanWeek] = useCachedState<PlannedDay[]>('dash.planWeek', []);
   const [fitness, setFitness] = useCachedState<FitnessPoint[] | null>('dash.fitness', null);
 
-  function load() {
+  // Stable identity (empty deps) — several memoized chart components take this
+  // as a prop, and a new function reference on every render would defeat the
+  // memo, re-running their (expensive, recharts-based) render on every
+  // unrelated state update.
+  const load = useCallback(() => {
     apiFetch<DailyHealthSummary[]>('/health/summary').then(setDays);
     apiFetch<DisciplineStats>('/workouts/discipline-stats').then(setDisciplineStats);
     apiFetch<HrZoneWeek[]>('/workouts/hr-zones-weekly').then(setHrZones);
@@ -78,9 +82,12 @@ export default function Dashboard() {
     apiFetch<PlannedDay | null>('/training-plan/today').then(setPlannedToday);
     apiFetch<PlannedDay[]>('/training-plan/week').then(setPlanWeek);
     apiFetch<FitnessPoint[]>('/workouts/fitness').then(setFitness);
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const loading = days === null || disciplineStats === null || hrZones === null;
 

@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Bar, CartesianGrid, Cell, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { apiFetch } from '../../api/client';
 import type { FitnessPoint } from '../../api/types';
 import { formatDateUTC } from '../../lib/format';
 
-export default function FitnessChart({ series, onBackfilled }: { series: FitnessPoint[]; onBackfilled: () => void }) {
+function FitnessChart({ series, onBackfilled }: { series: FitnessPoint[]; onBackfilled: () => void }) {
   const [backfilling, setBackfilling] = useState(false);
 
   async function backfill() {
@@ -121,3 +121,5 @@ export default function FitnessChart({ series, onBackfilled }: { series: Fitness
     </section>
   );
 }
+
+export default memo(FitnessChart);

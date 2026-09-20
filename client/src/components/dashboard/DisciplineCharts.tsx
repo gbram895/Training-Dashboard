@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { DisciplineStats } from '../../api/types';
 import { formatDateUTC } from '../../lib/format';
@@ -8,7 +9,7 @@ const DISCIPLINES: { key: 'RUN' | 'RIDE' | 'SWIM'; label: string; color: string 
   { key: 'SWIM', label: 'Swim', color: 'var(--chart-swim)' },
 ];
 
-export default function DisciplineCharts({ weekly }: { weekly: DisciplineStats['weekly'] }) {
+function DisciplineCharts({ weekly }: { weekly: DisciplineStats['weekly'] }) {
   const hasData = weekly.some((w) => w.RUN.durationMin + w.RIDE.durationMin + w.SWIM.durationMin > 0);
 
   const timeData = weekly.map((w) => ({
@@ -78,3 +79,5 @@ export default function DisciplineCharts({ weekly }: { weekly: DisciplineStats['
     </>
   );
 }
+
+export default memo(DisciplineCharts);

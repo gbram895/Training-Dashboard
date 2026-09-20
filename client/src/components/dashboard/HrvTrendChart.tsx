@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import {
   Area,
   CartesianGrid,
@@ -19,7 +20,7 @@ function HrvDot(props: { cx?: number; cy?: number; payload?: { hrv: number | nul
   return <circle cx={cx} cy={cy} r={4} fill={color} stroke="var(--surface)" strokeWidth={1.5} />;
 }
 
-export default function HrvTrendChart({ days }: { days: DailyHealthSummary[] }) {
+function HrvTrendChart({ days }: { days: DailyHealthSummary[] }) {
   const hrvSeries = days.map((d) => d.avgHrv ?? null);
   const rolling = rollingAverage(hrvSeries, 7);
 
@@ -98,3 +99,5 @@ export default function HrvTrendChart({ days }: { days: DailyHealthSummary[] }) 
     </section>
   );
 }
+
+export default memo(HrvTrendChart);

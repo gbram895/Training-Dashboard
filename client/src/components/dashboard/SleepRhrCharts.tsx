@@ -1,8 +1,9 @@
+import { memo } from 'react';
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { DailyHealthSummary } from '../../api/types';
 import { formatDateUTC, formatDuration } from '../../lib/format';
 
-export default function SleepRhrCharts({ days }: { days: DailyHealthSummary[] }) {
+function SleepRhrCharts({ days }: { days: DailyHealthSummary[] }) {
   const sleepData = days.map((d) => ({ day: formatDateUTC(d.date), value: d.sleepHours ?? null }));
   const rhrData = days.map((d) => ({ day: formatDateUTC(d.date), value: d.restingHeartRate ?? null }));
   const tickInterval = Math.max(0, Math.ceil(days.length / 8) - 1);
@@ -50,3 +51,5 @@ export default function SleepRhrCharts({ days }: { days: DailyHealthSummary[] })
     </section>
   );
 }
+
+export default memo(SleepRhrCharts);

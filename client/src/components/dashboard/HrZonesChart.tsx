@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { HrZoneWeek } from '../../api/types';
 import { formatDateUTC } from '../../lib/format';
@@ -10,7 +11,7 @@ const ZONES: { key: keyof Omit<HrZoneWeek, 'weekStart'>; label: string; color: s
   { key: 'z5', label: 'Z5 · Max', color: 'var(--chart-z5)' },
 ];
 
-export default function HrZonesChart({ weeks }: { weeks: HrZoneWeek[] }) {
+function HrZonesChart({ weeks }: { weeks: HrZoneWeek[] }) {
   const data = weeks.map((w) => ({ week: formatDateUTC(w.weekStart), ...w }));
   const hasData = data.some((d) => d.z1 + d.z2 + d.z3 + d.z4 + d.z5 > 0);
 
@@ -46,3 +47,5 @@ export default function HrZonesChart({ weeks }: { weeks: HrZoneWeek[] }) {
     </section>
   );
 }
+
+export default memo(HrZonesChart);
