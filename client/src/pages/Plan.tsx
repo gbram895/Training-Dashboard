@@ -40,6 +40,32 @@ function todayKey(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+const CONFIG_HOUR_KEYS = [
+  'sundayHours',
+  'mondayHours',
+  'tuesdayHours',
+  'wednesdayHours',
+  'thursdayHours',
+  'fridayHours',
+  'saturdayHours',
+] as const;
+
+// The recurring weekly target for today's weekday — the availability slider's
+// starting point before any one-off override for today has been set.
+function todayConfigHours(config: TrainingPlanConfig | null | undefined): number {
+  if (!config) return 0;
+  return config[CONFIG_HOUR_KEYS[new Date().getUTCDay()]];
+}
+
+function formatHours(h: number): string {
+  const totalMin = Math.round(h * 60);
+  const hours = Math.floor(totalMin / 60);
+  const min = totalMin % 60;
+  if (hours === 0) return `${min}m`;
+  if (min === 0) return `${hours}h`;
+  return `${hours}h ${min}m`;
+}
+
 function weekdayLabel(dateStr: string): { name: string; date: string; isToday: boolean } {
   // The API sends a full ISO timestamp (Prisma's DateTime serialized as JSON),
   // not a bare YYYY-MM-DD — normalize before using it as a calendar day.
@@ -83,6 +109,8 @@ export default function Plan() {
   const [previewDay, setPreviewDay] = useState<PlannedDay | null>(null);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const [showWhy, setShowWhy] = useState(false);
+  const [availability, setAvailability] = useState(0);
+  const [savingAvailability, setSavingAvailability] = useState(false);
 
   function load() {
     apiFetch<LibraryWorkout[]>('/workout-library')
@@ -111,6 +139,27 @@ export default function Plan() {
   }
 
   useEffect(load, []);
+
+  const todayIndex = planWeek.findIndex((d) => weekdayLabel(d.date).isToday);
+  const todayPlanned = todayIndex >= 0 ? planWeek[todayIndex] : null;
+
+  useEffect(() => {
+    if (todayPlanned) setAvailability(todayPlanned.availableHoursOverride ?? todayConfigHours(planConfig));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayPlanned?.id, todayPlanned?.availableHoursOverride]);
+
+  async function commitAvailability(hours: number) {
+    setSavingAvailability(true);
+    try {
+      const updated = await apiFetch<PlannedDay>('/training-plan/today/availability', {
+        method: 'PUT',
+        body: JSON.stringify({ hours }),
+      });
+      setPlanWeek(planWeek.map((d) => (weekdayLabel(d.date).isToday ? updated : d)));
+    } finally {
+      setSavingAvailability(false);
+    }
+  }
 
   async function selectWorkout(w: LibraryWorkout) {
     setSelectingPath(w.path);
@@ -218,6 +267,25 @@ export default function Plan() {
                     </button>
                   );
                 })}
+              </div>
+
+              <div className="gd-availability-card">
+                <div className="gd-availability-row">
+                  <span className="gd-availability-label">Today's availability</span>
+                  <span className="gd-availability-value mono">{formatHours(availability)}</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={4}
+                  step={0.25}
+                  value={availability}
+                  disabled={!todayPlanned || savingAvailability}
+                  onChange={(e) => setAvailability(Number(e.target.value))}
+                  onMouseUp={(e) => commitAvailability(Number((e.target as HTMLInputElement).value))}
+                  onTouchEnd={(e) => commitAvailability(Number((e.target as HTMLInputElement).value))}
+                  aria-label="Today's availability in hours"
+                />
               </div>
 
               <div className="gd-sec-title">

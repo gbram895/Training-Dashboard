@@ -1401,6 +1401,38 @@ button.gd-date-card.gd-selected .gd-dc-under {
   background: linear-gradient(90deg, var(--accent-a), var(--accent-b));
 }
 
+.gd-availability-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+  margin-bottom: 16px;
+}
+
+.gd-availability-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+
+.gd-availability-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.gd-availability-value {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.gd-availability-card input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent-solid);
+}
+
 .gd-sec-title {
   display: flex;
   align-items: center;

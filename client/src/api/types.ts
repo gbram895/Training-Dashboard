@@ -106,6 +106,7 @@ export interface PlannedDay {
   profile?: string | null;
   segments?: WorkoutProfileSegment[] | null;
   category?: WorkoutCategory | null;
+  availableHoursOverride?: number | null;
 }
 
 export interface DisciplineTotals {

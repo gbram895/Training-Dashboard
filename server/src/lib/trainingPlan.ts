@@ -180,6 +180,42 @@ const CTL_DECAY = 1 - Math.exp(-1 / 42);
 const ATL_DECAY = 1 - Math.exp(-1 / 7);
 const RECENT_PICKS_MEMORY = 2;
 
+/** Picks a rest day or a specific workout for one day, given its target hours and projected Form. */
+function decideDay(
+  date: Date,
+  targetHours: number,
+  tsb: number,
+  config: PlanConfigHours & { includeRunning: boolean; runDays: number[] },
+  library: ParsedWorkoutFile[],
+  readiness: ReadinessModifiers,
+  avoidPaths: string[],
+): GeneratedDay {
+  if (!targetHours || targetHours <= 0) {
+    return { date, isRestDay: true, restReason: 'No training hours scheduled today' };
+  }
+  if (tsb < FORCED_REST_TSB) {
+    return {
+      date,
+      isRestDay: true,
+      restReason: 'Fatigue is running high (low Form) — recovery takes priority today',
+    };
+  }
+
+  const category = decideCategory(tsb, readiness);
+  const discipline: PlannedDiscipline =
+    config.includeRunning && config.runDays.includes(date.getUTCDay()) ? 'RUN' : 'BIKE';
+  const targetMinutes = Math.round(targetHours * 60);
+  const workout = pickWorkout(library, discipline, targetMinutes, category, avoidPaths);
+
+  return workout
+    ? { date, isRestDay: false, workout, category }
+    : {
+        date,
+        isRestDay: true,
+        restReason: `No ${discipline === 'RUN' ? 'run' : 'ride'} in your library short enough for ${targetHours}h — add a shorter one, or this stays a rest day`,
+      };
+}
+
 /**
  * Generates each day in order, carrying a running CTL/ATL projection forward
  * from the athlete's real, current fitness — each day's own (estimated) TSS
@@ -188,12 +224,16 @@ const RECENT_PICKS_MEMORY = 2;
  * (a hard day naturally lowers Form for the next), instead of every future
  * day reusing today's exact TSB — which is what always produced the same
  * pick before.
+ *
+ * `todayOverrideHours`, when set, replaces the first date's (today's) config
+ * hours — see setTodayAvailability, which is the only source of this value.
  */
 async function runProjection(
   userId: string,
   dates: Date[],
   config: PlanConfigHours & { includeRunning: boolean; runDays: number[] },
   library: ParsedWorkoutFile[],
+  todayOverrideHours?: number | null,
 ): Promise<GeneratedDay[]> {
   const fitness = await computeFitnessSeries(userId);
   let ctl = fitness.length ? fitness[fitness.length - 1].ctl : 0;
@@ -203,35 +243,12 @@ async function runProjection(
   const recentPicks: string[] = [];
   const results: GeneratedDay[] = [];
 
-  for (const date of dates) {
+  for (let i = 0; i < dates.length; i++) {
+    const date = dates[i];
     const tsb = ctl - atl;
-    const targetHours = config[dayKeyFor(date)];
+    const targetHours = i === 0 && todayOverrideHours != null ? todayOverrideHours : config[dayKeyFor(date)];
 
-    let generated: GeneratedDay;
-    if (!targetHours || targetHours <= 0) {
-      generated = { date, isRestDay: true, restReason: 'No training hours scheduled today' };
-    } else if (tsb < FORCED_REST_TSB) {
-      generated = {
-        date,
-        isRestDay: true,
-        restReason: 'Fatigue is running high (low Form) — recovery takes priority today',
-      };
-    } else {
-      const category = decideCategory(tsb, readiness);
-      const discipline: PlannedDiscipline =
-        config.includeRunning && config.runDays.includes(date.getUTCDay()) ? 'RUN' : 'BIKE';
-      const targetMinutes = Math.round(targetHours * 60);
-      const workout = pickWorkout(library, discipline, targetMinutes, category, recentPicks);
-
-      generated = workout
-        ? { date, isRestDay: false, workout, category }
-        : {
-            date,
-            isRestDay: true,
-            restReason: `No ${discipline === 'RUN' ? 'run' : 'ride'} in your library short enough for ${targetHours}h — add a shorter one, or this stays a rest day`,
-          };
-    }
-
+    const generated = decideDay(date, targetHours, tsb, config, library, readiness, recentPicks);
     results.push(generated);
 
     const dayTss = generated.isRestDay ? 0 : estimatedTssForBucket(generated.workout?.trainingStress);
@@ -247,8 +264,15 @@ async function runProjection(
   return results;
 }
 
-async function upsertPlannedDay(userId: string, generated: GeneratedDay) {
-  const data = generated.isRestDay
+/**
+ * `availableHoursOverride`: pass a number to record it on the row (the
+ * one-off availability slider), or omit it entirely to leave the column
+ * untouched — the normal rolling-window regeneration path never sets it, so
+ * an existing override on today's row survives a regeneration it wasn't part
+ * of (e.g. the user editing next week's hours later the same day).
+ */
+async function upsertPlannedDay(userId: string, generated: GeneratedDay, availableHoursOverride?: number) {
+  const base = generated.isRestDay
     ? {
         isRestDay: true,
         restReason: generated.restReason,
@@ -278,6 +302,8 @@ async function upsertPlannedDay(userId: string, generated: GeneratedDay) {
         generatedAt: new Date(),
       };
 
+  const data = availableHoursOverride !== undefined ? { ...base, availableHoursOverride } : base;
+
   await prisma.plannedDay.upsert({
     where: { userId_date: { userId, date: generated.date } },
     create: { userId, date: generated.date, ...data },
@@ -295,6 +321,9 @@ export async function generatePlanWindow(userId: string, days = ROLLING_WINDOW_D
   const library = await fetchWorkoutLibrary(userId).catch(() => [] as ParsedWorkoutFile[]);
 
   const today = utcMidnight(new Date());
+  const existingToday = await prisma.plannedDay.findUnique({ where: { userId_date: { userId, date: today } } });
+  const todayOverrideHours = existingToday?.availableHoursOverride ?? null;
+
   const dates: Date[] = [];
   for (let i = 0; i < days; i++) {
     const date = new Date(today);
@@ -302,10 +331,44 @@ export async function generatePlanWindow(userId: string, days = ROLLING_WINDOW_D
     dates.push(date);
   }
 
-  const generatedDays = await runProjection(userId, dates, config, library);
+  const generatedDays = await runProjection(userId, dates, config, library, todayOverrideHours);
   for (const generated of generatedDays) {
-    await upsertPlannedDay(userId, generated);
+    const isToday = generated.date.getTime() === today.getTime();
+    await upsertPlannedDay(userId, generated, isToday && todayOverrideHours != null ? todayOverrideHours : undefined);
   }
+}
+
+/**
+ * A one-off "today I actually have X hours" adjustment from the Plan tab's
+ * availability slider — re-picks just today's workout (or rest day) against
+ * the athlete's real current fitness, without touching the recurring weekly
+ * schedule in TrainingPlanConfig or any other day in the window.
+ */
+export async function setTodayAvailability(userId: string, hours: number) {
+  const config = await prisma.trainingPlanConfig.findUnique({ where: { userId } });
+  if (!config) return null;
+
+  await ensureWindowGenerated(userId);
+
+  const library = await fetchWorkoutLibrary(userId).catch(() => [] as ParsedWorkoutFile[]);
+  const fitness = await computeFitnessSeries(userId);
+  const ctl = fitness.length ? fitness[fitness.length - 1].ctl : 0;
+  const atl = fitness.length ? fitness[fitness.length - 1].atl : 0;
+  const readiness = await getReadinessModifiers(userId);
+
+  const today = utcMidnight(new Date());
+  const recentDays = await prisma.plannedDay.findMany({
+    where: { userId, date: { lt: today }, isRestDay: false, sourcePath: { not: null } },
+    orderBy: { date: 'desc' },
+    take: RECENT_PICKS_MEMORY,
+    select: { sourcePath: true },
+  });
+  const recentPicks = recentDays.map((d) => d.sourcePath).filter((p): p is string => !!p);
+
+  const generated = decideDay(today, hours, ctl - atl, config, library, readiness, recentPicks);
+  await upsertPlannedDay(userId, generated, hours);
+
+  return prisma.plannedDay.findUnique({ where: { userId_date: { userId, date: today } } });
 }
 
 /** Ensures today's PlannedDay row (and the rest of the rolling window) exists, ignoring an inactive config. */

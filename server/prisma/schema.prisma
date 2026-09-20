@@ -9,32 +9,32 @@ datasource db {
 }
 
 model User {
-  id           String              @id @default(uuid())
-  email        String              @unique
-  passwordHash String
-  name         String
-  createdAt    DateTime            @default(now())
-  workouts     Workout[]
-  goals        Goal[]
-  healthDays   DailyHealthSummary[]
-  healthSync   HealthSyncConfig?
-  syncedFiles  SyncedDropboxFile[]
-  garminSync   GarminSyncConfig?
-  stravaSync   StravaSyncConfig?
-  selectedWorkout SelectedWorkout?
-  trainingPlanConfig TrainingPlanConfig?
-  plannedDays  PlannedDay[]
+  id                    String                 @id @default(uuid())
+  email                 String                 @unique
+  passwordHash          String
+  name                  String
+  createdAt             DateTime               @default(now())
+  workouts              Workout[]
+  goals                 Goal[]
+  healthDays            DailyHealthSummary[]
+  healthSync            HealthSyncConfig?
+  syncedFiles           SyncedDropboxFile[]
+  garminSync            GarminSyncConfig?
+  stravaSync            StravaSyncConfig?
+  selectedWorkout       SelectedWorkout?
+  trainingPlanConfig    TrainingPlanConfig?
+  plannedDays           PlannedDay[]
   cachedLibraryWorkouts CachedLibraryWorkout[]
 
   // Heart-rate zone thresholds (bpm) — upper bound of zones 1-4; zone 5 is everything above z4Max
-  hrZone1Max   Int                 @default(114)
-  hrZone2Max   Int                 @default(133)
-  hrZone3Max   Int                 @default(152)
-  hrZone4Max   Int                 @default(171)
+  hrZone1Max Int @default(114)
+  hrZone2Max Int @default(133)
+  hrZone3Max Int @default(152)
+  hrZone4Max Int @default(171)
 
   // Used to estimate intensity/training-stress for .fit and .zwo workout library files
-  ftpWatts               Int @default(200)
-  thresholdPaceSecPerKm  Int @default(300)
+  ftpWatts              Int @default(200)
+  thresholdPaceSecPerKm Int @default(300)
 }
 
 enum WorkoutType {
@@ -66,19 +66,19 @@ model Workout {
   // to estimate them ourselves). Kilojoules and TSS are derived by us from the
   // stored samples (Ride) or duration+distance+threshold pace (Run) — see
   // lib/trainingLoad.ts — and recomputed whenever the workout is (re)synced.
-  calorieKcal Float?
-  kilojoules  Float?
-  tss         Float?
+  calorieKcal          Float?
+  kilojoules           Float?
+  tss                  Float?
   avgPowerWatts        Float?
   normalizedPowerWatts Float?
 
   // Minutes spent in each heart-rate zone, computed at import time from raw
   // per-workout HR samples (Apple Health only) using the user's zone thresholds
-  hrZone1Min  Float?
-  hrZone2Min  Float?
-  hrZone3Min  Float?
-  hrZone4Min  Float?
-  hrZone5Min  Float?
+  hrZone1Min Float?
+  hrZone2Min Float?
+  hrZone3Min Float?
+  hrZone4Min Float?
+  hrZone5Min Float?
 
   @@index([userId, date])
 }
@@ -110,22 +110,22 @@ model WorkoutSample {
 }
 
 model DailyHealthSummary {
-  id                String   @id @default(uuid())
-  userId            String
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  date              DateTime
-  steps             Int?
-  distanceKm        Float?
-  activeEnergyKcal  Float?
-  avgHeartRate      Float?
-  restingHeartRate  Float?
-  sleepHours        Float?
-  exerciseMinutes   Float?
-  flightsClimbed    Int?
-  vo2Max            Float?
-  avgHrv            Float?
-  avgBloodOxygen    Float?
-  updatedAt         DateTime @updatedAt
+  id               String   @id @default(uuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date             DateTime
+  steps            Int?
+  distanceKm       Float?
+  activeEnergyKcal Float?
+  avgHeartRate     Float?
+  restingHeartRate Float?
+  sleepHours       Float?
+  exerciseMinutes  Float?
+  flightsClimbed   Int?
+  vo2Max           Float?
+  avgHrv           Float?
+  avgBloodOxygen   Float?
+  updatedAt        DateTime @updatedAt
 
   @@unique([userId, date])
 }
@@ -222,22 +222,28 @@ model TrainingPlanConfig {
 // from the Dropbox workout library for that day. Regenerated daily on a
 // rolling basis from the TrainingPlanConfig plus the user's current fitness.
 model PlannedDay {
-  id             String             @id @default(uuid())
-  userId         String
-  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  date           DateTime
-  isRestDay      Boolean            @default(false)
-  restReason     String?
-  sourcePath     String?
-  name           String?
-  discipline     PlannedDiscipline?
-  durationMin    Int?
-  intensity      Int?
-  trainingStress Int?
-  profile        String?
-  segments       Json?
-  category       String?
-  generatedAt    DateTime           @default(now())
+  id                     String             @id @default(uuid())
+  userId                 String
+  user                   User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date                   DateTime
+  isRestDay              Boolean            @default(false)
+  restReason             String?
+  sourcePath             String?
+  name                   String?
+  discipline             PlannedDiscipline?
+  durationMin            Int?
+  intensity              Int?
+  trainingStress         Int?
+  profile                String?
+  segments               Json?
+  category               String?
+  // A one-off "today I actually have X hours" adjustment from the Plan tab's
+  // availability slider, distinct from the recurring weekly hours in
+  // TrainingPlanConfig. Only ever set on today's own row; a future day rolling
+  // into "today" always starts unset. See lib/trainingPlan.ts's
+  // setTodayAvailability.
+  availableHoursOverride Float?
+  generatedAt            DateTime           @default(now())
 
   @@unique([userId, date])
 }
@@ -264,14 +270,14 @@ model CachedLibraryWorkout {
 }
 
 model Goal {
-  id          String    @id @default(uuid())
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  title       String
-  targetValue Float
-  currentValue Float    @default(0)
-  unit        String
-  deadline    DateTime?
-  notes       String?
-  createdAt   DateTime  @default(now())
+  id           String    @id @default(uuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title        String
+  targetValue  Float
+  currentValue Float     @default(0)
+  unit         String
+  deadline     DateTime?
+  notes        String?
+  createdAt    DateTime  @default(now())
 }

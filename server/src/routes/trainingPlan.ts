@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, AuthedRequest } from '../middleware/auth.js';
-import { generatePlanWindow, getPlannedDay, getPlannedWeek } from '../lib/trainingPlan.js';
+import { generatePlanWindow, getPlannedDay, getPlannedWeek, setTodayAvailability } from '../lib/trainingPlan.js';
 import { buildFitWorkoutFile } from '../lib/garminFitWorkout.js';
 import { loadAthleteSpeedThresholds, type GarminPushSegment } from '../lib/garminWorkoutPush.js';
 
@@ -64,6 +64,17 @@ router.delete('/config', async (req: AuthedRequest, res) => {
 router.get('/week', async (req: AuthedRequest, res) => {
   const week = await getPlannedWeek(req.userId!);
   res.json(week);
+});
+
+const availabilitySchema = z.object({ hours: hoursSchema });
+
+router.put('/today/availability', async (req: AuthedRequest, res) => {
+  const parsed = availabilitySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const updated = await setTodayAvailability(req.userId!, parsed.data.hours);
+  if (!updated) return res.status(400).json({ error: 'Set up a training plan first' });
+  res.json(updated);
 });
 
 router.get('/today', async (req: AuthedRequest, res) => {
