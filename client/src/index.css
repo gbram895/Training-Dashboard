@@ -1329,136 +1329,139 @@ button.icon-button {
   gap: 0.75rem;
 }
 
-/* Premium plan hero — day-tab carousel + suggested-training card */
+/* Plan screen — Gradient design, mirrors the artifact's Plan tab */
 
-.plan-hero-section {
+.gd-plan-empty-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+
+.gd-date-rail {
   display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.plan-hero-banner {
-  background: #1c1c1e;
-  border-radius: 20px;
-  padding: 1rem 1rem 1.1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.9rem;
-}
-
-.plan-hero-banner-top {
-  display: flex;
-}
-
-/* button.<class> (not just .<class>) beats the base button:hover/:disabled
-   rules above, which are element+pseudo and otherwise win the specificity
-   tie against a plain class on hover/disabled. */
-button.plan-pill-button {
-  border: none;
-  border-radius: 999px;
-  padding: 0.5rem 1rem;
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  cursor: pointer;
-  background: rgba(255, 255, 255, 0.14);
-  color: #fff;
-}
-
-button.plan-pill-button:hover,
-button.plan-pill-button:active {
-  background: rgba(255, 255, 255, 0.24);
-}
-
-.plan-day-tabs {
-  display: flex;
-  gap: 0.6rem;
+  gap: 10px;
   overflow-x: auto;
+  padding: 2px 2px 4px;
+  margin: 0 -2px 18px;
   scrollbar-width: none;
 }
 
-.plan-day-tabs::-webkit-scrollbar {
+.gd-date-rail::-webkit-scrollbar {
   display: none;
 }
 
-button.plan-day-tab {
-  flex: 0 0 auto;
-  min-width: 104px;
+button.gd-date-card {
+  flex-shrink: 0;
+  width: 112px;
   background: var(--surface);
-  border: none;
-  border-radius: 14px;
-  padding: 0.65rem 0.9rem;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 14px 14px 12px;
+  box-shadow: var(--shadow);
   text-align: left;
   cursor: pointer;
+  font-family: inherit;
+  color: inherit;
 }
 
-button.plan-day-tab:hover {
-  background: var(--surface);
+.gd-dc-day {
+  display: block;
+  font-size: 12px;
+  color: var(--text-faint);
+  margin: 0 0 4px;
 }
 
-.plan-day-tab-name {
-  font-size: 0.76rem;
-  color: var(--text-muted);
-}
-
-.plan-day-tab-date {
-  font-size: 1.05rem;
+.gd-dc-date {
+  font-size: 17px;
   font-weight: 700;
-  color: var(--text);
+  margin: 0;
+  letter-spacing: -0.01em;
 }
 
-.plan-day-tab-active {
-  box-shadow: 0 3px 0 0 var(--chart-swim);
+.gd-dc-under {
+  height: 3px;
+  border-radius: 3px;
+  margin-top: 10px;
+  background: var(--surface-sunken);
 }
 
-.plan-day-tab-active .plan-day-tab-name {
-  color: var(--chart-swim);
+button.gd-date-card.gd-selected {
+  background: var(--accent-wash);
+  border-color: transparent;
+}
+
+button.gd-date-card.gd-selected .gd-dc-day {
+  color: var(--accent-solid);
   font-weight: 600;
 }
 
-.plan-suggested-header {
+button.gd-date-card.gd-selected .gd-dc-under {
+  background: linear-gradient(90deg, var(--accent-a), var(--accent-b));
+}
+
+.gd-sec-title {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 7px;
+  margin: 0 2px 4px;
 }
 
-.plan-suggested-header h2 {
-  margin: 0;
-  font-size: 1.05rem;
-}
-
-.plan-suggested-dot {
-  width: 8px;
-  height: 8px;
+.gd-sec-title .gd-flag {
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: var(--danger);
+  background: var(--accent-solid);
   flex-shrink: 0;
 }
 
-.plan-hero-card {
-  display: flex;
-  flex-direction: column;
-  gap: 0.9rem;
-  border-radius: 20px;
-  padding: 1.15rem;
-  box-shadow: 0 4px 16px rgba(11, 11, 11, 0.08);
+.gd-sec-title h4 {
+  font-size: 16px;
+  margin: 0;
+  letter-spacing: -0.005em;
 }
 
-.plan-hero-card-top {
+.gd-sec-under {
+  width: 44px;
+  height: 3px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--accent-a), var(--accent-b));
+  margin: 0 0 14px 2px;
+}
+
+.gd-suggest-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.gd-suggest-panel {
+  background: var(--join-panel);
+}
+
+.gd-suggest-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding: 16px 16px 4px;
 }
 
-.plan-hero-discipline-icon {
-  font-size: 1.6rem;
+.gd-suggest-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
 }
 
-button.plan-icon-button {
+button.gd-refresh-btn {
   width: 34px;
   height: 34px;
   border-radius: 50%;
@@ -1467,96 +1470,144 @@ button.plan-icon-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.05rem;
+  color: var(--text-dim);
   cursor: pointer;
-  color: var(--text);
+  font-size: 15px;
 }
 
-button.plan-icon-button:hover {
+button.gd-refresh-btn:hover {
   background: var(--surface);
 }
 
-.plan-hero-title {
-  margin: 0;
-  font-size: 1.35rem;
-  font-weight: 800;
+.gd-suggest-body {
+  padding: 12px 16px 16px;
+}
+
+.gd-suggest-body .gd-sb-title {
+  font-size: 21px;
+  font-weight: 700;
+  margin: 0 0 14px;
   letter-spacing: -0.01em;
 }
 
-.plan-hero-stats {
+.gd-stat-trio {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 0.5rem;
+  gap: 10px;
+  margin-bottom: 16px;
 }
 
-.plan-hero-stat {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.plan-hero-stat-value {
-  font-size: 1.15rem;
-  font-weight: 700;
-}
-
-.plan-hero-stat-label {
-  font-size: 0.72rem;
+.gd-stat-trio .gd-st-label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-faint);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
 }
 
-button.plan-cta-primary {
-  border: none;
-  border-radius: 999px;
-  padding: 0.95rem;
-  background: var(--chart-swim);
-  color: #fff;
+.gd-stat-trio .gd-st-val {
+  display: block;
+  font-size: 15px;
   font-weight: 700;
-  font-size: 1rem;
+  margin-bottom: 6px;
+}
+
+.gd-bars5 .bar-scale-bar {
+  background: var(--surface-sunken);
+}
+
+.gd-bars5 .bar-scale-bar-filled {
+  background: var(--accent-solid);
+}
+
+button.gd-feedback-cta {
+  width: 100%;
+  border: none;
+  border-radius: 14px;
+  padding: 14px;
+  background: linear-gradient(135deg, var(--accent-a), var(--accent-b));
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  font-family: inherit;
+  margin-bottom: 10px;
   cursor: pointer;
 }
 
-button.plan-cta-primary:hover,
-button.plan-cta-primary:active {
-  background: var(--chart-swim);
-  opacity: 0.85;
+button.gd-feedback-cta:hover,
+button.gd-feedback-cta:active {
+  filter: brightness(1.04);
 }
 
-button.plan-cta-secondary {
+button.gd-why-btn {
+  display: block;
+  width: 100%;
+  margin: 0 auto;
+  background: none;
   border: none;
-  border-radius: 999px;
-  padding: 0.85rem;
-  background: #1c1c1e;
-  color: #fff;
+  font-size: 12.5px;
   font-weight: 700;
-  font-size: 0.8rem;
-  letter-spacing: 0.02em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 6px;
+  font-family: inherit;
   cursor: pointer;
 }
 
-button.plan-cta-secondary:hover,
-button.plan-cta-secondary:active {
-  background: #1c1c1e;
-  opacity: 0.85;
+.gd-plan-why-text {
+  margin: 4px 2px 0;
+  padding: 0 16px 16px;
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.5;
 }
 
-.plan-why-text {
-  margin: -0.3rem 0 0;
-  font-size: 0.88rem;
-  color: var(--text-muted);
-  line-height: 1.45;
-}
-
-.plan-hero-card-rest {
-  align-items: center;
+.gd-suggest-rest {
+  padding: 28px 20px;
   text-align: center;
-  padding: 1.8rem 1.1rem;
 }
 
-.plan-hero-rest-icon {
-  font-size: 2.2rem;
+.gd-suggest-rest .gd-rest-icon {
+  font-size: 2.1rem;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.gd-suggest-rest h3 {
+  font-size: 19px;
+  margin: 0 0 4px;
+}
+
+.gd-plan-note {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  text-align: center;
+  padding: 6px 6px 14px;
+  margin: 0;
+}
+
+button.gd-plan-fab {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 13px;
+  border-radius: 100px;
+  border: 1.5px dashed var(--border);
+  color: var(--accent-solid);
+  font-size: 13.5px;
+  font-weight: 700;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+button.gd-plan-fab:hover {
+  background: var(--accent-wash);
 }
 
 /* ===== Gradient design system — new UI, rolled out screen by screen.

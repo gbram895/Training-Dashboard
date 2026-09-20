@@ -15,6 +15,7 @@ import BarScale from '../components/BarScale';
 import WorkoutDetailView from '../components/WorkoutDetailView';
 import WorkoutProfileChart from '../components/WorkoutProfileChart';
 import NewPlanModal from '../components/NewPlanModal';
+import PageHead from '../components/PageHead';
 
 const CATEGORY_INFO: { key: WorkoutCategory | 'OTHER'; label: string; icon: string; description: string }[] = [
   { key: 'VO2MAX', label: 'VO2Max', icon: '💨', description: 'Short, maximal efforts that push your aerobic ceiling.' },
@@ -177,14 +178,12 @@ export default function Plan() {
 
   return (
     <div className="page">
-      <header className="page-header">
-        <h1>Plan</h1>
-      </header>
+      <div className="gd-plan-top">
+        <PageHead title="Plan" />
 
-      {planConfig !== undefined && (
-        <section className="plan-hero-section">
-          {!planConfig ? (
-            <div className="card">
+        {planConfig !== undefined &&
+          (!planConfig ? (
+            <div className="gd-plan-empty-card">
               <div className="plan-week-header">
                 <h2>Your plan</h2>
                 <button type="button" className="secondary" onClick={() => setShowPlanModal(true)}>
@@ -197,103 +196,106 @@ export default function Plan() {
               </p>
             </div>
           ) : planWeek.length === 0 ? (
-            <div className="card">
+            <div className="gd-plan-empty-card">
               <p className="muted">Building your plan…</p>
             </div>
           ) : (
             <>
-              <div className="plan-hero-banner">
-                <div className="plan-hero-banner-top">
-                  <button type="button" className="plan-pill-button" onClick={() => setShowPlanModal(true)}>
-                    Edit plan
-                  </button>
-                </div>
-                <div className="plan-day-tabs">
-                  {planWeek.map((day, i) => {
-                    const { name, date, isToday } = weekdayLabel(day.date);
-                    return (
-                      <button
-                        type="button"
-                        key={day.id}
-                        className={`plan-day-tab${i === selectedDayIndex ? ' plan-day-tab-active' : ''}`}
-                        onClick={() => selectDayTab(i)}
-                      >
-                        <span className="plan-day-tab-name">{isToday ? 'Today' : name}</span>
-                        <span className="plan-day-tab-date">{date}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+              <div className="gd-date-rail">
+                {planWeek.map((day, i) => {
+                  const { name, date, isToday } = weekdayLabel(day.date);
+                  return (
+                    <button
+                      type="button"
+                      key={day.id}
+                      className={`gd-date-card${i === selectedDayIndex ? ' gd-selected' : ''}`}
+                      onClick={() => selectDayTab(i)}
+                    >
+                      <span className="gd-dc-day">{name}</span>
+                      <p className="gd-dc-date">{isToday ? 'Today' : date}</p>
+                      <div className="gd-dc-under" />
+                    </button>
+                  );
+                })}
               </div>
 
-              <div className="plan-suggested-header">
-                <span className="plan-suggested-dot" />
-                <h2>Suggested training</h2>
+              <div className="gd-sec-title">
+                <span className="gd-flag" />
+                <h4>Suggested training</h4>
               </div>
+              <div className="gd-sec-under" />
 
               {selectedDay &&
                 (selectedDay.isRestDay ? (
-                  <div className="card plan-hero-card plan-hero-card-rest">
-                    <span className="plan-hero-rest-icon">😌</span>
-                    <h2 className="plan-hero-title">Rest day</h2>
-                    <p className="muted">{selectedDay.restReason ?? 'No training scheduled today.'}</p>
+                  <div className="gd-suggest-card">
+                    <div className="gd-suggest-rest">
+                      <span className="gd-rest-icon">😌</span>
+                      <h3>Rest day</h3>
+                      <p className="muted" style={{ margin: 0 }}>
+                        {selectedDay.restReason ?? 'No training scheduled today.'}
+                      </p>
+                    </div>
                   </div>
                 ) : (
-                  <div className="card plan-hero-card">
-                    <div className="plan-hero-card-top">
-                      <span className="plan-hero-discipline-icon">
-                        {selectedDay.discipline === 'RUN' ? '🏃' : '🚴'}
-                      </span>
-                      <button
-                        type="button"
-                        className="plan-icon-button"
-                        onClick={() => loadPlan()}
-                        aria-label="Refresh plan"
-                        title="Refresh"
-                      >
-                        ⟳
+                  <div className="gd-suggest-card">
+                    <div className="gd-suggest-panel">
+                      <div className="gd-suggest-top">
+                        <div className="gd-suggest-icon">{selectedDay.discipline === 'RUN' ? '🏃' : '🚴'}</div>
+                        <button
+                          type="button"
+                          className="gd-refresh-btn"
+                          onClick={() => loadPlan()}
+                          aria-label="Refresh plan"
+                          title="Refresh"
+                        >
+                          ⟳
+                        </button>
+                      </div>
+
+                      {selectedDay.segments && selectedDay.segments.length > 0 && (
+                        <WorkoutProfileChart segments={selectedDay.segments} height={70} />
+                      )}
+                    </div>
+
+                    <div className="gd-suggest-body">
+                      <p className="gd-sb-title">{selectedDay.name}</p>
+
+                      <div className="gd-stat-trio">
+                        <div>
+                          <span className="gd-st-label">Duration</span>
+                          <span className="gd-st-val mono">
+                            {selectedDay.durationMin != null ? formatDuration(selectedDay.durationMin) : '—'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="gd-st-label">Intensity</span>
+                          <span className="gd-st-val mono">{selectedDay.intensity ?? '—'}</span>
+                          {selectedDay.intensity != null && (
+                            <span className="gd-bars5">
+                              <BarScale value={selectedDay.intensity} />
+                            </span>
+                          )}
+                        </div>
+                        <div>
+                          <span className="gd-st-label">Load</span>
+                          <span className="gd-st-val mono">{selectedDay.trainingStress ?? '—'}</span>
+                          {selectedDay.trainingStress != null && (
+                            <span className="gd-bars5">
+                              <BarScale value={selectedDay.trainingStress} />
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <button type="button" className="gd-feedback-cta" onClick={() => openPlanDay(selectedDay)}>
+                        View workout
+                      </button>
+                      <button type="button" className="gd-why-btn" onClick={() => setShowWhy((w) => !w)}>
+                        Why this workout?
                       </button>
                     </div>
-
-                    {selectedDay.segments && selectedDay.segments.length > 0 && (
-                      <WorkoutProfileChart segments={selectedDay.segments} height={70} />
-                    )}
-
-                    <h2 className="plan-hero-title">{selectedDay.name}</h2>
-
-                    <div className="plan-hero-stats">
-                      <div className="plan-hero-stat">
-                        <span className="plan-hero-stat-value">
-                          {selectedDay.durationMin != null ? formatDuration(selectedDay.durationMin) : '—'}
-                        </span>
-                        <span className="plan-hero-stat-label">Duration</span>
-                      </div>
-                      <div className="plan-hero-stat">
-                        {selectedDay.intensity != null ? (
-                          <BarScale value={selectedDay.intensity} />
-                        ) : (
-                          <span className="plan-hero-stat-value">—</span>
-                        )}
-                        <span className="plan-hero-stat-label">Intensity</span>
-                      </div>
-                      <div className="plan-hero-stat">
-                        {selectedDay.trainingStress != null ? (
-                          <BarScale value={selectedDay.trainingStress} />
-                        ) : (
-                          <span className="plan-hero-stat-value">—</span>
-                        )}
-                        <span className="plan-hero-stat-label">Load</span>
-                      </div>
-                    </div>
-
-                    <button type="button" className="plan-cta-primary" onClick={() => openPlanDay(selectedDay)}>
-                      View workout
-                    </button>
-                    <button type="button" className="plan-cta-secondary" onClick={() => setShowWhy((w) => !w)}>
-                      Why this workout?
-                    </button>
                     {showWhy && (
-                      <p className="plan-why-text">
+                      <p className="gd-plan-why-text">
                         {selectedDay.category
                           ? `Picked as a ${selectedDay.category.toLowerCase()} session based on your current fitness and recovery. `
                           : ''}
@@ -302,10 +304,20 @@ export default function Plan() {
                     )}
                   </div>
                 ))}
+
+              <p className="gd-plan-note">
+                Want a different rhythm? Adjust your weekly hours or discipline mix and Gradient will regenerate your
+                plan around it.
+              </p>
+              <button type="button" className="gd-plan-fab" onClick={() => setShowPlanModal(true)}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                Edit plan
+              </button>
             </>
-          )}
-        </section>
-      )}
+          ))}
+      </div>
 
       {showPlanModal && (
         <NewPlanModal
