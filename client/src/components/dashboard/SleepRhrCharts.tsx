@@ -22,7 +22,7 @@ function SleepRhrCharts({ days }: { days: DailyHealthSummary[] }) {
               contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8 }}
               formatter={(value) => [value == null ? '—' : formatDuration(Number(value) * 60), 'Sleep']}
             />
-            <Bar dataKey="value" fill="var(--chart-hrv)" radius={[3, 3, 0, 0]} />
+            <Bar dataKey="value" fill="var(--chart-hrv)" radius={[3, 3, 0, 0]} isAnimationActive={false} />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -44,7 +44,15 @@ function SleepRhrCharts({ days }: { days: DailyHealthSummary[] }) {
               contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8 }}
               formatter={(value) => [value == null ? '—' : `${Number(value).toFixed(0)} bpm`, 'Resting HR']}
             />
-            <Line type="monotone" dataKey="value" stroke="var(--chart-run)" strokeWidth={2} dot={false} connectNulls />
+            <Line
+              type="monotone"
+              dataKey="value"
+              stroke="var(--chart-run)"
+              strokeWidth={2}
+              dot={false}
+              connectNulls
+              isAnimationActive={false}
+            />
           </LineChart>
         </ResponsiveContainer>
       </div>

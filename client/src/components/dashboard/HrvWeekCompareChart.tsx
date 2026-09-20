@@ -48,8 +48,8 @@ function HrvWeekCompareChart({ days }: { days: DailyHealthSummary[] }) {
                   name === 'thisWeek' ? 'This week' : 'Last week',
                 ]}
               />
-              <Bar dataKey="lastWeek" fill="var(--grid-line)" radius={[3, 3, 0, 0]} />
-              <Bar dataKey="thisWeek" fill="var(--accent)" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="lastWeek" fill="var(--grid-line)" radius={[3, 3, 0, 0]} isAnimationActive={false} />
+              <Bar dataKey="thisWeek" fill="var(--accent)" radius={[3, 3, 0, 0]} isAnimationActive={false} />
             </BarChart>
           </ResponsiveContainer>
         </div>

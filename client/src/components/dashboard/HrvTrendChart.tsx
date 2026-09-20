@@ -73,7 +73,14 @@ function HrvTrendChart({ days }: { days: DailyHealthSummary[] }) {
                   name === 'rollingAvg' ? '7-day avg' : 'Daily HRV',
                 ]}
               />
-              <Area type="monotone" dataKey="hrv" stroke="none" fill="var(--chart-sleep)" fillOpacity={0.08} />
+              <Area
+                type="monotone"
+                dataKey="hrv"
+                stroke="none"
+                fill="var(--chart-sleep)"
+                fillOpacity={0.08}
+                isAnimationActive={false}
+              />
               <Line
                 type="monotone"
                 dataKey="hrv"
@@ -82,6 +89,7 @@ function HrvTrendChart({ days }: { days: DailyHealthSummary[] }) {
                 dot={<HrvDot />}
                 activeDot={{ r: 5 }}
                 connectNulls
+                isAnimationActive={false}
               />
               <Line
                 type="monotone"
@@ -91,6 +99,7 @@ function HrvTrendChart({ days }: { days: DailyHealthSummary[] }) {
                 strokeDasharray="5 3"
                 dot={false}
                 connectNulls
+                isAnimationActive={false}
               />
             </ComposedChart>
           </ResponsiveContainer>

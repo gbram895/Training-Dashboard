@@ -113,8 +113,8 @@ function FitnessChart({ series, onBackfilled }: { series: FitnessPoint[]; onBack
                 <Cell key={i} fill={point.tsb >= 0 ? 'var(--chart-swim)' : 'var(--chart-heart-rate)'} fillOpacity={0.5} />
               ))}
             </Bar>
-            <Line type="monotone" dataKey="ctl" stroke="var(--chart-ride)" strokeWidth={2} dot={false} />
-            <Line type="monotone" dataKey="atl" stroke="var(--chart-hrv)" strokeWidth={2} dot={false} />
+            <Line type="monotone" dataKey="ctl" stroke="var(--chart-ride)" strokeWidth={2} dot={false} isAnimationActive={false} />
+            <Line type="monotone" dataKey="atl" stroke="var(--chart-hrv)" strokeWidth={2} dot={false} isAnimationActive={false} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>

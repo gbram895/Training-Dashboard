@@ -49,7 +49,7 @@ function DisciplineCharts({ weekly }: { weekly: DisciplineStats['weekly'] }) {
               />
               <Legend />
               {DISCIPLINES.map((d) => (
-                <Bar key={d.key} dataKey={d.key} name={d.label} stackId="discipline" fill={d.color} />
+                <Bar key={d.key} dataKey={d.key} name={d.label} stackId="discipline" fill={d.color} isAnimationActive={false} />
               ))}
             </BarChart>
           </ResponsiveContainer>
@@ -70,7 +70,7 @@ function DisciplineCharts({ weekly }: { weekly: DisciplineStats['weekly'] }) {
               />
               <Legend />
               {DISCIPLINES.map((d) => (
-                <Bar key={d.key} dataKey={d.key} name={d.label} stackId="discipline" fill={d.color} />
+                <Bar key={d.key} dataKey={d.key} name={d.label} stackId="discipline" fill={d.color} isAnimationActive={false} />
               ))}
             </BarChart>
           </ResponsiveContainer>

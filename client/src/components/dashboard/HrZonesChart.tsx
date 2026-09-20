@@ -38,7 +38,7 @@ function HrZonesChart({ weeks }: { weeks: HrZoneWeek[] }) {
               />
               <Legend formatter={(_value, entry) => ZONES.find((z) => z.color === entry.color)?.label} />
               {ZONES.map((z) => (
-                <Bar key={z.key} dataKey={z.key} stackId="zones" fill={z.color} />
+                <Bar key={z.key} dataKey={z.key} stackId="zones" fill={z.color} isAnimationActive={false} />
               ))}
             </BarChart>
           </ResponsiveContainer>
