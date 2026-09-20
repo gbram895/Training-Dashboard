@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { apiFetch, ApiError } from '../api/client';
 import type { HrZoneSettings, ThresholdSettings } from '../api/types';
 import ApiTokenCard from '../components/settings/ApiTokenCard';
+import PageHead from '../components/PageHead';
 import { useAuth } from '../context/AuthContext';
 
 function paceToString(secPerKm: number): string {
@@ -17,7 +18,7 @@ function paceToSeconds(value: string): number | null {
 }
 
 export default function Settings() {
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const [zones, setZones] = useState<HrZoneSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -87,106 +88,127 @@ export default function Settings() {
 
   return (
     <div className="page">
-      <header className="page-header">
-        <h1>Settings</h1>
-      </header>
+      <div className="gd-settings-top">
+        <PageHead title="Settings" />
 
-      <form className="card form" onSubmit={handleSubmit}>
-        <h2>Heart rate zones</h2>
-        <p className="muted">
-          Set the upper bpm boundary for zones 1–4 (zone 5 is anything above zone 4). Used to
-          break down time-in-zone for workouts synced from Apple Health.
-        </p>
-        {error && <div className="alert">{error}</div>}
-        <label>
-          Zone 1 max (bpm)
-          <input
-            type="number"
-            required
-            value={zones.hrZone1Max}
-            onChange={(e) => setZones({ ...zones, hrZone1Max: Number(e.target.value) })}
-          />
-        </label>
-        <label>
-          Zone 2 max (bpm)
-          <input
-            type="number"
-            required
-            value={zones.hrZone2Max}
-            onChange={(e) => setZones({ ...zones, hrZone2Max: Number(e.target.value) })}
-          />
-        </label>
-        <label>
-          Zone 3 max (bpm)
-          <input
-            type="number"
-            required
-            value={zones.hrZone3Max}
-            onChange={(e) => setZones({ ...zones, hrZone3Max: Number(e.target.value) })}
-          />
-        </label>
-        <label>
-          Zone 4 max (bpm)
-          <input
-            type="number"
-            required
-            value={zones.hrZone4Max}
-            onChange={(e) => setZones({ ...zones, hrZone4Max: Number(e.target.value) })}
-          />
-        </label>
-        <div className="form-actions">
-          <button type="submit" disabled={saving}>
-            {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save zones'}
-          </button>
+        <div className="gd-set-group">
+          <p className="gd-set-group-label">Account</p>
+          <div className="gd-set-list">
+            <div className="gd-set-row">
+              <span className="gd-set-label">{user?.name}</span>
+              <span className="gd-set-value">{user?.email}</span>
+            </div>
+            <button type="button" className="gd-set-row" onClick={logout}>
+              <span className="gd-set-label gd-set-danger">Log out</span>
+            </button>
+          </div>
         </div>
-        <p className="muted" style={{ fontSize: '0.85rem' }}>
-          Changing these only affects newly-synced workouts. Use "Re-sync all" on the dashboard
-          to recompute zones for existing workouts.
-        </p>
-      </form>
 
-      <form className="card form" onSubmit={handleThresholdSubmit}>
-        <h2>Training thresholds</h2>
-        <p className="muted">
-          Used to estimate intensity and training stress for .fit/.zwo files in your workout Plan library, from
-          each workout's power or pace targets.
-        </p>
-        {thresholdError && <div className="alert">{thresholdError}</div>}
-        <label>
-          FTP (watts)
-          <input
-            type="number"
-            required
-            min={1}
-            value={thresholds.ftpWatts}
-            onChange={(e) => setThresholds({ ...thresholds, ftpWatts: Number(e.target.value) })}
-          />
-        </label>
-        <label>
-          Threshold pace (min:sec per km)
-          <input
-            type="text"
-            required
-            placeholder="4:10"
-            value={paceInput}
-            onChange={(e) => setPaceInput(e.target.value)}
-          />
-        </label>
-        <div className="form-actions">
-          <button type="submit" disabled={thresholdSaving}>
-            {thresholdSaving ? 'Saving…' : thresholdSaved ? 'Saved ✓' : 'Save thresholds'}
-          </button>
+        <div className="gd-set-group">
+          <p className="gd-set-group-label">Heart rate zones</p>
+          <p className="gd-set-note">
+            Upper bpm boundary for zones 1–4 (zone 5 is anything above zone 4) — used for time-in-zone breakdowns on
+            workouts synced from Apple Health.
+          </p>
+          {error && <div className="alert">{error}</div>}
+          <form onSubmit={handleSubmit}>
+            <div className="gd-set-list">
+              <div className="gd-set-row">
+                <span className="gd-set-label">Zone 1 max</span>
+                <input
+                  type="number"
+                  required
+                  className="gd-set-input"
+                  value={zones.hrZone1Max}
+                  onChange={(e) => setZones({ ...zones, hrZone1Max: Number(e.target.value) })}
+                />
+                <span className="gd-set-unit">bpm</span>
+              </div>
+              <div className="gd-set-row">
+                <span className="gd-set-label">Zone 2 max</span>
+                <input
+                  type="number"
+                  required
+                  className="gd-set-input"
+                  value={zones.hrZone2Max}
+                  onChange={(e) => setZones({ ...zones, hrZone2Max: Number(e.target.value) })}
+                />
+                <span className="gd-set-unit">bpm</span>
+              </div>
+              <div className="gd-set-row">
+                <span className="gd-set-label">Zone 3 max</span>
+                <input
+                  type="number"
+                  required
+                  className="gd-set-input"
+                  value={zones.hrZone3Max}
+                  onChange={(e) => setZones({ ...zones, hrZone3Max: Number(e.target.value) })}
+                />
+                <span className="gd-set-unit">bpm</span>
+              </div>
+              <div className="gd-set-row">
+                <span className="gd-set-label">Zone 4 max</span>
+                <input
+                  type="number"
+                  required
+                  className="gd-set-input"
+                  value={zones.hrZone4Max}
+                  onChange={(e) => setZones({ ...zones, hrZone4Max: Number(e.target.value) })}
+                />
+                <span className="gd-set-unit">bpm</span>
+              </div>
+            </div>
+            <button type="submit" className="gd-set-save" disabled={saving}>
+              {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save zones'}
+            </button>
+          </form>
         </div>
-      </form>
 
-      <ApiTokenCard />
+        <div className="gd-set-group">
+          <p className="gd-set-group-label">Training thresholds</p>
+          <p className="gd-set-note">
+            Used to estimate intensity and training stress for .fit/.zwo files in your workout library, from each
+            workout's power or pace targets.
+          </p>
+          {thresholdError && <div className="alert">{thresholdError}</div>}
+          <form onSubmit={handleThresholdSubmit}>
+            <div className="gd-set-list">
+              <div className="gd-set-row">
+                <span className="gd-set-label">FTP</span>
+                <input
+                  type="number"
+                  required
+                  min={1}
+                  className="gd-set-input"
+                  value={thresholds.ftpWatts}
+                  onChange={(e) => setThresholds({ ...thresholds, ftpWatts: Number(e.target.value) })}
+                />
+                <span className="gd-set-unit">watts</span>
+              </div>
+              <div className="gd-set-row">
+                <span className="gd-set-label">Threshold pace</span>
+                <input
+                  type="text"
+                  required
+                  placeholder="4:10"
+                  className="gd-set-input"
+                  value={paceInput}
+                  onChange={(e) => setPaceInput(e.target.value)}
+                />
+                <span className="gd-set-unit">min/km</span>
+              </div>
+            </div>
+            <button type="submit" className="gd-set-save" disabled={thresholdSaving}>
+              {thresholdSaving ? 'Saving…' : thresholdSaved ? 'Saved ✓' : 'Save thresholds'}
+            </button>
+          </form>
+        </div>
 
-      <section className="card">
-        <h2>Account</h2>
-        <button type="button" className="secondary" onClick={logout}>
-          Log out
-        </button>
-      </section>
+        <div className="gd-set-group">
+          <p className="gd-set-group-label">Garmin & Apple Watch</p>
+          <ApiTokenCard />
+        </div>
+      </div>
     </div>
   );
 }

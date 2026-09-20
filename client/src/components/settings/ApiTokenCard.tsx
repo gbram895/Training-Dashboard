@@ -17,7 +17,7 @@ export default function ApiTokenCard() {
   }
 
   return (
-    <section className="card">
+    <section className="gd-set-card">
       <h2>API access</h2>
       <p className="muted">
         Paste this token into the Apple Watch or Garmin Connect IQ companion app's settings so it can sign in as

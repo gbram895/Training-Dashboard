@@ -1589,7 +1589,7 @@ button.gd-why-btn {
   margin: 0;
 }
 
-button.gd-plan-fab {
+button.gd-dashed-fab {
   width: 100%;
   display: flex;
   align-items: center;
@@ -1606,7 +1606,7 @@ button.gd-plan-fab {
   font-family: inherit;
 }
 
-button.gd-plan-fab:hover {
+button.gd-dashed-fab:hover {
   background: var(--accent-wash);
 }
 
@@ -2010,4 +2010,211 @@ button.gd-filter-chip.gd-on {
 
 .gd-week-label:first-of-type {
   margin-top: 2px;
+}
+
+/* Settings screen */
+
+.gd-set-group {
+  margin-bottom: 18px;
+}
+
+.gd-set-group-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-faint);
+  margin: 0 2px 8px;
+}
+
+.gd-set-note {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin: -4px 2px 10px;
+}
+
+.gd-set-list {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.gd-set-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.gd-set-row:last-child {
+  border-bottom: none;
+}
+
+button.gd-set-row {
+  width: 100%;
+  border: none;
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.gd-set-label {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.gd-set-value {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.gd-set-danger {
+  color: var(--crit);
+}
+
+.gd-set-input {
+  width: 72px;
+  text-align: right;
+  border: none;
+  background: none;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 14px;
+  color: var(--text);
+  padding: 0;
+}
+
+.gd-set-input:focus {
+  outline: none;
+}
+
+.gd-set-unit {
+  font-size: 12px;
+  color: var(--text-faint);
+  width: 42px;
+}
+
+button.gd-set-save {
+  width: 100%;
+  margin-top: 10px;
+  border: none;
+  border-radius: 14px;
+  padding: 13px;
+  background: linear-gradient(135deg, var(--accent-a), var(--accent-b));
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+button.gd-set-save:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.gd-set-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+
+.gd-set-card h2 {
+  font-size: 15px;
+  margin: 0 0 6px;
+}
+
+/* Goals screen */
+
+.gd-goal-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 16px;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.gd-gr-num {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.gd-goal-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.gd-goal-info-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.gd-g-title {
+  font-size: 14.5px;
+  font-weight: 600;
+  margin: 0 0 3px;
+}
+
+button.gd-goal-remove {
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px;
+  flex-shrink: 0;
+}
+
+.gd-g-sub {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin: 0;
+}
+
+.gd-g-target {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  margin: 4px 0 0;
+}
+
+.gd-g-notes {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin: 6px 0 0;
+  line-height: 1.4;
+  white-space: pre-line;
+}
+
+.gd-goal-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.gd-goal-progress-row label {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.gd-goal-progress-input {
+  width: 64px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 6px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12.5px;
+  background: var(--surface-sunken);
+  color: var(--text);
 }

@@ -309,7 +309,7 @@ export default function Plan() {
                 Want a different rhythm? Adjust your weekly hours or discipline mix and Gradient will regenerate your
                 plan around it.
               </p>
-              <button type="button" className="gd-plan-fab" onClick={() => setShowPlanModal(true)}>
+              <button type="button" className="gd-dashed-fab" onClick={() => setShowPlanModal(true)}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                   <path d="M12 5v14M5 12h14" />
                 </svg>
