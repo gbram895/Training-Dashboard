@@ -1964,3 +1964,50 @@ button.gd-plan-fab:hover {
   height: 1px;
   background: var(--border);
 }
+
+/* Workouts screen */
+
+.gd-filter-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.gd-filter-row::-webkit-scrollbar {
+  display: none;
+}
+
+button.gd-filter-chip {
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 7px 13px;
+  border-radius: 100px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-dim);
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+button.gd-filter-chip.gd-on {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+
+.gd-week-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-faint);
+  margin: 16px 2px 8px;
+}
+
+.gd-week-label:first-of-type {
+  margin-top: 2px;
+}

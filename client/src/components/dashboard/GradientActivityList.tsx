@@ -1,7 +1,7 @@
 import type { Workout, WorkoutType } from '../../api/types';
 import { formatDistance, formatDuration, formatRelativeDay } from '../../lib/format';
 
-const TYPE_ICON: Record<WorkoutType, string> = {
+export const TYPE_ICON: Record<WorkoutType, string> = {
   RUN: '🏃',
   RIDE: '🚴',
   SWIM: '🏊',
@@ -11,7 +11,7 @@ const TYPE_ICON: Record<WorkoutType, string> = {
   OTHER: '🏅',
 };
 
-const TYPE_LABEL: Record<WorkoutType, string> = {
+export const TYPE_LABEL: Record<WorkoutType, string> = {
   RUN: 'Run',
   RIDE: 'Ride',
   SWIM: 'Swim',
