@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import type { Workout, WorkoutType } from '../../api/types';
 import { formatDistance, formatDuration, formatRelativeDay } from '../../lib/format';
 
@@ -29,7 +30,7 @@ export default function GradientActivityList({ workouts }: { workouts: Workout[]
   return (
     <>
       {workouts.map((w) => (
-        <div key={w.id} className="gd-activity-card">
+        <Link key={w.id} to={`/workouts/${w.id}`} className="gd-activity-card">
           <div className="gd-activity-icon">{TYPE_ICON[w.type]}</div>
           <div className="gd-activity-info">
             <p className="gd-a-title">{TYPE_LABEL[w.type]}</p>
@@ -39,7 +40,7 @@ export default function GradientActivityList({ workouts }: { workouts: Workout[]
             </p>
           </div>
           {w.tss != null && <div className="gd-activity-tss mono">TSS {Math.round(w.tss)}</div>}
-        </div>
+        </Link>
       ))}
     </>
   );
