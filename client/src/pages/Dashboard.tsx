@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { lazy, Suspense, useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../api/client';
 import type {
@@ -18,34 +18,14 @@ import { computeReadiness } from '../lib/readiness';
 import { average } from '../lib/hrv';
 import { formatDateUTC } from '../lib/format';
 import PageHead from '../components/PageHead';
-import WorkoutList from '../components/WorkoutList';
 import DashboardHero from '../components/dashboard/DashboardHero';
 import GradientStatRow from '../components/dashboard/GradientStatRow';
 import WeekStrip from '../components/dashboard/WeekStrip';
 import GradientActivityList from '../components/dashboard/GradientActivityList';
-import DashboardHeader from '../components/dashboard/DashboardHeader';
-import HeaderSyncButtons from '../components/dashboard/HeaderSyncButtons';
-import DropboxSyncBar from '../components/dashboard/DropboxSyncBar';
-import StravaSyncBar from '../components/dashboard/StravaSyncBar';
-import GarminSyncBar from '../components/dashboard/GarminSyncBar';
-import SummaryBar from '../components/dashboard/SummaryBar';
-import StatTilesRow from '../components/dashboard/StatTilesRow';
-import HrvTrendChart from '../components/dashboard/HrvTrendChart';
-import HrvWeekCompareChart from '../components/dashboard/HrvWeekCompareChart';
-import SleepRhrCharts from '../components/dashboard/SleepRhrCharts';
-import HrZonesChart from '../components/dashboard/HrZonesChart';
-import DisciplineCharts from '../components/dashboard/DisciplineCharts';
-import FitnessChart from '../components/dashboard/FitnessChart';
 
-const WORKOUT_LABELS: Record<string, string> = {
-  RUN: 'Run',
-  RIDE: 'Ride',
-  STRENGTH: 'Strength',
-  SWIM: 'Swim',
-  WALK: 'Walk',
-  BADMINTON: 'Badminton',
-  OTHER: 'Other',
-};
+// Everything below the "More" divider (the pre-Gradient recharts analytics)
+// in its own chunk — see LegacyAnalytics.tsx for why.
+const LegacyAnalytics = lazy(() => import('../components/dashboard/LegacyAnalytics'));
 
 function timeOfDayGreeting(): string {
   const hour = new Date().getHours();
@@ -137,49 +117,18 @@ export default function Dashboard() {
 
           <div className="gd-legacy-divider">More</div>
 
-          <DashboardHeader
-            latestDataDate={days.length ? days[days.length - 1].date : null}
-            lastSyncedAt={syncStatus?.lastSyncedAt ?? null}
-            goals={goals}
-            syncActions={<HeaderSyncButtons status={syncStatus} onSynced={load} />}
-          />
-
-          <SummaryBar stats={disciplineStats} />
-
-          <DropboxSyncBar status={syncStatus} />
-
-          <StatTilesRow days={days} disciplineStats={disciplineStats} />
-
-          <HrvTrendChart days={days} />
-
-          <div className="dash-two-col">
-            <HrvWeekCompareChart days={days} />
-            <SleepRhrCharts days={days} />
-          </div>
-
-          <HrZonesChart weeks={hrZones} />
-
-          {fitness !== null && <FitnessChart series={fitness} onBackfilled={load} />}
-
-          <DisciplineCharts weekly={disciplineStats.weekly} />
-
-          <section className="card">
-            <div className="card-header-row">
-              <h2>Recent workouts</h2>
-              <Link to="/workouts" className="link">
-                See all
-              </Link>
-            </div>
-            {recent.length === 0 ? (
-              <p className="muted">No workouts logged yet. Add your first one!</p>
-            ) : (
-              <WorkoutList workouts={recent} labels={WORKOUT_LABELS} />
-            )}
-          </section>
-
-          <StravaSyncBar onSynced={load} />
-
-          <GarminSyncBar onSynced={load} />
+          <Suspense fallback={<p className="muted">Loading…</p>}>
+            <LegacyAnalytics
+              days={days}
+              disciplineStats={disciplineStats}
+              hrZones={hrZones}
+              goals={goals}
+              recent={recent}
+              syncStatus={syncStatus}
+              fitness={fitness}
+              onSynced={load}
+            />
+          </Suspense>
         </>
       )}
 

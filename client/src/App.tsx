@@ -1,25 +1,42 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import RequireAuth from './components/RequireAuth';
 import NavShell from './components/NavShell';
-import Login from './pages/Login';
-import Register from './pages/Register';
-import Dashboard from './pages/Dashboard';
-import Plan from './pages/Plan';
-import TodaysWorkoutDetail from './pages/TodaysWorkoutDetail';
-import Workouts from './pages/Workouts';
-import WorkoutForm from './pages/WorkoutForm';
-import WorkoutDetail from './pages/WorkoutDetail';
-import Goals from './pages/Goals';
-import Settings from './pages/Settings';
+import PageFallback from './components/PageFallback';
+
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Plan = lazy(() => import('./pages/Plan'));
+const TodaysWorkoutDetail = lazy(() => import('./pages/TodaysWorkoutDetail'));
+const Workouts = lazy(() => import('./pages/Workouts'));
+const WorkoutForm = lazy(() => import('./pages/WorkoutForm'));
+const WorkoutDetail = lazy(() => import('./pages/WorkoutDetail'));
+const Goals = lazy(() => import('./pages/Goals'));
+const Settings = lazy(() => import('./pages/Settings'));
 
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
+          <Route
+            path="/login"
+            element={
+              <Suspense fallback={<PageFallback />}>
+                <Login />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/register"
+            element={
+              <Suspense fallback={<PageFallback />}>
+                <Register />
+              </Suspense>
+            }
+          />
           <Route
             element={
               <RequireAuth>
