@@ -39,7 +39,12 @@ export default function GradientActivityList({ workouts }: { workouts: Workout[]
               {w.distanceKm ? ` · ${formatDistance(w.distanceKm)}` : ''}
             </p>
           </div>
-          {w.tss != null && <div className="gd-activity-tss mono">TSS {Math.round(w.tss)}</div>}
+          {(w.tss != null || w.rpe != null) && (
+            <div className="gd-activity-stats">
+              {w.tss != null && <span className="gd-activity-tss mono">TSS {Math.round(w.tss)}</span>}
+              {w.rpe != null && <span className="gd-activity-rpe mono">RPE {w.rpe}</span>}
+            </div>
+          )}
         </Link>
       ))}
     </>
