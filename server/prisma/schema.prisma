@@ -81,6 +81,12 @@ model Workout {
   hrZone4Min Float?
   hrZone5Min Float?
 
+  // Subjective post-workout feedback, entered by the athlete after the fact —
+  // independent of source (manual, Garmin, Strava, Apple Health all get one).
+  // rpe feeds back into the next day's plan (lib/trainingPlan.ts).
+  rpe           Int?
+  feedbackNotes String?
+
   @@index([userId, date])
 }
 
@@ -245,6 +251,12 @@ model PlannedDay {
   // setTodayAvailability.
   availableHoursOverride Float?
   generatedAt            DateTime           @default(now())
+  // Set once a day's content is rearranged by hand (calendar drag-and-drop) —
+  // the nightly/rolling regeneration in lib/trainingPlan.ts leaves a
+  // manually-overridden day's content alone rather than overwriting it, while
+  // still feeding its (persisted) training stress into the fitness projection
+  // for later days.
+  manualOverride         Boolean            @default(false)
 
   @@unique([userId, date])
 }

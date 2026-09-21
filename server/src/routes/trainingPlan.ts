@@ -2,7 +2,13 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, AuthedRequest } from '../middleware/auth.js';
-import { generatePlanWindow, getPlannedDay, getPlannedWeek, setTodayAvailability } from '../lib/trainingPlan.js';
+import {
+  generatePlanWindow,
+  getPlannedDay,
+  getPlannedWeek,
+  setTodayAvailability,
+  swapPlannedDays,
+} from '../lib/trainingPlan.js';
 import { buildFitWorkoutFile } from '../lib/garminFitWorkout.js';
 import { loadAthleteSpeedThresholds, type GarminPushSegment } from '../lib/garminWorkoutPush.js';
 
@@ -75,6 +81,33 @@ router.put('/today/availability', async (req: AuthedRequest, res) => {
   const updated = await setTodayAvailability(req.userId!, parsed.data.hours);
   if (!updated) return res.status(400).json({ error: 'Set up a training plan first' });
   res.json(updated);
+});
+
+const swapSchema = z.object({ dateA: z.string().min(1), dateB: z.string().min(1) });
+
+// Calendar drag-and-drop: swaps what's planned on two days. Both must be
+// today or later — the week view never shows past days, and rewriting
+// history that's already happened doesn't make sense.
+router.put('/swap', async (req: AuthedRequest, res) => {
+  const parsed = swapSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const dateA = utcMidnight(new Date(parsed.data.dateA));
+  const dateB = utcMidnight(new Date(parsed.data.dateB));
+  if (Number.isNaN(dateA.getTime()) || Number.isNaN(dateB.getTime())) {
+    return res.status(400).json({ error: 'Invalid date' });
+  }
+  const today = utcMidnight(new Date());
+  if (dateA < today || dateB < today) {
+    return res.status(400).json({ error: "Can't rearrange a day that's already passed" });
+  }
+  if (dateA.getTime() === dateB.getTime()) {
+    return res.status(400).json({ error: 'Pick two different days' });
+  }
+
+  const result = await swapPlannedDays(req.userId!, dateA, dateB);
+  if (!result) return res.status(404).json({ error: 'One of those days has no plan yet' });
+  res.json(await getPlannedWeek(req.userId!));
 });
 
 router.get('/today', async (req: AuthedRequest, res) => {

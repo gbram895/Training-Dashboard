@@ -254,6 +254,26 @@ router.put('/:id', async (req: AuthedRequest, res) => {
   res.json(workout);
 });
 
+const feedbackSchema = z.object({
+  rpe: z.number().int().min(1).max(10).nullable().optional(),
+  feedbackNotes: z.string().nullable().optional(),
+});
+
+// Separate from the full PUT above so this works for synced workouts too —
+// RPE/notes are the athlete's own after-the-fact feedback, not something a
+// Garmin/Strava sync should ever need to touch.
+router.patch('/:id/feedback', async (req: AuthedRequest, res) => {
+  const parsed = feedbackSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const id = asString(req.params.id);
+
+  const existing = await prisma.workout.findFirst({ where: { id, userId: req.userId } });
+  if (!existing) return res.status(404).json({ error: 'Workout not found' });
+
+  const workout = await prisma.workout.update({ where: { id }, data: parsed.data });
+  res.json(workout);
+});
+
 router.delete('/:id', async (req: AuthedRequest, res) => {
   const id = asString(req.params.id);
   const existing = await prisma.workout.findFirst({

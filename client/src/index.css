@@ -1342,6 +1342,68 @@ button.icon-button {
   margin: -0.4rem 0 0;
 }
 
+/* Rearrange-plan modal (drag-and-drop calendar) */
+
+.gd-rearrange-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gd-rearrange-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 10px 12px;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+
+.gd-rearrange-row.gd-dragging {
+  opacity: 0.5;
+}
+
+.gd-rearrange-row.gd-drop-target {
+  border-color: var(--accent-solid);
+  background: var(--accent-wash);
+}
+
+.gd-rearrange-handle {
+  color: var(--text-faint);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.gd-rearrange-info {
+  display: flex;
+  flex-direction: column;
+  width: 84px;
+  flex-shrink: 0;
+}
+
+.gd-rearrange-day {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.gd-rearrange-date {
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+.gd-rearrange-summary {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .plan-day-sliders {
   display: flex;
   flex-direction: column;
@@ -1427,6 +1489,7 @@ button.icon-button {
 }
 
 button.gd-date-card {
+  position: relative;
   flex-shrink: 0;
   width: 112px;
   background: var(--surface);
@@ -1438,6 +1501,13 @@ button.gd-date-card {
   cursor: pointer;
   font-family: inherit;
   color: inherit;
+}
+
+.gd-dc-pin {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-size: 11px;
 }
 
 .gd-dc-day {
@@ -2293,6 +2363,50 @@ button.gd-set-save {
 button.gd-set-save:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+/* Post-workout RPE (WorkoutDetail) */
+
+.gd-rpe-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+button.gd-rpe-btn {
+  flex: 1;
+  aspect-ratio: 1;
+  border: none;
+  border-radius: 10px;
+  background: var(--surface-sunken);
+  color: var(--text-dim);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button.gd-rpe-btn.gd-on {
+  background: linear-gradient(135deg, var(--accent-a), var(--accent-b));
+  color: #fff;
+}
+
+.gd-rpe-notes {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13.5px;
+  padding: 10px 12px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.gd-rpe-notes:focus {
+  outline: none;
+  border-color: var(--accent-solid);
 }
 
 .gd-set-card {

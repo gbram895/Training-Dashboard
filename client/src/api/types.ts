@@ -26,6 +26,8 @@ export interface Workout {
   tss?: number | null;
   avgPowerWatts?: number | null;
   normalizedPowerWatts?: number | null;
+  rpe?: number | null;
+  feedbackNotes?: string | null;
 }
 
 export interface FitnessPoint {
@@ -107,6 +109,7 @@ export interface PlannedDay {
   segments?: WorkoutProfileSegment[] | null;
   category?: WorkoutCategory | null;
   availableHoursOverride?: number | null;
+  manualOverride?: boolean;
 }
 
 export interface DisciplineTotals {

@@ -15,8 +15,10 @@ import BarScale from '../components/BarScale';
 import WorkoutDetailView from '../components/WorkoutDetailView';
 import WorkoutProfileChart from '../components/WorkoutProfileChart';
 import NewPlanModal from '../components/NewPlanModal';
+import RearrangePlanModal from '../components/RearrangePlanModal';
 import PageHead from '../components/PageHead';
 import { useCachedState } from '../lib/pageCache';
+import { weekdayLabel } from '../lib/planDates';
 
 const CATEGORY_INFO: { key: WorkoutCategory | 'OTHER'; label: string; icon: string; description: string }[] = [
   { key: 'VO2MAX', label: 'VO2Max', icon: '💨', description: 'Short, maximal efforts that push your aerobic ceiling.' },
@@ -35,10 +37,6 @@ const CATEGORY_INFO: { key: WorkoutCategory | 'OTHER'; label: string; icon: stri
   },
   { key: 'OTHER', label: 'Other', icon: '📋', description: "Workouts without enough data to classify." },
 ];
-
-function todayKey(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 const CONFIG_HOUR_KEYS = [
   'sundayHours',
@@ -64,18 +62,6 @@ function formatHours(h: number): string {
   if (hours === 0) return `${min}m`;
   if (min === 0) return `${hours}h`;
   return `${hours}h ${min}m`;
-}
-
-function weekdayLabel(dateStr: string): { name: string; date: string; isToday: boolean } {
-  // The API sends a full ISO timestamp (Prisma's DateTime serialized as JSON),
-  // not a bare YYYY-MM-DD — normalize before using it as a calendar day.
-  const dayKey = dateStr.slice(0, 10);
-  const d = new Date(`${dayKey}T00:00:00Z`);
-  return {
-    name: d.toLocaleDateString(undefined, { weekday: 'long', timeZone: 'UTC' }),
-    date: d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' }),
-    isToday: dayKey === todayKey(),
-  };
 }
 
 function plannedDayToLibraryWorkout(day: PlannedDay): LibraryWorkout {
@@ -111,6 +97,7 @@ export default function Plan() {
   const [showWhy, setShowWhy] = useState(false);
   const [availability, setAvailability] = useState(0);
   const [savingAvailability, setSavingAvailability] = useState(false);
+  const [showRearrangeModal, setShowRearrangeModal] = useState(false);
 
   function load() {
     apiFetch<LibraryWorkout[]>('/workout-library')
@@ -261,6 +248,11 @@ export default function Plan() {
                       className={`gd-date-card${i === selectedDayIndex ? ' gd-selected' : ''}`}
                       onClick={() => selectDayTab(i)}
                     >
+                      {day.manualOverride && (
+                        <span className="gd-dc-pin" title="Manually rearranged">
+                          📌
+                        </span>
+                      )}
                       <span className="gd-dc-day">{name}</span>
                       <p className="gd-dc-date">{isToday ? 'Today' : date}</p>
                       <div className="gd-dc-under" />
@@ -268,6 +260,10 @@ export default function Plan() {
                   );
                 })}
               </div>
+
+              <button type="button" className="gd-why-btn" onClick={() => setShowRearrangeModal(true)}>
+                Rearrange days
+              </button>
 
               <div className="gd-availability-card">
                 <div className="gd-availability-row">
@@ -396,6 +392,14 @@ export default function Plan() {
             setShowPlanModal(false);
             loadPlan();
           }}
+        />
+      )}
+
+      {showRearrangeModal && (
+        <RearrangePlanModal
+          week={planWeek}
+          onClose={() => setShowRearrangeModal(false)}
+          onSwapped={(week) => setPlanWeek(week)}
         />
       )}
 

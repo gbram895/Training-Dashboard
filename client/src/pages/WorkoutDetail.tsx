@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { apiFetch } from '../api/client';
+import { apiFetch, ApiError } from '../api/client';
 import type { Workout, WorkoutSample } from '../api/types';
 import { formatDateUTC, formatDistance, formatDuration, formatPace, formatSpeed } from '../lib/format';
 import WorkoutSampleChart from '../components/WorkoutSampleChart';
@@ -36,15 +36,41 @@ export default function WorkoutDetail() {
   const [samples, setSamples] = useState<WorkoutSample[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [rpe, setRpe] = useState<number | null>(null);
+  const [feedbackNotes, setFeedbackNotes] = useState('');
+  const [feedbackSaving, setFeedbackSaving] = useState(false);
+  const [feedbackSaved, setFeedbackSaved] = useState(false);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
+
   useEffect(() => {
     Promise.all([apiFetch<Workout>(`/workouts/${id}`), apiFetch<WorkoutSample[]>(`/workouts/${id}/samples`)]).then(
       ([w, s]) => {
         setWorkout(w);
         setSamples(s);
+        setRpe(w.rpe ?? null);
+        setFeedbackNotes(w.feedbackNotes ?? '');
         setLoading(false);
       },
     );
   }, [id]);
+
+  async function saveFeedback() {
+    setFeedbackSaving(true);
+    setFeedbackError(null);
+    try {
+      const updated = await apiFetch<Workout>(`/workouts/${id}/feedback`, {
+        method: 'PATCH',
+        body: JSON.stringify({ rpe, feedbackNotes: feedbackNotes.trim() || null }),
+      });
+      setWorkout(updated);
+      setFeedbackSaved(true);
+      setTimeout(() => setFeedbackSaved(false), 3000);
+    } catch (err) {
+      setFeedbackError(err instanceof ApiError ? err.message : 'Failed to save');
+    } finally {
+      setFeedbackSaving(false);
+    }
+  }
 
   if (loading || !workout) {
     return (
@@ -155,6 +181,34 @@ export default function WorkoutDetail() {
         </div>
 
         {workout.notes && workout.type !== 'OTHER' && <p className="muted">{workout.notes}</p>}
+
+        <div className="gd-set-group">
+          <p className="gd-set-group-label">How did it feel?</p>
+          <div className="gd-rpe-row">
+            {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+              <button
+                key={n}
+                type="button"
+                className={`gd-rpe-btn${rpe === n ? ' gd-on' : ''}`}
+                onClick={() => setRpe(rpe === n ? null : n)}
+                aria-pressed={rpe === n}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+          <textarea
+            className="gd-rpe-notes"
+            placeholder="Notes — how it went, how you felt, anything worth remembering (optional)"
+            value={feedbackNotes}
+            onChange={(e) => setFeedbackNotes(e.target.value)}
+            rows={3}
+          />
+          {feedbackError && <p className="gd-set-note gd-set-danger">{feedbackError}</p>}
+          <button type="button" className="gd-set-save" onClick={saveFeedback} disabled={feedbackSaving}>
+            {feedbackSaving ? 'Saving…' : feedbackSaved ? 'Saved ✓' : 'Save feedback'}
+          </button>
+        </div>
 
         {showGraphs && !hasAnySampleData && (
           <p className="muted">No detailed heart-rate, speed, or power data available for this workout.</p>

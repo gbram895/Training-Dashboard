@@ -63,6 +63,8 @@ const FORCED_REST_TSB = -30;
 interface ReadinessModifiers {
   hrvRatio: number | null; // most recent HRV vs its own 7-day rolling average
   sleepHours: number | null; // most recent night's sleep
+  lastRpe: number | null; // RPE (1-10) logged against the most recent workout, if any
+  missedHardSessionYesterday: boolean; // yesterday was planned THRESHOLD/VO2MAX but never logged
 }
 
 // HRV/sleep can't be predicted for future days, so every day in a generated
@@ -85,8 +87,48 @@ async function getReadinessModifiers(userId: string): Promise<ReadinessModifiers
 
   const lastSleep = days.length ? (days[days.length - 1].sleepHours ?? null) : null;
 
-  return { hrvRatio, sleepHours: lastSleep };
+  // Bounded to the last 2 days — a brutal session should ease off tomorrow,
+  // not silently suppress intensity for a week until another RPE is logged.
+  const rpeSince = new Date();
+  rpeSince.setUTCDate(rpeSince.getUTCDate() - 2);
+  const lastLoggedWorkout = await prisma.workout.findFirst({
+    where: { userId, rpe: { not: null }, date: { gte: rpeSince } },
+    orderBy: { date: 'desc' },
+    select: { rpe: true },
+  });
+
+  // If yesterday's plan called for a key (threshold/VO2max) session and
+  // nothing of that discipline was actually logged, don't stack another hard
+  // day on top of a broken week rather than assume the fitness curve alone
+  // (which, having seen no load, may read as "fresher than expected") has
+  // the full picture.
+  const yesterday = utcMidnight(new Date());
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  const today = utcMidnight(new Date());
+  const yesterdayPlan = await prisma.plannedDay.findUnique({
+    where: { userId_date: { userId, date: yesterday } },
+    select: { isRestDay: true, category: true, discipline: true },
+  });
+  let missedHardSessionYesterday = false;
+  if (yesterdayPlan && !yesterdayPlan.isRestDay && (yesterdayPlan.category === 'THRESHOLD' || yesterdayPlan.category === 'VO2MAX')) {
+    const logged = await prisma.workout.findFirst({
+      where: {
+        userId,
+        type: yesterdayPlan.discipline === 'RUN' ? 'RUN' : 'RIDE',
+        date: { gte: yesterday, lt: today },
+      },
+      select: { id: true },
+    });
+    missedHardSessionYesterday = !logged;
+  }
+
+  return { hrvRatio, sleepHours: lastSleep, lastRpe: lastLoggedWorkout?.rpe ?? null, missedHardSessionYesterday };
 }
+
+// A brutally hard session (self-reported RPE 9-10) is a stronger, more
+// immediate fatigue signal than HRV/sleep can pick up same-day — ease off
+// the very next session regardless of what the fitness curve alone says.
+const HIGH_RPE_THRESHOLD = 9;
 
 function decideCategory(tsb: number | null, readiness: ReadinessModifiers): WorkoutCategory {
   let category = tsb != null ? categoryFromTsb(tsb) : 'TEMPO';
@@ -94,6 +136,8 @@ function decideCategory(tsb: number | null, readiness: ReadinessModifiers): Work
   let downgradeSteps = 0;
   if (readiness.hrvRatio != null && readiness.hrvRatio < 0.8) downgradeSteps += 1;
   if (readiness.sleepHours != null && readiness.sleepHours < 6) downgradeSteps += 1;
+  if (readiness.lastRpe != null && readiness.lastRpe >= HIGH_RPE_THRESHOLD) downgradeSteps += 1;
+  if (readiness.missedHardSessionYesterday) downgradeSteps += 1;
 
   if (downgradeSteps > 0) category = downgrade(category, downgradeSteps);
   return category;
@@ -174,6 +218,15 @@ interface GeneratedDay {
   restReason?: string;
   workout?: ParsedWorkoutFile;
   category?: WorkoutCategory;
+  // Set for a day the athlete has manually rearranged (calendar drag-and-drop)
+  // — its content is left alone rather than upserted, see generatePlanWindow.
+  skipUpsert?: boolean;
+}
+
+interface ManualOverrideRow {
+  isRestDay: boolean;
+  trainingStress: number | null;
+  sourcePath: string | null;
 }
 
 const CTL_DECAY = 1 - Math.exp(-1 / 42);
@@ -234,6 +287,7 @@ async function runProjection(
   config: PlanConfigHours & { includeRunning: boolean; runDays: number[] },
   library: ParsedWorkoutFile[],
   todayOverrideHours?: number | null,
+  manualOverrides?: Map<number, ManualOverrideRow>,
 ): Promise<GeneratedDay[]> {
   const fitness = await computeFitnessSeries(userId);
   let ctl = fitness.length ? fitness[fitness.length - 1].ctl : 0;
@@ -246,17 +300,25 @@ async function runProjection(
   for (let i = 0; i < dates.length; i++) {
     const date = dates[i];
     const tsb = ctl - atl;
-    const targetHours = i === 0 && todayOverrideHours != null ? todayOverrideHours : config[dayKeyFor(date)];
+    const override = manualOverrides?.get(date.getTime());
 
-    const generated = decideDay(date, targetHours, tsb, config, library, readiness, recentPicks);
+    // A manually rearranged day (calendar drag-and-drop) keeps its own
+    // content — still fed into the fitness projection below, exactly like a
+    // regular planned day, just never regenerated.
+    const generated: GeneratedDay = override
+      ? { date, isRestDay: override.isRestDay, skipUpsert: true }
+      : decideDay(date, i === 0 && todayOverrideHours != null ? todayOverrideHours : config[dayKeyFor(date)], tsb, config, library, readiness, recentPicks);
     results.push(generated);
 
-    const dayTss = generated.isRestDay ? 0 : estimatedTssForBucket(generated.workout?.trainingStress);
+    const dayTss = generated.isRestDay
+      ? 0
+      : estimatedTssForBucket(override ? override.trainingStress : generated.workout?.trainingStress);
     ctl = ctl + (dayTss - ctl) * CTL_DECAY;
     atl = atl + (dayTss - atl) * ATL_DECAY;
 
-    if (!generated.isRestDay && generated.workout) {
-      recentPicks.push(generated.workout.path);
+    const recentPickPath = override ? (override.isRestDay ? null : override.sourcePath) : generated.workout?.path;
+    if (recentPickPath) {
+      recentPicks.push(recentPickPath);
       if (recentPicks.length > RECENT_PICKS_MEMORY) recentPicks.shift();
     }
   }
@@ -331,11 +393,66 @@ export async function generatePlanWindow(userId: string, days = ROLLING_WINDOW_D
     dates.push(date);
   }
 
-  const generatedDays = await runProjection(userId, dates, config, library, todayOverrideHours);
+  const existingRows = await prisma.plannedDay.findMany({
+    where: { userId, date: { in: dates }, manualOverride: true },
+    select: { date: true, isRestDay: true, trainingStress: true, sourcePath: true },
+  });
+  const manualOverrides = new Map<number, ManualOverrideRow>(
+    existingRows.map((row) => [
+      row.date.getTime(),
+      { isRestDay: row.isRestDay, trainingStress: row.trainingStress, sourcePath: row.sourcePath },
+    ]),
+  );
+
+  const generatedDays = await runProjection(userId, dates, config, library, todayOverrideHours, manualOverrides);
   for (const generated of generatedDays) {
+    if (generated.skipUpsert) continue;
     const isToday = generated.date.getTime() === today.getTime();
     await upsertPlannedDay(userId, generated, isToday && todayOverrideHours != null ? todayOverrideHours : undefined);
   }
+}
+
+/**
+ * Swaps the full content (workout/rest, everything but the date itself and
+ * its own availability override) of two PlannedDay rows — the calendar
+ * drag-and-drop primitive: dragging a workout onto another day, rest or not,
+ * naturally becomes "move this workout there" for both sides at once. Both
+ * days are marked manualOverride so the nightly regeneration leaves them as
+ * the athlete placed them.
+ */
+export async function swapPlannedDays(userId: string, dateA: Date, dateB: Date) {
+  const [a, b] = await Promise.all([
+    prisma.plannedDay.findUnique({ where: { userId_date: { userId, date: utcMidnight(dateA) } } }),
+    prisma.plannedDay.findUnique({ where: { userId_date: { userId, date: utcMidnight(dateB) } } }),
+  ]);
+  if (!a || !b) return null;
+
+  const contentOf = (row: NonNullable<typeof a>) => ({
+    isRestDay: row.isRestDay,
+    restReason: row.restReason,
+    sourcePath: row.sourcePath,
+    name: row.name,
+    discipline: row.discipline,
+    durationMin: row.durationMin,
+    intensity: row.intensity,
+    trainingStress: row.trainingStress,
+    profile: row.profile,
+    segments: row.segments ?? Prisma.DbNull,
+    category: row.category,
+  });
+
+  const [updatedA, updatedB] = await Promise.all([
+    prisma.plannedDay.update({
+      where: { id: a.id },
+      data: { ...contentOf(b), manualOverride: true, generatedAt: new Date() },
+    }),
+    prisma.plannedDay.update({
+      where: { id: b.id },
+      data: { ...contentOf(a), manualOverride: true, generatedAt: new Date() },
+    }),
+  ]);
+
+  return { a: updatedA, b: updatedB };
 }
 
 /**
