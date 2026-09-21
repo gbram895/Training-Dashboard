@@ -11,6 +11,7 @@ import {
   setDayAvailability,
   swapPlannedDays,
 } from '../lib/trainingPlan.js';
+import { buildWeeklyReview } from '../lib/weeklyReview.js';
 import { buildFitWorkoutFile } from '../lib/garminFitWorkout.js';
 import { loadAthleteSpeedThresholds, type GarminPushSegment } from '../lib/garminWorkoutPush.js';
 
@@ -159,6 +160,73 @@ router.get('/today', async (req: AuthedRequest, res) => {
   res.setHeader('Content-Type', 'application/octet-stream');
   res.setHeader('Content-Disposition', 'attachment; filename="today.fit"');
   res.send(Buffer.from(bytes));
+});
+
+// --- Training target -------------------------------------------------------
+// The event or date the athlete is building toward. With no target set, plan
+// generation stays exactly as it was; with one, each day's hours are scaled by
+// a periodised ramp. See lib/periodization.ts.
+
+router.get('/target', async (req: AuthedRequest, res) => {
+  res.json(await prisma.trainingTarget.findUnique({ where: { userId: req.userId } }));
+});
+
+const targetSchema = z.object({
+  name: z.string().min(1).max(80),
+  date: z.string(),
+  peakCtl: z.number().positive().max(200).nullish(),
+  // Above about 7 CTL points a week is where people get hurt rather than fit,
+  // so the ceiling is enforced here rather than left to the UI.
+  rampPerWeek: z.number().min(1).max(7).optional(),
+  recoveryEveryNWeeks: z.number().int().min(2).max(8).optional(),
+  taperDays: z.number().int().min(0).max(28).optional(),
+});
+
+router.put('/target', async (req: AuthedRequest, res) => {
+  const parsed = targetSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const date = utcMidnight(new Date(parsed.data.date));
+  if (Number.isNaN(date.getTime())) return res.status(400).json({ error: 'Invalid date' });
+  if (date < utcMidnight(new Date())) return res.status(400).json({ error: 'Target date is in the past' });
+
+  const { name, peakCtl, rampPerWeek, recoveryEveryNWeeks, taperDays } = parsed.data;
+  const fields = {
+    name,
+    date,
+    peakCtl: peakCtl ?? null,
+    ...(rampPerWeek != null ? { rampPerWeek } : {}),
+    ...(recoveryEveryNWeeks != null ? { recoveryEveryNWeeks } : {}),
+    ...(taperDays != null ? { taperDays } : {}),
+  };
+
+  const target = await prisma.trainingTarget.upsert({
+    where: { userId: req.userId },
+    // startedOn anchors the build/recovery cycle, so it's set once when the
+    // target is created and left alone on later edits — otherwise changing the
+    // event name would restart the athlete's week count.
+    create: { userId: req.userId!, startedOn: utcMidnight(new Date()), ...fields },
+    update: fields,
+  });
+
+  await generatePlanWindow(req.userId!);
+  res.json(target);
+});
+
+router.delete('/target', async (req: AuthedRequest, res) => {
+  await prisma.trainingTarget.deleteMany({ where: { userId: req.userId } });
+  await generatePlanWindow(req.userId!);
+  res.status(204).send();
+});
+
+// --- Weekly review ---------------------------------------------------------
+
+router.get('/review', async (req: AuthedRequest, res) => {
+  // Defaults to the last completed week — a week still in progress can't be
+  // judged against its own plan.
+  const raw = Number(req.query.weeksAgo ?? 1);
+  const weeksAgo = Number.isFinite(raw) ? Math.min(52, Math.max(0, Math.trunc(raw))) : 1;
+  res.json(await buildWeeklyReview(req.userId!, weeksAgo));
 });
 
 export default router;

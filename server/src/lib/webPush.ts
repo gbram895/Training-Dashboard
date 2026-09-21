@@ -1,6 +1,7 @@
 import webpush from 'web-push';
 import { prisma } from './prisma.js';
 import { getPlannedDay } from './trainingPlan.js';
+import { buildWeeklyReview } from './weeklyReview.js';
 
 export function pushConfigured(): boolean {
   return !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
@@ -91,9 +92,22 @@ export async function sendWeeklyAvailabilityCheckin(): Promise<void> {
     try {
       const hasPlan = await prisma.trainingPlanConfig.findUnique({ where: { userId }, select: { userId: true } });
       if (!hasPlan) continue;
+
+      // The cron runs on Sunday evening, so the week just ending is the
+      // current one (weeksAgo 0) — lead with how it went, then ask for next
+      // week, rather than asking for availability with no context.
+      const review = await buildWeeklyReview(userId, 0).catch(() => null);
+      const summary = review && review.plannedSessions > 0
+        ? `${review.completedSessions}/${review.plannedSessions} sessions, ${review.actualHours}h${
+            review.fitness.ctlDelta != null
+              ? `, fitness ${review.fitness.ctlDelta >= 0 ? '+' : ''}${review.fitness.ctlDelta}`
+              : ''
+          }. `
+        : '';
+
       await sendToUser(userId, {
         title: 'Gradient',
-        body: 'Set your availability for next week',
+        body: `${summary}Set your availability for next week`,
         url: '/plan?checkin=1',
       });
     } catch (err) {
