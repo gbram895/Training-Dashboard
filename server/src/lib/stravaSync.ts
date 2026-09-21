@@ -166,16 +166,20 @@ export async function runStravaSyncForUser(userId: string, options: { force?: bo
       page += 1;
     }
 
+    const now = new Date();
     await prisma.stravaSyncConfig.update({
       where: { userId },
-      data: { lastSyncedAt: new Date(), lastSyncError: summariseFailures(failures) },
+      data: { lastSyncedAt: now, lastAttemptedAt: now, lastSyncError: summariseFailures(failures) },
     });
 
     totals.activitiesDegraded = failures.length;
     return totals;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    await prisma.stravaSyncConfig.update({ where: { userId }, data: { lastSyncError: message } });
+    await prisma.stravaSyncConfig.update({
+      where: { userId },
+      data: { lastAttemptedAt: new Date(), lastSyncError: message },
+    });
     throw err;
   }
 }

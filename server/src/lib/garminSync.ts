@@ -177,12 +177,14 @@ export async function runGarminSyncForUser(userId: string, options: { force?: bo
     }
 
     const refreshed = client.exportToken();
+    const now = new Date();
     await prisma.garminSyncConfig.update({
       where: { userId },
       data: {
         oauth1Token: JSON.stringify(refreshed.oauth1),
         oauth2Token: JSON.stringify(refreshed.oauth2),
-        lastSyncedAt: new Date(),
+        lastSyncedAt: now,
+        lastAttemptedAt: now,
         lastSyncError: summariseFailures(failures),
       },
     });
@@ -191,7 +193,10 @@ export async function runGarminSyncForUser(userId: string, options: { force?: bo
     return totals;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    await prisma.garminSyncConfig.update({ where: { userId }, data: { lastSyncError: message } });
+    await prisma.garminSyncConfig.update({
+      where: { userId },
+      data: { lastAttemptedAt: new Date(), lastSyncError: message },
+    });
     throw err;
   }
 }

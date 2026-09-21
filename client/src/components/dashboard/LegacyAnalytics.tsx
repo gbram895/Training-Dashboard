@@ -1,5 +1,15 @@
 import { Link } from 'react-router-dom';
-import type { DailyHealthSummary, DisciplineStats, DropboxSyncStatus, FitnessPoint, Goal, HrZoneWeek, Workout } from '../../api/types';
+import type {
+  DailyHealthSummary,
+  DisciplineStats,
+  DropboxSyncStatus,
+  FitnessPoint,
+  GarminSyncStatus,
+  Goal,
+  HrZoneWeek,
+  StravaSyncStatus,
+  Workout,
+} from '../../api/types';
 import WorkoutList from '../WorkoutList';
 import DashboardHeader from './DashboardHeader';
 import HeaderSyncButtons from './HeaderSyncButtons';
@@ -38,6 +48,8 @@ export default function LegacyAnalytics({
   goals,
   recent,
   syncStatus,
+  stravaStatus,
+  garminStatus,
   fitness,
   onSynced,
 }: {
@@ -47,6 +59,8 @@ export default function LegacyAnalytics({
   goals: Goal[];
   recent: Workout[];
   syncStatus: DropboxSyncStatus | null;
+  stravaStatus: StravaSyncStatus | null;
+  garminStatus: GarminSyncStatus | null;
   fitness: FitnessPoint[] | null;
   onSynced: () => void;
 }) {
@@ -61,7 +75,7 @@ export default function LegacyAnalytics({
 
       <SummaryBar stats={disciplineStats} />
 
-      <DropboxSyncBar status={syncStatus} />
+      <DropboxSyncBar status={syncStatus} onChanged={onSynced} />
 
       <StatTilesRow days={days} disciplineStats={disciplineStats} />
 
@@ -92,9 +106,9 @@ export default function LegacyAnalytics({
         )}
       </section>
 
-      <StravaSyncBar onSynced={onSynced} />
+      <StravaSyncBar status={stravaStatus} onChanged={onSynced} />
 
-      <GarminSyncBar onSynced={onSynced} />
+      <GarminSyncBar status={garminStatus} onChanged={onSynced} />
     </>
   );
 }

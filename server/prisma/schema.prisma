@@ -144,31 +144,34 @@ model HealthSyncConfig {
   dropboxRefreshToken String
   folderPaths         String[]  @default(["/Apps/Health Auto Export/Health Auto Export/Apple health", "/Apps/Health Auto Export/Health Auto Export/Apple Health Wourkouts"])
   lastSyncedAt        DateTime?
+  lastAttemptedAt     DateTime?
   lastSyncError       String?
   createdAt           DateTime  @default(now())
 }
 
 model GarminSyncConfig {
-  id            String    @id @default(uuid())
-  userId        String    @unique
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  oauth1Token   String
-  oauth2Token   String
-  lastSyncedAt  DateTime?
-  lastSyncError String?
-  createdAt     DateTime  @default(now())
+  id              String    @id @default(uuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  oauth1Token     String
+  oauth2Token     String
+  lastSyncedAt    DateTime?
+  lastAttemptedAt DateTime?
+  lastSyncError   String?
+  createdAt       DateTime  @default(now())
 }
 
 model StravaSyncConfig {
-  id            String    @id @default(uuid())
-  userId        String    @unique
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  accessToken   String
-  refreshToken  String
-  expiresAt     DateTime
-  lastSyncedAt  DateTime?
-  lastSyncError String?
-  createdAt     DateTime  @default(now())
+  id              String    @id @default(uuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken     String
+  refreshToken    String
+  expiresAt       DateTime
+  lastSyncedAt    DateTime?
+  lastAttemptedAt DateTime?
+  lastSyncError   String?
+  createdAt       DateTime  @default(now())
 }
 
 model SyncedDropboxFile {

@@ -76,9 +76,12 @@ export async function runSyncForUser(userId: string, options: { force?: boolean 
       }
     }
 
+    // Same instant in both columns marks the run as having succeeded — see
+    // deriveSyncState in the client for how the two are read together.
+    const now = new Date();
     await prisma.healthSyncConfig.update({
       where: { userId },
-      data: { lastSyncedAt: new Date(), lastSyncError: summariseFailures(failures) },
+      data: { lastSyncedAt: now, lastAttemptedAt: now, lastSyncError: summariseFailures(failures) },
     });
 
     return totals;
@@ -86,7 +89,7 @@ export async function runSyncForUser(userId: string, options: { force?: boolean 
     const message = err instanceof Error ? err.message : String(err);
     await prisma.healthSyncConfig.update({
       where: { userId },
-      data: { lastSyncError: message },
+      data: { lastAttemptedAt: new Date(), lastSyncError: message },
     });
     throw err;
   }

@@ -162,6 +162,7 @@ router.get('/dropbox/status', requireAuth, async (req: AuthedRequest, res) => {
     configured: dropboxConfigured(),
     connected: Boolean(config),
     lastSyncedAt: config?.lastSyncedAt ?? null,
+    lastAttemptedAt: config?.lastAttemptedAt ?? null,
     lastSyncError: config?.lastSyncError ?? null,
   });
 });
@@ -233,6 +234,7 @@ router.get('/garmin/status', requireAuth, async (req: AuthedRequest, res) => {
   res.json({
     connected: Boolean(config),
     lastSyncedAt: config?.lastSyncedAt ?? null,
+    lastAttemptedAt: config?.lastAttemptedAt ?? null,
     lastSyncError: config?.lastSyncError ?? null,
   });
 });
@@ -329,6 +331,7 @@ router.get('/strava/status', requireAuth, async (req: AuthedRequest, res) => {
     configured: stravaConfigured(),
     connected: Boolean(config),
     lastSyncedAt: config?.lastSyncedAt ?? null,
+    lastAttemptedAt: config?.lastAttemptedAt ?? null,
     lastSyncError: config?.lastSyncError ?? null,
   });
 });

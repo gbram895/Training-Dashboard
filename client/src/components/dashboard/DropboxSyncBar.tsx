@@ -1,7 +1,35 @@
-import { getToken } from '../../api/client';
-import type { DropboxSyncStatus } from '../../api/types';
+import { useState } from 'react';
+import { apiFetch, getToken } from '../../api/client';
+import type { DropboxSyncStatus, SyncNowResult } from '../../api/types';
+import { describeSyncResult } from '../../lib/syncResult';
+import SyncStatusBar from './SyncStatusBar';
 
-export default function DropboxSyncBar({ status }: { status: DropboxSyncStatus | null }) {
+export default function DropboxSyncBar({
+  status,
+  onChanged,
+}: {
+  status: DropboxSyncStatus | null;
+  onChanged: () => void;
+}) {
+  const [syncing, setSyncing] = useState(false);
+  const [syncNote, setSyncNote] = useState<string | null>(null);
+
+  async function syncNow() {
+    setSyncing(true);
+    setSyncNote(null);
+    try {
+      const result = await apiFetch<SyncNowResult>('/health/dropbox/sync-now', { method: 'POST' });
+      setSyncNote(describeSyncResult(result));
+      setTimeout(() => setSyncNote(null), 8000);
+    } catch {
+      // Swallowed on purpose: the run recorded why it failed, and the refetch
+      // below brings that back as the bar's own failure state.
+    } finally {
+      setSyncing(false);
+      onChanged();
+    }
+  }
+
   if (status === null) return null;
 
   if (!status.connected) {
@@ -17,13 +45,6 @@ export default function DropboxSyncBar({ status }: { status: DropboxSyncStatus |
   }
 
   return (
-    <section className="card sync-bar">
-      <p className="muted">
-        {status.lastSyncedAt
-          ? `Last synced ${new Date(status.lastSyncedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}`
-          : 'Waiting for first sync…'}
-        {status.lastSyncError ? ` — ${status.lastSyncError}` : ''}
-      </p>
-    </section>
+    <SyncStatusBar name="Apple Health" status={status} note={syncNote} syncing={syncing} onSyncNow={syncNow} />
   );
 }
