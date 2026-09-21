@@ -22,7 +22,7 @@ export default function DropboxSyncBar({ status }: { status: DropboxSyncStatus |
         {status.lastSyncedAt
           ? `Last synced ${new Date(status.lastSyncedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}`
           : 'Waiting for first sync…'}
-        {status.lastSyncError ? ` — last attempt failed: ${status.lastSyncError}` : ''}
+        {status.lastSyncError ? ` — ${status.lastSyncError}` : ''}
       </p>
     </section>
   );

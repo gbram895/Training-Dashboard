@@ -22,6 +22,10 @@ import { pushConfigured, sendDailyWorkoutReminders } from './lib/webPush.js';
 
 const app = express();
 const PORT = process.env.PORT ?? 4000;
+// Every sync cron below is scheduled in local time rather than the
+// container's UTC, so an hour-of-day schedule means what it says on the
+// watch that generated the data, and stays put across the CET/CEST switch.
+const SYNC_TZ = process.env.SYNC_TZ ?? 'Europe/Brussels';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 app.set('trust proxy', 1);
@@ -65,51 +69,67 @@ app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
 
   if (dropboxConfigured()) {
-    const schedule = process.env.SYNC_CRON ?? '0 */6 * * *';
-    cron.schedule(schedule, () => {
-      runAllSyncs().catch((err) => console.error('[health-sync] run failed:', err));
-    });
-    console.log(`[health-sync] scheduled with cron "${schedule}"`);
+    const schedule = process.env.SYNC_CRON ?? '*/30 * * * *';
+    cron.schedule(
+      schedule,
+      () => {
+        runAllSyncs().catch((err) => console.error('[health-sync] run failed:', err));
+      },
+      { timezone: SYNC_TZ },
+    );
+    console.log(`[health-sync] scheduled with cron "${schedule}" (${SYNC_TZ})`);
     setTimeout(() => {
       runAllSyncs().catch((err) => console.error('[health-sync] initial run failed:', err));
     }, 15_000);
   }
 
-  const garminSchedule = process.env.GARMIN_SYNC_CRON ?? '0 */6 * * *';
-  cron.schedule(garminSchedule, () => {
-    runAllGarminSyncs().catch((err) => console.error('[garmin-sync] run failed:', err));
-  });
-  console.log(`[garmin-sync] scheduled with cron "${garminSchedule}"`);
+  const garminSchedule = process.env.GARMIN_SYNC_CRON ?? '*/30 * * * *';
+  cron.schedule(
+    garminSchedule,
+    () => {
+      runAllGarminSyncs().catch((err) => console.error('[garmin-sync] run failed:', err));
+    },
+    { timezone: SYNC_TZ },
+  );
+  console.log(`[garmin-sync] scheduled with cron "${garminSchedule}" (${SYNC_TZ})`);
   setTimeout(() => {
     runAllGarminSyncs().catch((err) => console.error('[garmin-sync] initial run failed:', err));
   }, 20_000);
 
   if (stravaConfigured()) {
     const stravaSchedule = process.env.STRAVA_SYNC_CRON ?? '*/15 * * * *';
-    cron.schedule(stravaSchedule, () => {
-      runAllStravaSyncs().catch((err) => console.error('[strava-sync] run failed:', err));
-    });
-    console.log(`[strava-sync] scheduled with cron "${stravaSchedule}"`);
+    cron.schedule(
+      stravaSchedule,
+      () => {
+        runAllStravaSyncs().catch((err) => console.error('[strava-sync] run failed:', err));
+      },
+      { timezone: SYNC_TZ },
+    );
+    console.log(`[strava-sync] scheduled with cron "${stravaSchedule}" (${SYNC_TZ})`);
     setTimeout(() => {
       runAllStravaSyncs().catch((err) => console.error('[strava-sync] initial run failed:', err));
     }, 25_000);
   }
 
   const planSchedule = process.env.TRAINING_PLAN_CRON ?? '0 4 * * *';
-  cron.schedule(planSchedule, () => {
-    regenerateAllPlans().catch((err) => console.error('[training-plan] run failed:', err));
-  });
-  console.log(`[training-plan] scheduled with cron "${planSchedule}"`);
+  cron.schedule(
+    planSchedule,
+    () => {
+      regenerateAllPlans().catch((err) => console.error('[training-plan] run failed:', err));
+    },
+    { timezone: SYNC_TZ },
+  );
+  console.log(`[training-plan] scheduled with cron "${planSchedule}" (${SYNC_TZ})`);
   setTimeout(() => {
     regenerateAllPlans().catch((err) => console.error('[training-plan] initial run failed:', err));
   }, 30_000);
 
   if (pushConfigured()) {
     // After the training-plan cron above so the day's plan is already fresh.
-    // Given as local time (default Brussels 8am) rather than UTC, so it stays
-    // correct across the CET/CEST daylight-saving switch.
+    // Given as local time (SYNC_TZ, 8am) rather than UTC, so it stays correct
+    // across the CET/CEST daylight-saving switch.
     const reminderSchedule = process.env.WORKOUT_REMINDER_CRON ?? '0 8 * * *';
-    const reminderTimezone = process.env.WORKOUT_REMINDER_TZ ?? 'Europe/Brussels';
+    const reminderTimezone = process.env.WORKOUT_REMINDER_TZ ?? SYNC_TZ;
     cron.schedule(
       reminderSchedule,
       () => {
