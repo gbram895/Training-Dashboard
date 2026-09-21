@@ -1,8 +1,9 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from './prisma.js';
 import { fetchWorkoutLibrary, type ParsedWorkoutFile, type PlannedDiscipline } from './workoutLibrary.js';
-import type { WorkoutCategory } from './workoutIntensity.js';
+import { estimatedTssForBucket, type WorkoutCategory } from './workoutIntensity.js';
 import { computeFitnessSeries } from './fitness.js';
+import { measureTssPerHour, periodizeDay, type DayPeriodization, type PeriodizationContext } from './periodization.js';
 
 const DAY_KEYS = [
   'sundayHours',
@@ -143,28 +144,6 @@ function decideCategory(tsb: number | null, readiness: ReadinessModifiers): Work
   return category;
 }
 
-// Rough numeric TSS per 1-5 stress bucket (see workoutIntensity.ts's own
-// stressBucket thresholds — this just inverts them to a representative
-// midpoint), used only to project CTL/ATL forward for days that haven't
-// happened yet. The real, precise TSS from actual samples takes over once a
-// workout is logged (see trainingLoad.ts) — this is just a planning estimate.
-function estimatedTssForBucket(bucket: number | null | undefined): number {
-  switch (bucket) {
-    case 1:
-      return 25;
-    case 2:
-      return 55;
-    case 3:
-      return 85;
-    case 4:
-      return 120;
-    case 5:
-      return 160;
-    default:
-      return 50;
-  }
-}
-
 function pickWorkout(
   library: ParsedWorkoutFile[],
   discipline: PlannedDiscipline,
@@ -218,6 +197,10 @@ interface GeneratedDay {
   restReason?: string;
   workout?: ParsedWorkoutFile;
   category?: WorkoutCategory;
+  // Where this day sits in the build toward the athlete's TrainingTarget, and
+  // what that did to its hours. Null when there's no target, in which case the
+  // plan behaves exactly as it did before periodisation existed.
+  periodization?: DayPeriodization | null;
   // Set for a day the athlete has manually rearranged (calendar drag-and-drop)
   // — its content is left alone rather than upserted, see generatePlanWindow.
   skipUpsert?: boolean;
@@ -286,7 +269,7 @@ function decideDay(
 async function runProjection(
   userId: string,
   dates: Date[],
-  config: PlanConfigHours & { includeRunning: boolean; runDays: number[] },
+  config: PlanConfigHours & { includeRunning: boolean; runDays: number[]; weeklyHours: number },
   library: ParsedWorkoutFile[],
   hourOverrides?: Map<number, number>,
   manualOverrides?: Map<number, ManualOverrideRow>,
@@ -296,6 +279,19 @@ async function runProjection(
   let atl = fitness.length ? fitness[fitness.length - 1].atl : 0;
   const readiness = await getReadinessModifiers(userId);
 
+  // The ramp is re-anchored to the athlete's real, current fitness on every
+  // regeneration — see lib/periodization.ts on why that matters.
+  const target = await prisma.trainingTarget.findUnique({ where: { userId } });
+  const periodizationCtx: PeriodizationContext | null = target
+    ? {
+        target,
+        currentCtl: ctl,
+        tssPerHour: await measureTssPerHour(userId),
+        weeklyHours: config.weeklyHours,
+      }
+    : null;
+
+  const today = utcMidnight(new Date());
   const recentPicks: string[] = [];
   const results: GeneratedDay[] = [];
 
@@ -303,14 +299,27 @@ async function runProjection(
     const date = dates[i];
     const tsb = ctl - atl;
     const override = manualOverrides?.get(date.getTime());
-    const targetHours = hourOverrides?.get(date.getTime()) ?? config[dayKeyFor(date)];
+    const periodization = periodizationCtx ? periodizeDay(date, today, periodizationCtx) : null;
+
+    // A one-off availability override is the athlete telling us how much time
+    // they actually have that day, so the periodisation multiplier is applied
+    // to the standing weekly hours only — never to an answer they gave us.
+    const explicitHours = hourOverrides?.get(date.getTime());
+    const targetHours =
+      explicitHours != null ? explicitHours : config[dayKeyFor(date)] * (periodization?.loadMultiplier ?? 1);
 
     // A manually rearranged day (calendar drag-and-drop) keeps its own
     // content — still fed into the fitness projection below, exactly like a
     // regular planned day, just never regenerated.
-    const generated: GeneratedDay = override
-      ? { date, isRestDay: override.isRestDay, skipUpsert: true }
-      : decideDay(date, targetHours, tsb, config, library, readiness, recentPicks);
+    let generated: GeneratedDay;
+    if (override) {
+      generated = { date, isRestDay: override.isRestDay, skipUpsert: true, periodization };
+    } else if (periodization?.phase === 'EVENT') {
+      // Race day isn't the plan's to fill in.
+      generated = { date, isRestDay: true, restReason: `${target!.name} — today's the day. Nothing else is planned.`, periodization };
+    } else {
+      generated = { ...decideDay(date, targetHours, tsb, config, library, readiness, recentPicks), periodization };
+    }
     results.push(generated);
 
     const dayTss = generated.isRestDay
@@ -337,6 +346,14 @@ async function runProjection(
  * of (e.g. the user editing next week's hours later the same day).
  */
 async function upsertPlannedDay(userId: string, generated: GeneratedDay, availableHoursOverride?: number) {
+  const phaseFields = {
+    phase: generated.periodization?.phase ?? null,
+    phaseWeek: generated.periodization?.phaseWeek ?? null,
+    loadMultiplier: generated.periodization
+      ? Math.round(generated.periodization.loadMultiplier * 100) / 100
+      : null,
+  };
+
   const base = generated.isRestDay
     ? {
         isRestDay: true,
@@ -367,7 +384,8 @@ async function upsertPlannedDay(userId: string, generated: GeneratedDay, availab
         generatedAt: new Date(),
       };
 
-  const data = availableHoursOverride !== undefined ? { ...base, availableHoursOverride } : base;
+  const withPhase = { ...base, ...phaseFields };
+  const data = availableHoursOverride !== undefined ? { ...withPhase, availableHoursOverride } : withPhase;
 
   await prisma.plannedDay.upsert({
     where: { userId_date: { userId, date: generated.date } },
