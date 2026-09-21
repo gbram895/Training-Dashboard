@@ -63,6 +63,7 @@ async function importGarminActivity(
   client: GarminConnect,
   activity: GarminActivitySummary,
   thresholds: HrZoneThresholds,
+  failures: string[],
 ): Promise<boolean> {
   const externalId = garminExternalId(activity.activityId);
   const existing = await prisma.workout.findUnique({ where: { externalId } });
@@ -91,6 +92,9 @@ async function importGarminActivity(
     activitySamples = extractGarminActivitySamples(details);
   } catch (err) {
     console.error(`[garmin-sync] failed to fetch activity details for activity ${activity.activityId}:`, err);
+    // The workout still imports, but without HR zones or samples — say so
+    // rather than leaving a silently degraded activity on the dashboard.
+    failures.push(`${activity.activityName}: no heart-rate detail (${err instanceof Error ? err.message : String(err)})`);
   }
 
   const result = await createDedupedWorkout({
@@ -112,11 +116,22 @@ async function importGarminActivity(
   return result.outcome === 'created' || result.outcome === 'replaced-duplicate';
 }
 
+const MAX_REPORTED_FAILURES = 3;
+
+/** Null when every activity came through whole, otherwise a message short enough for the sync bar. */
+function summariseFailures(failures: string[]): string | null {
+  if (failures.length === 0) return null;
+  const shown = failures.slice(0, MAX_REPORTED_FAILURES).join('; ');
+  const rest = failures.length - MAX_REPORTED_FAILURES;
+  return `${failures.length} activity/activities imported incomplete — ${shown}${rest > 0 ? ` (+${rest} more)` : ''}`;
+}
+
 export async function runGarminSyncForUser(userId: string, options: { force?: boolean } = {}) {
   const config = await prisma.garminSyncConfig.findUnique({ where: { userId } });
   if (!config) throw new Error('Garmin is not connected for this account');
 
-  const totals = { activitiesSeen: 0, workoutsImported: 0 };
+  const totals = { activitiesSeen: 0, workoutsImported: 0, activitiesDegraded: 0 };
+  const failures: string[] = [];
 
   try {
     const tokens: GarminTokens = {
@@ -143,7 +158,7 @@ export async function runGarminSyncForUser(userId: string, options: { force?: bo
         if (batch.length === 0) break;
         totals.activitiesSeen += batch.length;
         for (const activity of batch) {
-          const created = await importGarminActivity(userId, client, activity, thresholds);
+          const created = await importGarminActivity(userId, client, activity, thresholds, failures);
           if (created) {
             totals.workoutsImported += 1;
             await sleep(250);
@@ -156,7 +171,7 @@ export async function runGarminSyncForUser(userId: string, options: { force?: bo
       const activities = (await client.getActivities(0, RECENT_BATCH)) as GarminActivitySummary[];
       totals.activitiesSeen = activities.length;
       for (const activity of activities) {
-        const created = await importGarminActivity(userId, client, activity, thresholds);
+        const created = await importGarminActivity(userId, client, activity, thresholds, failures);
         if (created) totals.workoutsImported += 1;
       }
     }
@@ -168,10 +183,11 @@ export async function runGarminSyncForUser(userId: string, options: { force?: bo
         oauth1Token: JSON.stringify(refreshed.oauth1),
         oauth2Token: JSON.stringify(refreshed.oauth2),
         lastSyncedAt: new Date(),
-        lastSyncError: null,
+        lastSyncError: summariseFailures(failures),
       },
     });
 
+    totals.activitiesDegraded = failures.length;
     return totals;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

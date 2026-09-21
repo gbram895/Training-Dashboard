@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../../api/client';
-import type { GarminSyncStatus } from '../../api/types';
+import type { GarminSyncStatus, SyncNowResult } from '../../api/types';
+import { describeSyncResult } from '../../lib/syncResult';
 
 interface GarminConnectResponse {
   connected?: true;
@@ -17,7 +18,7 @@ export default function GarminSyncBar({ onSynced }: { onSynced?: () => void }) {
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
-  const [syncStarted, setSyncStarted] = useState(false);
+  const [syncNote, setSyncNote] = useState<string | null>(null);
 
   function reload() {
     apiFetch<GarminSyncStatus>('/health/garmin/status').then(setStatus);
@@ -74,13 +75,21 @@ export default function GarminSyncBar({ onSynced }: { onSynced?: () => void }) {
 
   async function syncNow(force = false) {
     setSyncing(true);
+    setSyncNote(null);
     try {
-      await apiFetch(`/health/garmin/sync-now${force ? '?force=true' : ''}`, { method: 'POST' });
-      setSyncStarted(true);
-      setTimeout(() => setSyncStarted(false), 8000);
-      onSynced?.();
+      // Awaited for a plain sync, so this resolves with what actually landed
+      // rather than with "started" before any work had been done.
+      const result = await apiFetch<SyncNowResult>(`/health/garmin/sync-now${force ? '?force=true' : ''}`, {
+        method: 'POST',
+      });
+      setSyncNote(describeSyncResult(result));
+      setTimeout(() => setSyncNote(null), 8000);
+    } catch (err) {
+      setSyncNote(err instanceof Error ? err.message : 'Sync failed');
     } finally {
       setSyncing(false);
+      reload();
+      onSynced?.();
     }
   }
 
@@ -155,15 +164,15 @@ export default function GarminSyncBar({ onSynced }: { onSynced?: () => void }) {
         {status.lastSyncedAt
           ? `Last synced ${new Date(status.lastSyncedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}`
           : 'Waiting for first sync…'}
-        {status.lastSyncError ? ` — last attempt failed: ${status.lastSyncError}` : ''}
-        {syncStarted ? ' — sync started, this can take a few minutes' : ''}
+        {status.lastSyncError ? ` — ${status.lastSyncError}` : ''}
+        {syncNote ? ` — ${syncNote}` : ''}
       </p>
       <div style={{ display: 'flex', gap: 8 }}>
         <button type="button" className="secondary" onClick={() => syncNow(true)} disabled={syncing}>
           Backfill all history
         </button>
         <button type="button" className="secondary" onClick={() => syncNow(false)} disabled={syncing}>
-          {syncing ? 'Starting…' : 'Sync now'}
+          {syncing ? 'Syncing…' : 'Sync now'}
         </button>
         <button type="button" className="secondary" onClick={disconnect} disabled={syncing}>
           Disconnect

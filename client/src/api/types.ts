@@ -198,6 +198,22 @@ export interface StravaSyncStatus {
   lastSyncError: string | null;
 }
 
+/**
+ * The reply from each provider's `sync-now` route. A normal sync is awaited
+ * server-side and comes back with what it imported; a force backfill is too
+ * long to hold a request open for, so it answers `completed: false` and runs on.
+ */
+export interface SyncNowResult {
+  started: boolean;
+  completed: boolean;
+  workoutsImported?: number;
+  daysImported?: number;
+  activitiesSeen?: number;
+  activitiesDegraded?: number;
+  filesProcessed?: number;
+  filesFailed?: number;
+}
+
 export interface AuthUser {
   id: string;
   email: string;

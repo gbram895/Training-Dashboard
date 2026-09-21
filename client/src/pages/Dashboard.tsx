@@ -14,6 +14,7 @@ import type {
 } from '../api/types';
 import { useAuth } from '../context/AuthContext';
 import { useCachedState } from '../lib/pageCache';
+import { useRefreshOnResume } from '../lib/useRefreshOnResume';
 import { computeReadiness } from '../lib/readiness';
 import { average } from '../lib/hrv';
 import { formatDateUTC } from '../lib/format';
@@ -68,6 +69,8 @@ export default function Dashboard() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useRefreshOnResume(load);
 
   const loading = days === null || disciplineStats === null || hrZones === null;
 

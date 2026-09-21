@@ -56,6 +56,7 @@ async function importStravaActivity(
   accessToken: string,
   activity: StravaActivity,
   thresholds: HrZoneThresholds,
+  failures: string[],
 ): Promise<'created' | 'replaced-duplicate' | 'skipped-duplicate' | 'skipped-existing'> {
   const externalId = stravaExternalId(activity.id);
   const existing = await prisma.workout.findUnique({ where: { externalId } });
@@ -82,6 +83,9 @@ async function importStravaActivity(
     }
   } catch (err) {
     console.error(`[strava-sync] failed to fetch streams for activity ${activity.id}:`, err);
+    // The workout still imports, but without HR zones or samples — say so
+    // rather than leaving a silently degraded activity on the dashboard.
+    failures.push(`${activity.name}: no heart-rate detail (${err instanceof Error ? err.message : String(err)})`);
   }
 
   let calorieKcal: number | undefined;
@@ -112,11 +116,22 @@ async function importStravaActivity(
 
 type StravaSampleWithZone = { offsetSec: number; heartRate?: number; speedMps?: number; powerWatts?: number };
 
+const MAX_REPORTED_FAILURES = 3;
+
+/** Null when every activity came through whole, otherwise a message short enough for the sync bar. */
+function summariseFailures(failures: string[]): string | null {
+  if (failures.length === 0) return null;
+  const shown = failures.slice(0, MAX_REPORTED_FAILURES).join('; ');
+  const rest = failures.length - MAX_REPORTED_FAILURES;
+  return `${failures.length} activity/activities imported incomplete — ${shown}${rest > 0 ? ` (+${rest} more)` : ''}`;
+}
+
 export async function runStravaSyncForUser(userId: string, options: { force?: boolean } = {}) {
   const config = await prisma.stravaSyncConfig.findUnique({ where: { userId } });
   if (!config) throw new Error('Strava is not connected for this account');
 
-  const totals = { activitiesSeen: 0, workoutsImported: 0 };
+  const totals = { activitiesSeen: 0, workoutsImported: 0, activitiesDegraded: 0 };
+  const failures: string[] = [];
 
   try {
     const accessToken = await getValidAccessToken(userId, config);
@@ -140,7 +155,7 @@ export async function runStravaSyncForUser(userId: string, options: { force?: bo
       totals.activitiesSeen += batch.length;
 
       for (const activity of batch) {
-        const result = await importStravaActivity(userId, accessToken, activity, thresholds);
+        const result = await importStravaActivity(userId, accessToken, activity, thresholds, failures);
         if (result === 'created' || result === 'replaced-duplicate') {
           totals.workoutsImported += 1;
           await sleep(150);
@@ -153,9 +168,10 @@ export async function runStravaSyncForUser(userId: string, options: { force?: bo
 
     await prisma.stravaSyncConfig.update({
       where: { userId },
-      data: { lastSyncedAt: new Date(), lastSyncError: null },
+      data: { lastSyncedAt: new Date(), lastSyncError: summariseFailures(failures) },
     });
 
+    totals.activitiesDegraded = failures.length;
     return totals;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

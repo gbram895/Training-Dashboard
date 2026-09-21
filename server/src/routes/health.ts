@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
@@ -90,6 +90,68 @@ router.post('/import', async (req, res) => {
   res.json(result);
 });
 
+/**
+ * A "sync now" press should tell the truth about what it did. A normal sync is
+ * a handful of API calls, so it is awaited and answers with what it imported —
+ * previously these routes replied `{started:true}` before doing any work, so
+ * the dashboard refetched and re-rendered the *old* data and the press looked
+ * like a no-op. A force backfill walks the whole history and is far too long to
+ * hold a request open for, so that one stays fire-and-forget.
+ */
+const SYNC_TIMED_OUT = Symbol('sync-timed-out');
+
+/** Longest a manual sync is held open for before the page gets an answer anyway. */
+const AWAIT_SYNC_MS = 60_000;
+
+async function respondToSyncNow(
+  res: Response,
+  label: string,
+  userId: string,
+  force: boolean,
+  run: (opts: { force?: boolean }) => Promise<Record<string, number>>,
+) {
+  function logWhenSettled(pending: Promise<Record<string, number>>, what: string) {
+    pending
+      .then((result) => console.log(`[${label}] ${what} for user ${userId}:`, result))
+      .catch((err) => console.error(`[${label}] ${what} for user ${userId} failed:`, err));
+  }
+
+  if (force) {
+    res.json({ started: true, completed: false });
+    logWhenSettled(run({ force: true }), 'manual backfill');
+    return;
+  }
+
+  const pending = run({ force: false });
+  // Whichever branch below wins, this promise must not reject unhandled.
+  pending.catch(() => {});
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<typeof SYNC_TIMED_OUT>((resolve) => {
+    timer = setTimeout(() => resolve(SYNC_TIMED_OUT), AWAIT_SYNC_MS);
+  });
+
+  try {
+    const outcome = await Promise.race([pending, timeout]);
+    if (outcome === SYNC_TIMED_OUT) {
+      // Unusually slow (a big first sync, a throttled provider). Hand the page
+      // back rather than holding the request until a proxy cuts it, and let the
+      // run finish on its own — the next refresh picks up what it imported.
+      res.json({ started: true, completed: false });
+      logWhenSettled(pending, 'manual sync (still running when the request returned)');
+      return;
+    }
+    console.log(`[${label}] manual sync for user ${userId}:`, outcome);
+    res.json({ started: true, completed: true, ...outcome });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[${label}] manual sync for user ${userId} failed:`, err);
+    res.status(502).json({ error: message });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function callbackUrl(req: { protocol: string; get: (name: string) => string | undefined }) {
   return `${req.protocol}://${req.get('host')}/api/health/dropbox/callback`;
 }
@@ -161,11 +223,9 @@ router.get('/dropbox/callback', async (req, res) => {
 router.post('/dropbox/sync-now', requireAuth, async (req: AuthedRequest, res) => {
   const { runSyncForUser } = await import('../lib/healthSyncJob.js');
   const userId = req.userId!;
-  const force = req.query.force === 'true';
-  res.json({ started: true });
-  runSyncForUser(userId, { force })
-    .then((result) => console.log(`[health-sync] manual sync (force=${force}) for user ${userId}:`, result))
-    .catch((err) => console.error(`[health-sync] manual sync for user ${userId} failed:`, err));
+  await respondToSyncNow(res, 'health-sync', userId, req.query.force === 'true', (opts) =>
+    runSyncForUser(userId, opts),
+  );
 });
 
 router.get('/garmin/status', requireAuth, async (req: AuthedRequest, res) => {
@@ -220,11 +280,9 @@ router.post('/garmin/disconnect', requireAuth, async (req: AuthedRequest, res) =
 
 router.post('/garmin/sync-now', requireAuth, async (req: AuthedRequest, res) => {
   const userId = req.userId!;
-  const force = req.query.force === 'true';
-  res.json({ started: true });
-  runGarminSyncForUser(userId, { force })
-    .then((result) => console.log(`[garmin-sync] manual sync (force=${force}) for user ${userId}:`, result))
-    .catch((err) => console.error(`[garmin-sync] manual sync for user ${userId} failed:`, err));
+  await respondToSyncNow(res, 'garmin-sync', userId, req.query.force === 'true', (opts) =>
+    runGarminSyncForUser(userId, opts),
+  );
 });
 
 const garminPushSegmentSchema = z.object({
@@ -328,11 +386,9 @@ router.post('/strava/disconnect', requireAuth, async (req: AuthedRequest, res) =
 
 router.post('/strava/sync-now', requireAuth, async (req: AuthedRequest, res) => {
   const userId = req.userId!;
-  const force = req.query.force === 'true';
-  res.json({ started: true });
-  runStravaSyncForUser(userId, { force })
-    .then((result) => console.log(`[strava-sync] manual sync (force=${force}) for user ${userId}:`, result))
-    .catch((err) => console.error(`[strava-sync] manual sync for user ${userId} failed:`, err));
+  await respondToSyncNow(res, 'strava-sync', userId, req.query.force === 'true', (opts) =>
+    runStravaSyncForUser(userId, opts),
+  );
 });
 
 export default router;

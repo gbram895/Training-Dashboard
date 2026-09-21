@@ -19,6 +19,7 @@ import RearrangePlanModal from '../components/RearrangePlanModal';
 import WeeklyAvailabilityModal from '../components/WeeklyAvailabilityModal';
 import PageHead from '../components/PageHead';
 import { useCachedState } from '../lib/pageCache';
+import { useRefreshOnResume } from '../lib/useRefreshOnResume';
 import { weekdayLabel } from '../lib/planDates';
 
 const CATEGORY_INFO: { key: WorkoutCategory | 'OTHER'; label: string; icon: string; description: string }[] = [
@@ -128,6 +129,7 @@ export default function Plan() {
   }
 
   useEffect(load, []);
+  useRefreshOnResume(load);
 
   // Deep link from the Sunday-evening push notification.
   useEffect(() => {

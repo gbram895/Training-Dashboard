@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../api/client';
 import type { Workout, WorkoutType } from '../api/types';
 import { mondayOf } from '../lib/week';
 import { useCachedState } from '../lib/pageCache';
+import { useRefreshOnResume } from '../lib/useRefreshOnResume';
 import PageHead from '../components/PageHead';
 import GradientActivityList, { TYPE_ICON, TYPE_LABEL } from '../components/dashboard/GradientActivityList';
 
@@ -21,9 +22,16 @@ export default function Workouts() {
   const [workouts, setWorkouts] = useCachedState<Workout[] | null>('workouts.list', null);
   const [filter, setFilter] = useState<WorkoutType | 'ALL'>('ALL');
 
-  useEffect(() => {
+  const load = useCallback(() => {
     apiFetch<Workout[]>('/workouts').then(setWorkouts);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useRefreshOnResume(load);
 
   const loading = workouts === null;
   const list = workouts ?? [];
