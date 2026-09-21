@@ -73,3 +73,31 @@ export async function sendDailyWorkoutReminders(): Promise<void> {
     }
   }
 }
+
+/**
+ * Sunday-evening cron entry point: nudges every subscribed user who has an
+ * active plan to set next week's availability, deep-linking straight into
+ * the Plan tab's weekly check-in.
+ */
+export async function sendWeeklyAvailabilityCheckin(): Promise<void> {
+  if (!pushConfigured()) return;
+
+  const userIds = await prisma.pushSubscription.findMany({
+    select: { userId: true },
+    distinct: ['userId'],
+  });
+
+  for (const { userId } of userIds) {
+    try {
+      const hasPlan = await prisma.trainingPlanConfig.findUnique({ where: { userId }, select: { userId: true } });
+      if (!hasPlan) continue;
+      await sendToUser(userId, {
+        title: 'Gradient',
+        body: 'Set your availability for next week',
+        url: '/plan?checkin=1',
+      });
+    } catch (err) {
+      console.error(`[push] failed to send weekly check-in for user ${userId}:`, err);
+    }
+  }
+}

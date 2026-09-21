@@ -18,7 +18,7 @@ import { runAllGarminSyncs } from './lib/garminSync.js';
 import { stravaConfigured } from './lib/strava.js';
 import { runAllStravaSyncs } from './lib/stravaSync.js';
 import { regenerateAllPlans } from './lib/trainingPlan.js';
-import { pushConfigured, sendDailyWorkoutReminders } from './lib/webPush.js';
+import { pushConfigured, sendDailyWorkoutReminders, sendWeeklyAvailabilityCheckin } from './lib/webPush.js';
 
 const app = express();
 const PORT = process.env.PORT ?? 4000;
@@ -138,6 +138,18 @@ app.listen(PORT, () => {
       { timezone: reminderTimezone },
     );
     console.log(`[push] daily reminder scheduled with cron "${reminderSchedule}" (${reminderTimezone})`);
+
+    // Sunday evening, local time — ahead of the week actually starting, so
+    // there's time to act on it before Monday's plan is already locked in.
+    const checkinSchedule = process.env.AVAILABILITY_CHECKIN_CRON ?? '0 18 * * 0';
+    cron.schedule(
+      checkinSchedule,
+      () => {
+        sendWeeklyAvailabilityCheckin().catch((err) => console.error('[push] weekly check-in run failed:', err));
+      },
+      { timezone: reminderTimezone },
+    );
+    console.log(`[push] weekly availability check-in scheduled with cron "${checkinSchedule}" (${reminderTimezone})`);
   } else {
     console.log('[push] VAPID keys not set — daily workout reminders disabled');
   }
