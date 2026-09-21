@@ -24,7 +24,7 @@ function FitnessChart({ series, onBackfilled }: { series: FitnessPoint[]; onBack
           <h2>Fitness</h2>
         </div>
         <p className="muted">
-          Not enough TSS data yet — this needs at least one ride or run that was synced (or logged) after this feature
+          Not enough training-load data yet — this needs at least one workout synced (or logged) after this feature
           shipped. If you already have activities from before, backfill them below.
         </p>
         <button type="button" className="secondary" onClick={backfill} disabled={backfilling}>

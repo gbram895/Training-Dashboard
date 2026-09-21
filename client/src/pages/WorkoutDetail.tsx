@@ -1,9 +1,18 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiFetch, ApiError } from '../api/client';
-import type { Workout, WorkoutSample } from '../api/types';
+import type { TssSource, Workout, WorkoutSample } from '../api/types';
 import { formatDateUTC, formatDistance, formatDuration, formatPace, formatSpeed } from '../lib/format';
 import WorkoutSampleChart from '../components/WorkoutSampleChart';
+
+// Training load is measured from power where it exists, pace where it doesn't,
+// and time-in-zone for everything else — worth saying, since the three are not
+// equally precise and the last one is what makes badminton and hikes count.
+const TSS_SOURCE_LABEL: Record<TssSource, string> = {
+  POWER: ' from power',
+  PACE: ' from pace',
+  HR: ' from heart rate',
+};
 
 const WORKOUT_LABELS: Record<string, string> = {
   RUN: 'Run',
@@ -157,7 +166,7 @@ export default function WorkoutDetail() {
           {workout.tss != null && (
             <div className="workout-stat">
               <span className="workout-stat-value">{Math.round(workout.tss)}</span>
-              <span className="workout-stat-label">TSS</span>
+              <span className="workout-stat-label">TSS{TSS_SOURCE_LABEL[workout.tssSource ?? 'POWER']}</span>
             </div>
           )}
           {workout.kilojoules != null && (
