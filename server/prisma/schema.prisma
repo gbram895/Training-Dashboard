@@ -311,3 +311,28 @@ model PushSubscription {
   auth      String
   createdAt DateTime @default(now())
 }
+
+// When each background job is next due, kept in the database rather than in a
+// timer inside the web process. A free-tier service that is asleep, restarting
+// or deploying has no timers running, so an in-process schedule silently skips
+// every slot it is not awake for; a due date that outlives the process means a
+// missed run is still owed and gets made up on the next tick. See
+// lib/scheduler.ts, and .github/workflows/sync-heartbeat.yml for what ticks it
+// while the service is down.
+model ScheduledJob {
+  name          String    @id
+  // The cron expression and zone this row's nextRunAt was computed from, so a
+  // changed schedule can be noticed and the due date recomputed.
+  schedule      String
+  timezone      String
+  nextRunAt     DateTime
+  lastRunAt     DateTime?
+  lastSuccessAt DateTime?
+  lastError     String?
+  // Held for the duration of a run so two ticks (or two instances) cannot
+  // start the same job at once. Cleared when the run finishes.
+  lockedAt      DateTime?
+  updatedAt     DateTime  @updatedAt
+
+  @@index([nextRunAt])
+}

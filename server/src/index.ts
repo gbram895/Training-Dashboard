@@ -12,6 +12,7 @@ import settingsRouter from './routes/settings.js';
 import workoutLibraryRouter from './routes/workoutLibrary.js';
 import trainingPlanRouter from './routes/trainingPlan.js';
 import pushRouter from './routes/push.js';
+import cronRouter from './routes/cron.js';
 import { dropboxConfigured } from './lib/dropbox.js';
 import { runAllSyncs } from './lib/healthSyncJob.js';
 import { runAllGarminSyncs } from './lib/garminSync.js';
@@ -19,6 +20,7 @@ import { stravaConfigured } from './lib/strava.js';
 import { runAllStravaSyncs } from './lib/stravaSync.js';
 import { regenerateAllPlans } from './lib/trainingPlan.js';
 import { pushConfigured, sendDailyWorkoutReminders, sendWeeklyAvailabilityCheckin } from './lib/webPush.js';
+import { ALWAYS_CATCH_UP, primeJobs, registerJob, runDueJobs } from './lib/scheduler.js';
 
 const app = express();
 const PORT = process.env.PORT ?? 4000;
@@ -49,6 +51,7 @@ app.use('/api/settings', settingsRouter);
 app.use('/api/workout-library', workoutLibraryRouter);
 app.use('/api/training-plan', trainingPlanRouter);
 app.use('/api/push', pushRouter);
+app.use('/api/cron', cronRouter);
 
 if (process.env.NODE_ENV === 'production') {
   const clientDist = path.resolve(__dirname, '../../client/dist');
@@ -65,97 +68,116 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server listening on http://localhost:${PORT}`);
-
+/**
+ * Background work is scheduled by due date in the database rather than by
+ * timers living in this process — see lib/scheduler.ts for why. Registering a
+ * job here only says when it is owed; what actually runs it is a tick, either
+ * the one below or a call to POST /api/cron/tick from outside.
+ */
+function registerScheduledJobs() {
   if (dropboxConfigured()) {
-    const schedule = process.env.SYNC_CRON ?? '*/30 * * * *';
-    cron.schedule(
-      schedule,
-      () => {
-        runAllSyncs().catch((err) => console.error('[health-sync] run failed:', err));
-      },
-      { timezone: SYNC_TZ },
-    );
-    console.log(`[health-sync] scheduled with cron "${schedule}" (${SYNC_TZ})`);
-    setTimeout(() => {
-      runAllSyncs().catch((err) => console.error('[health-sync] initial run failed:', err));
-    }, 15_000);
+    registerJob({
+      name: 'health-sync',
+      schedule: process.env.SYNC_CRON ?? '*/30 * * * *',
+      timezone: SYNC_TZ,
+      run: runAllSyncs,
+      catchUpWindowMinutes: ALWAYS_CATCH_UP,
+      firstRun: 'now',
+    });
   }
 
-  const garminSchedule = process.env.GARMIN_SYNC_CRON ?? '*/30 * * * *';
-  cron.schedule(
-    garminSchedule,
-    () => {
-      runAllGarminSyncs().catch((err) => console.error('[garmin-sync] run failed:', err));
-    },
-    { timezone: SYNC_TZ },
-  );
-  console.log(`[garmin-sync] scheduled with cron "${garminSchedule}" (${SYNC_TZ})`);
-  setTimeout(() => {
-    runAllGarminSyncs().catch((err) => console.error('[garmin-sync] initial run failed:', err));
-  }, 20_000);
+  registerJob({
+    name: 'garmin-sync',
+    schedule: process.env.GARMIN_SYNC_CRON ?? '*/30 * * * *',
+    timezone: SYNC_TZ,
+    run: runAllGarminSyncs,
+    catchUpWindowMinutes: ALWAYS_CATCH_UP,
+    firstRun: 'now',
+  });
 
   if (stravaConfigured()) {
-    const stravaSchedule = process.env.STRAVA_SYNC_CRON ?? '*/15 * * * *';
-    cron.schedule(
-      stravaSchedule,
-      () => {
-        runAllStravaSyncs().catch((err) => console.error('[strava-sync] run failed:', err));
-      },
-      { timezone: SYNC_TZ },
-    );
-    console.log(`[strava-sync] scheduled with cron "${stravaSchedule}" (${SYNC_TZ})`);
-    setTimeout(() => {
-      runAllStravaSyncs().catch((err) => console.error('[strava-sync] initial run failed:', err));
-    }, 25_000);
+    registerJob({
+      name: 'strava-sync',
+      schedule: process.env.STRAVA_SYNC_CRON ?? '*/15 * * * *',
+      timezone: SYNC_TZ,
+      run: runAllStravaSyncs,
+      catchUpWindowMinutes: ALWAYS_CATCH_UP,
+      firstRun: 'now',
+    });
   }
 
-  const planSchedule = process.env.TRAINING_PLAN_CRON ?? '0 4 * * *';
-  cron.schedule(
-    planSchedule,
-    () => {
-      regenerateAllPlans().catch((err) => console.error('[training-plan] run failed:', err));
-    },
-    { timezone: SYNC_TZ },
-  );
-  console.log(`[training-plan] scheduled with cron "${planSchedule}" (${SYNC_TZ})`);
-  setTimeout(() => {
-    regenerateAllPlans().catch((err) => console.error('[training-plan] initial run failed:', err));
-  }, 30_000);
+  registerJob({
+    name: 'training-plan',
+    schedule: process.env.TRAINING_PLAN_CRON ?? '0 4 * * *',
+    timezone: SYNC_TZ,
+    run: regenerateAllPlans,
+    // A plan regenerated late in the day is still today's plan, so this is
+    // worth catching up for most of a day — but not so long that waking up on
+    // Tuesday rebuilds what was owed on Monday.
+    catchUpWindowMinutes: 12 * 60,
+    firstRun: 'now',
+  });
 
   if (pushConfigured()) {
-    // After the training-plan cron above so the day's plan is already fresh.
-    // Given as local time (SYNC_TZ, 8am) rather than UTC, so it stays correct
-    // across the CET/CEST daylight-saving switch.
-    const reminderSchedule = process.env.WORKOUT_REMINDER_CRON ?? '0 8 * * *';
+    // Scheduled after the training plan above so the day's plan is already
+    // fresh by the time the notification describes it. Both are given in local
+    // time (SYNC_TZ) rather than UTC, so they stay put across the CET/CEST
+    // switch.
     const reminderTimezone = process.env.WORKOUT_REMINDER_TZ ?? SYNC_TZ;
-    cron.schedule(
-      reminderSchedule,
-      () => {
-        sendDailyWorkoutReminders().catch((err) => console.error('[push] daily reminder run failed:', err));
-      },
-      { timezone: reminderTimezone },
-    );
-    console.log(`[push] daily reminder scheduled with cron "${reminderSchedule}" (${reminderTimezone})`);
+
+    registerJob({
+      name: 'push-daily-reminder',
+      schedule: process.env.WORKOUT_REMINDER_CRON ?? '0 8 * * *',
+      timezone: reminderTimezone,
+      run: sendDailyWorkoutReminders,
+      // "Today's session is ready" is worth saying a bit late and worthless by
+      // the afternoon, so a badly missed morning is left to tomorrow.
+      catchUpWindowMinutes: 2 * 60,
+      firstRun: 'next',
+    });
 
     // Sunday evening, local time — ahead of the week actually starting, so
     // there's time to act on it before Monday's plan is already locked in.
-    const checkinSchedule = process.env.AVAILABILITY_CHECKIN_CRON ?? '0 18 * * 0';
-    cron.schedule(
-      checkinSchedule,
-      () => {
-        sendWeeklyAvailabilityCheckin().catch((err) => console.error('[push] weekly check-in run failed:', err));
-      },
-      { timezone: reminderTimezone },
-    );
-    console.log(`[push] weekly availability check-in scheduled with cron "${checkinSchedule}" (${reminderTimezone})`);
+    registerJob({
+      name: 'push-weekly-checkin',
+      schedule: process.env.AVAILABILITY_CHECKIN_CRON ?? '0 18 * * 0',
+      timezone: reminderTimezone,
+      run: sendWeeklyAvailabilityCheckin,
+      // Still Sunday evening, or not worth sending.
+      catchUpWindowMinutes: 6 * 60,
+      firstRun: 'next',
+    });
   } else {
     console.log('[push] VAPID keys not set — daily workout reminders disabled');
   }
+}
+
+app.listen(PORT, () => {
+  console.log(`Server listening on http://localhost:${PORT}`);
+
+  registerScheduledJobs();
+
+  primeJobs()
+    .then(() => {
+      const tickSchedule = process.env.SCHEDULER_TICK_CRON ?? '* * * * *';
+      cron.schedule(tickSchedule, () => {
+        runDueJobs().catch((err) => console.error('[scheduler] tick failed:', err));
+      });
+      console.log(`[scheduler] ticking on "${tickSchedule}"`);
+
+      // Give the process a moment to finish starting before the first pass,
+      // which on a service coming back from a nap is where the catching up
+      // happens.
+      setTimeout(() => {
+        runDueJobs().catch((err) => console.error('[scheduler] first tick failed:', err));
+      }, 10_000);
+    })
+    .catch((err) => console.error('[scheduler] could not prepare jobs — nothing will run:', err));
 
   // Render's free tier spins the service down after 15 minutes with no incoming
   // requests. Pinging our own public URL well inside that window keeps it warm.
+  // This only helps while the process is alive; what wakes it once it is not is
+  // the heartbeat calling /api/cron/tick from outside.
   if (process.env.RENDER_EXTERNAL_URL) {
     const pingUrl = `${process.env.RENDER_EXTERNAL_URL}/api/status`;
     cron.schedule('*/10 * * * *', () => {
