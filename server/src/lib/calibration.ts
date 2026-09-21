@@ -40,6 +40,25 @@ const ZONE_FRACTIONS_OF_MAX = [0.68, 0.83, 0.91, 0.99];
 // is sustained for at least this long.
 const MAX_HR_WINDOW_SEC = 30;
 
+/**
+ * Outside these, the input was wrong rather than the athlete exceptional, and
+ * no suggestion is offered at all.
+ *
+ * Accepting a suggestion rescales the athlete's entire history, so a number
+ * derived from bad data is worse than no number: a confident, one-tap "Use
+ * 1:46/km" is exactly how a mistake gets applied. The floor on pace is well
+ * inside world-record territory (a 10k world record is about 2:35/km), so
+ * anything under it means the data is not someone running.
+ */
+const PLAUSIBLE_FTP_WATTS = { min: 40, max: 600 };
+const PLAUSIBLE_PACE_SEC_PER_KM = { min: 150, max: 900 };
+const PLAUSIBLE_MAX_HR_BPM = { min: 120, max: 220 };
+
+function withinBounds(value: number | null, bounds: { min: number; max: number }): number | null {
+  if (value == null) return null;
+  return value >= bounds.min && value <= bounds.max ? value : null;
+}
+
 export interface Suggestion<T> {
   current: T;
   suggested: T | null;
@@ -105,21 +124,24 @@ const MAX_WORKOUTS_EXAMINED = 40;
  */
 async function eachWorkoutSamples(
   userId: string,
-  visit: (samples: { offsetSec: number; heartRate: number | null; speedMps: number | null; powerWatts: number | null }[]) => void,
+  visit: (
+    type: 'RIDE' | 'RUN',
+    samples: { offsetSec: number; heartRate: number | null; speedMps: number | null; powerWatts: number | null }[],
+  ) => void,
 ): Promise<void> {
   const workouts = await prisma.workout.findMany({
     where: { userId, date: { gte: since(WINDOW_DAYS) }, type: { in: ['RIDE', 'RUN'] } },
-    select: { id: true },
+    select: { id: true, type: true },
     orderBy: { date: 'desc' },
     take: MAX_WORKOUTS_EXAMINED,
   });
-  for (const { id } of workouts) {
+  for (const { id, type } of workouts) {
     const samples = await prisma.workoutSample.findMany({
       where: { workoutId: id },
       select: { offsetSec: true, heartRate: true, speedMps: true, powerWatts: true },
       orderBy: { offsetSec: 'asc' },
     });
-    if (samples.length > 0) visit(samples);
+    if (samples.length > 0) visit(type as 'RIDE' | 'RUN', samples);
   }
 }
 
@@ -143,29 +165,37 @@ export async function buildCalibrationReport(userId: string): Promise<Calibratio
   let rideCount = 0;
   let runCount = 0;
 
-  await eachWorkoutSamples(userId, (samples) => {
+  await eachWorkoutSamples(userId, (type, samples) => {
     const hr = samples
       .filter((s): s is typeof s & { heartRate: number } => s.heartRate != null)
       .map((s) => ({ offsetSec: s.offsetSec, value: s.heartRate }));
     const sustainedHr = bestRollingAverage(hr, MAX_HR_WINDOW_SEC);
     if (sustainedHr != null && (bestHr == null || sustainedHr > bestHr)) bestHr = sustainedHr;
 
-    const power = samples
-      .filter((s): s is typeof s & { powerWatts: number } => s.powerWatts != null)
-      .map((s) => ({ offsetSec: s.offsetSec, value: s.powerWatts }));
-    if (power.length > 0) {
-      rideCount++;
-      const p = bestRollingAverage(power, TEST_WINDOW_SEC);
-      if (p != null && (bestPower == null || p > bestPower)) bestPower = p;
+    // Both disciplines carry a speed stream and a rider is far faster than a
+    // runner, so pace has to be read from runs alone — reading it from whatever
+    // happened to have a speed stream turned 30 km/h gravel rides into a
+    // "threshold pace" of 1:46/km.
+    if (type === 'RIDE') {
+      const power = samples
+        .filter((s): s is typeof s & { powerWatts: number } => s.powerWatts != null)
+        .map((s) => ({ offsetSec: s.offsetSec, value: s.powerWatts }));
+      if (power.length > 0) {
+        rideCount++;
+        const p = bestRollingAverage(power, TEST_WINDOW_SEC);
+        if (p != null && (bestPower == null || p > bestPower)) bestPower = p;
+      }
     }
 
-    const speed = samples
-      .filter((s): s is typeof s & { speedMps: number } => s.speedMps != null && s.speedMps > 0)
-      .map((s) => ({ offsetSec: s.offsetSec, value: s.speedMps }));
-    if (speed.length > 0) {
-      runCount++;
-      const v = bestRollingAverage(speed, TEST_WINDOW_SEC);
-      if (v != null && (bestSpeed == null || v > bestSpeed)) bestSpeed = v;
+    if (type === 'RUN') {
+      const speed = samples
+        .filter((s): s is typeof s & { speedMps: number } => s.speedMps != null && s.speedMps > 0)
+        .map((s) => ({ offsetSec: s.offsetSec, value: s.speedMps }));
+      if (speed.length > 0) {
+        runCount++;
+        const v = bestRollingAverage(speed, TEST_WINDOW_SEC);
+        if (v != null && (bestSpeed == null || v > bestSpeed)) bestSpeed = v;
+      }
     }
   });
 
@@ -173,13 +203,21 @@ export async function buildCalibrationReport(userId: string): Promise<Calibratio
   const best20Speed: number | null = bestSpeed;
   const maxHr: number | null = bestHr;
 
-  const suggestedFtp = best20Power != null ? Math.round(best20Power * FTP_FROM_20MIN) : null;
-  const suggestedPace =
-    best20Speed != null ? Math.round((1000 / best20Speed) * THRESHOLD_PACE_FROM_20MIN) : null;
+  const suggestedFtp = withinBounds(
+    best20Power != null ? Math.round(best20Power * FTP_FROM_20MIN) : null,
+    PLAUSIBLE_FTP_WATTS,
+  );
+  const suggestedPace = withinBounds(
+    best20Speed != null ? Math.round((1000 / best20Speed) * THRESHOLD_PACE_FROM_20MIN) : null,
+    PLAUSIBLE_PACE_SEC_PER_KM,
+  );
 
   // Runs often arrive without a speed stream (Apple Health imports carry heart
   // rate only), so fall back to the fastest whole run of at least 20 minutes.
-  let paceBasis = suggestedPace != null ? `95th-percentile effort: best 20 min at ${formatPace(1000 / best20Speed!)}/km across ${runCount} runs` : '';
+  let paceBasis =
+    suggestedPace != null
+      ? `Your best 20 minutes of running (${formatPace(1000 / best20Speed!)}/km), across ${runCount} run${runCount === 1 ? '' : 's'} with pace data`
+      : '';
   let fallbackPace: number | null = null;
   if (suggestedPace == null) {
     const runs = await prisma.workout.findMany({
@@ -190,19 +228,20 @@ export async function buildCalibrationReport(userId: string): Promise<Calibratio
       const pace = (r.durationMin * 60) / (r.distanceKm ?? 1);
       if (fallbackPace == null || pace < fallbackPace) fallbackPace = pace;
     }
+    fallbackPace = withinBounds(fallbackPace != null ? Math.round(fallbackPace) : null, PLAUSIBLE_PACE_SEC_PER_KM);
     if (fallbackPace != null) {
-      fallbackPace = Math.round(fallbackPace);
-      paceBasis = `No pace streams in the last ${WINDOW_DAYS} days — taken from your fastest full run (${formatPace(fallbackPace)}/km) over ${runs.length} runs`;
+      paceBasis = `No pace data on your recent runs — taken from your fastest full run (${formatPace(fallbackPace)}/km) over ${runs.length} run${runs.length === 1 ? '' : 's'}`;
     }
   }
 
+  const plausibleMaxHr = withinBounds(maxHr, PLAUSIBLE_MAX_HR_BPM);
   const suggestedZones =
-    maxHr != null
+    plausibleMaxHr != null
       ? {
-          hrZone1Max: Math.round(maxHr * ZONE_FRACTIONS_OF_MAX[0]),
-          hrZone2Max: Math.round(maxHr * ZONE_FRACTIONS_OF_MAX[1]),
-          hrZone3Max: Math.round(maxHr * ZONE_FRACTIONS_OF_MAX[2]),
-          hrZone4Max: Math.round(maxHr * ZONE_FRACTIONS_OF_MAX[3]),
+          hrZone1Max: Math.round(plausibleMaxHr * ZONE_FRACTIONS_OF_MAX[0]),
+          hrZone2Max: Math.round(plausibleMaxHr * ZONE_FRACTIONS_OF_MAX[1]),
+          hrZone3Max: Math.round(plausibleMaxHr * ZONE_FRACTIONS_OF_MAX[2]),
+          hrZone4Max: Math.round(plausibleMaxHr * ZONE_FRACTIONS_OF_MAX[3]),
         }
       : null;
 
@@ -213,8 +252,8 @@ export async function buildCalibrationReport(userId: string): Promise<Calibratio
       suggested: suggestedFtp,
       basis:
         suggestedFtp != null
-          ? `95% of your best 20 min at ${Math.round(best20Power!)}W, across ${rideCount} rides with power`
-          : `No rides with power data in the last ${WINDOW_DAYS} days`,
+          ? `95% of your best 20 minutes at ${Math.round(best20Power!)}W, across ${rideCount} ride${rideCount === 1 ? '' : 's'} with power`
+          : `No rides with usable power data in the last ${WINDOW_DAYS} days`,
     },
     thresholdPaceSecPerKm: {
       current: user.thresholdPaceSecPerKm,
@@ -231,8 +270,8 @@ export async function buildCalibrationReport(userId: string): Promise<Calibratio
       suggested: suggestedZones,
       basis:
         suggestedZones != null
-          ? `Percent of your highest sustained heart rate (${Math.round(maxHr!)} bpm) in the last ${WINDOW_DAYS} days`
-          : `No heart-rate data in the last ${WINDOW_DAYS} days`,
+          ? `Percent of your highest sustained heart rate (${Math.round(plausibleMaxHr!)} bpm) in the last ${WINDOW_DAYS} days`
+          : `No usable heart-rate data in the last ${WINDOW_DAYS} days`,
     },
   };
 }
