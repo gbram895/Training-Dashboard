@@ -7,6 +7,7 @@ import type {
   PlannedDiscipline,
   SelectedWorkout,
   ThresholdSettings,
+  TrainingPhase,
   TrainingPlanConfig,
   WorkoutCategory,
 } from '../api/types';
@@ -18,11 +19,20 @@ import NewPlanModal from '../components/NewPlanModal';
 import RearrangePlanModal from '../components/RearrangePlanModal';
 import WeeklyAvailabilityModal from '../components/WeeklyAvailabilityModal';
 import PageHead from '../components/PageHead';
-import GoalsCard from '../components/plan/GoalsCard';
 import WeeklyReviewCard from '../components/plan/WeeklyReviewCard';
 import { useCachedState } from '../lib/pageCache';
 import { useRefreshOnResume } from '../lib/useRefreshOnResume';
 import { weekdayLabel } from '../lib/planDates';
+
+// What the periodisation made of the selected day. The goals themselves live
+// on the Goals tab; this is only the reason today's session is the size it is.
+const PHASE_LABEL: Record<TrainingPhase, string> = {
+  BUILD: 'Build week',
+  RECOVERY: 'Recovery week',
+  TAPER: 'Taper',
+  EVENT: 'Race day',
+  POST_RACE: 'Easy after a race',
+};
 
 const CATEGORY_INFO: { key: WorkoutCategory | 'OTHER'; label: string; icon: string; description: string }[] = [
   { key: 'VO2MAX', label: 'VO2Max', icon: '💨', description: 'Short, maximal efforts that push your aerobic ceiling.' },
@@ -283,11 +293,17 @@ export default function Plan() {
                 Set next week's availability
               </button>
 
-              <GoalsCard
-                phase={selectedDay?.phase ?? null}
-                phaseWeek={selectedDay?.phaseWeek ?? null}
-                onChanged={loadPlan}
-              />
+              {selectedDay?.phase && (
+                <p className="gd-plan-phase">
+                  <span className={`gd-phase-pill gd-phase-${selectedDay.phase.toLowerCase().replace('_', '-')}`}>
+                    {PHASE_LABEL[selectedDay.phase]}
+                    {selectedDay.phase === 'BUILD' && selectedDay.phaseWeek ? ` ${selectedDay.phaseWeek}` : ''}
+                  </span>
+                  {/* The day tabs above mean this can be any day in the window,
+                      not just today — say which day it is talking about. */}
+                  <span>is why {selectedDayIndex === 0 ? 'today' : 'that day'} is the size it is</span>
+                </p>
+              )}
 
               <div className="gd-availability-card">
                 <div className="gd-availability-row">

@@ -1,14 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { apiFetch } from '../../api/client';
-import type { TargetPriority, TrainingPhase, TrainingTarget, TrainingTargets } from '../../api/types';
-
-const PHASE_LABEL: Record<TrainingPhase, string> = {
-  BUILD: 'Build week',
-  RECOVERY: 'Recovery week',
-  TAPER: 'Taper',
-  EVENT: 'Race day',
-  POST_RACE: 'Easy after',
-};
+import type { TargetPriority, TrainingTarget, TrainingTargets } from '../../api/types';
 
 /**
  * What each tier actually does to the calendar, in the athlete's terms rather
@@ -66,15 +58,7 @@ const EMPTY_DRAFT: Draft = { id: null, name: '', date: '', priority: 'A', rampPe
  * periodises them together: it builds toward the one marked "peak for it" while
  * still tapering into, and recovering from, everything else on the list.
  */
-export default function GoalsCard({
-  phase,
-  phaseWeek,
-  onChanged,
-}: {
-  phase?: TrainingPhase | null;
-  phaseWeek?: number | null;
-  onChanged: () => void;
-}) {
+export default function GoalsCard({ onChanged }: { onChanged: () => void }) {
   const [data, setData] = useState<TrainingTargets | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -261,12 +245,6 @@ export default function GoalsCard({
       <div className="gd-sec-title">
         <span className="gd-flag" />
         <h4>Your goals</h4>
-        {phase && (
-          <span className={`gd-phase-pill gd-phase-${phase.toLowerCase().replace('_', '-')}`}>
-            {PHASE_LABEL[phase]}
-            {phase === 'BUILD' && phaseWeek ? ` ${phaseWeek}` : ''}
-          </span>
-        )}
       </div>
 
       <ul className="gd-goal-list">

@@ -2771,7 +2771,8 @@ button.gd-cal-apply {
   margin-bottom: 0;
 }
 
-/* Training target (Plan) */
+/* Goal cards and the goal form (Goals tab; the phase pill is also used
+   by the Plan tab's one-line phase note) */
 
 .gd-target-card {
   background: var(--surface);
@@ -2873,7 +2874,20 @@ button.gd-cal-apply {
   color: var(--good);
 }
 
-/* Goals (Plan) */
+/* The Plan tab's one-line note naming the phase the plan put today in. The
+   goals that produced it live on the Goals tab; this is only the reason
+   today's session is the size it is. */
+.gd-plan-phase {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+/* The goal list (Goals tab) */
 
 .gd-goal-list {
   list-style: none;
