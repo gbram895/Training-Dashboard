@@ -178,24 +178,27 @@ export interface DailyHealthSummary {
   avgBloodOxygen?: number | null;
 }
 
-export interface DropboxSyncStatus {
-  configured: boolean;
+/**
+ * What every sync source reports about itself. `lastSyncedAt` moves only when
+ * a run succeeds while `lastAttemptedAt` moves on every run, so the pair says
+ * both how fresh the data is and whether the most recent run failed — see
+ * deriveSyncState in lib/syncHealth.
+ */
+export interface SyncStatusBase {
   connected: boolean;
   lastSyncedAt: string | null;
+  lastAttemptedAt: string | null;
   lastSyncError: string | null;
 }
 
-export interface GarminSyncStatus {
-  connected: boolean;
-  lastSyncedAt: string | null;
-  lastSyncError: string | null;
+export interface DropboxSyncStatus extends SyncStatusBase {
+  configured: boolean;
 }
 
-export interface StravaSyncStatus {
+export type GarminSyncStatus = SyncStatusBase;
+
+export interface StravaSyncStatus extends SyncStatusBase {
   configured: boolean;
-  connected: boolean;
-  lastSyncedAt: string | null;
-  lastSyncError: string | null;
 }
 
 /**

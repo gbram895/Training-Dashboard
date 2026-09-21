@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { apiFetch } from '../../api/client';
 import type { GarminSyncStatus, SyncNowResult } from '../../api/types';
 import { describeSyncResult } from '../../lib/syncResult';
+import SyncStatusBar from './SyncStatusBar';
 
 interface GarminConnectResponse {
   connected?: true;
@@ -9,8 +10,13 @@ interface GarminConnectResponse {
   pendingId?: string;
 }
 
-export default function GarminSyncBar({ onSynced }: { onSynced?: () => void }) {
-  const [status, setStatus] = useState<GarminSyncStatus | null>(null);
+export default function GarminSyncBar({
+  status,
+  onChanged,
+}: {
+  status: GarminSyncStatus | null;
+  onChanged: () => void;
+}) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -19,12 +25,6 @@ export default function GarminSyncBar({ onSynced }: { onSynced?: () => void }) {
   const [connectError, setConnectError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncNote, setSyncNote] = useState<string | null>(null);
-
-  function reload() {
-    apiFetch<GarminSyncStatus>('/health/garmin/status').then(setStatus);
-  }
-
-  useEffect(reload, []);
 
   async function connect(e: React.FormEvent) {
     e.preventDefault();
@@ -40,8 +40,7 @@ export default function GarminSyncBar({ onSynced }: { onSynced?: () => void }) {
       } else {
         setUsername('');
         setPassword('');
-        reload();
-        onSynced?.();
+        onChanged();
       }
     } catch (err) {
       setConnectError(err instanceof Error ? err.message : 'Failed to connect');
@@ -64,8 +63,7 @@ export default function GarminSyncBar({ onSynced }: { onSynced?: () => void }) {
       setPassword('');
       setPendingId(null);
       setMfaCode('');
-      reload();
-      onSynced?.();
+      onChanged();
     } catch (err) {
       setConnectError(err instanceof Error ? err.message : 'Failed to verify code');
     } finally {
@@ -84,18 +82,18 @@ export default function GarminSyncBar({ onSynced }: { onSynced?: () => void }) {
       });
       setSyncNote(describeSyncResult(result));
       setTimeout(() => setSyncNote(null), 8000);
-    } catch (err) {
-      setSyncNote(err instanceof Error ? err.message : 'Sync failed');
+    } catch {
+      // Swallowed on purpose: the run recorded why it failed, and the refetch
+      // below brings that back as the bar's own failure state.
     } finally {
       setSyncing(false);
-      reload();
-      onSynced?.();
+      onChanged();
     }
   }
 
   async function disconnect() {
     await apiFetch('/health/garmin/disconnect', { method: 'POST' });
-    reload();
+    onChanged();
   }
 
   if (status === null) return null;
@@ -159,25 +157,22 @@ export default function GarminSyncBar({ onSynced }: { onSynced?: () => void }) {
   }
 
   return (
-    <section className="card sync-bar">
-      <p className="muted">
-        {status.lastSyncedAt
-          ? `Last synced ${new Date(status.lastSyncedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}`
-          : 'Waiting for first sync…'}
-        {status.lastSyncError ? ` — ${status.lastSyncError}` : ''}
-        {syncNote ? ` — ${syncNote}` : ''}
-      </p>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button type="button" className="secondary" onClick={() => syncNow(true)} disabled={syncing}>
-          Backfill all history
-        </button>
-        <button type="button" className="secondary" onClick={() => syncNow(false)} disabled={syncing}>
-          {syncing ? 'Syncing…' : 'Sync now'}
-        </button>
-        <button type="button" className="secondary" onClick={disconnect} disabled={syncing}>
-          Disconnect
-        </button>
-      </div>
-    </section>
+    <SyncStatusBar
+      name="Garmin"
+      status={status}
+      note={syncNote}
+      syncing={syncing}
+      onSyncNow={() => syncNow(false)}
+      extraActions={
+        <>
+          <button type="button" className="secondary" onClick={() => syncNow(true)} disabled={syncing}>
+            Backfill all history
+          </button>
+          <button type="button" className="secondary" onClick={disconnect} disabled={syncing}>
+            Disconnect
+          </button>
+        </>
+      }
+    />
   );
 }

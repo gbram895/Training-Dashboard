@@ -1,18 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { apiFetch, getToken } from '../../api/client';
 import type { StravaSyncStatus, SyncNowResult } from '../../api/types';
 import { describeSyncResult } from '../../lib/syncResult';
+import SyncStatusBar from './SyncStatusBar';
 
-export default function StravaSyncBar({ onSynced }: { onSynced?: () => void }) {
-  const [status, setStatus] = useState<StravaSyncStatus | null>(null);
+export default function StravaSyncBar({
+  status,
+  onChanged,
+}: {
+  status: StravaSyncStatus | null;
+  onChanged: () => void;
+}) {
   const [syncing, setSyncing] = useState(false);
   const [syncNote, setSyncNote] = useState<string | null>(null);
-
-  function reload() {
-    apiFetch<StravaSyncStatus>('/health/strava/status').then(setStatus);
-  }
-
-  useEffect(reload, []);
 
   async function syncNow(force = false) {
     setSyncing(true);
@@ -25,18 +25,18 @@ export default function StravaSyncBar({ onSynced }: { onSynced?: () => void }) {
       });
       setSyncNote(describeSyncResult(result));
       setTimeout(() => setSyncNote(null), 8000);
-    } catch (err) {
-      setSyncNote(err instanceof Error ? err.message : 'Sync failed');
+    } catch {
+      // Swallowed on purpose: the run recorded why it failed, and the refetch
+      // below brings that back as the bar's own failure state.
     } finally {
       setSyncing(false);
-      reload();
-      onSynced?.();
+      onChanged();
     }
   }
 
   async function disconnect() {
     await apiFetch('/health/strava/disconnect', { method: 'POST' });
-    reload();
+    onChanged();
   }
 
   if (status === null) return null;
@@ -56,25 +56,22 @@ export default function StravaSyncBar({ onSynced }: { onSynced?: () => void }) {
   }
 
   return (
-    <section className="card sync-bar">
-      <p className="muted">
-        {status.lastSyncedAt
-          ? `Last synced ${new Date(status.lastSyncedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}`
-          : 'Waiting for first sync…'}
-        {status.lastSyncError ? ` — ${status.lastSyncError}` : ''}
-        {syncNote ? ` — ${syncNote}` : ''}
-      </p>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button type="button" className="secondary" onClick={() => syncNow(true)} disabled={syncing}>
-          Backfill all history
-        </button>
-        <button type="button" className="secondary" onClick={() => syncNow(false)} disabled={syncing}>
-          {syncing ? 'Syncing…' : 'Sync now'}
-        </button>
-        <button type="button" className="secondary" onClick={disconnect} disabled={syncing}>
-          Disconnect
-        </button>
-      </div>
-    </section>
+    <SyncStatusBar
+      name="Strava"
+      status={status}
+      note={syncNote}
+      syncing={syncing}
+      onSyncNow={() => syncNow(false)}
+      extraActions={
+        <>
+          <button type="button" className="secondary" onClick={() => syncNow(true)} disabled={syncing}>
+            Backfill all history
+          </button>
+          <button type="button" className="secondary" onClick={disconnect} disabled={syncing}>
+            Disconnect
+          </button>
+        </>
+      }
+    />
   );
 }

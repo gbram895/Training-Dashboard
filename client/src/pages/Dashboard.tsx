@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../api/client';
 import type {
@@ -6,10 +6,12 @@ import type {
   DisciplineStats,
   DropboxSyncStatus,
   FitnessPoint,
+  GarminSyncStatus,
   Goal,
   HrZoneWeek,
   PlannedDay,
   SelectedWorkout,
+  StravaSyncStatus,
   Workout,
 } from '../api/types';
 import { useAuth } from '../context/AuthContext';
@@ -23,6 +25,7 @@ import DashboardHero from '../components/dashboard/DashboardHero';
 import GradientStatRow from '../components/dashboard/GradientStatRow';
 import WeekStrip from '../components/dashboard/WeekStrip';
 import GradientActivityList from '../components/dashboard/GradientActivityList';
+import SyncHealthBanner from '../components/dashboard/SyncHealthBanner';
 
 // Everything below the "More" divider (the pre-Gradient recharts analytics)
 // in its own chunk — see LegacyAnalytics.tsx for why.
@@ -43,6 +46,10 @@ export default function Dashboard() {
   const [goals, setGoals] = useCachedState<Goal[]>('dash.goals', []);
   const [recent, setRecent] = useCachedState<Workout[]>('dash.recent', []);
   const [syncStatus, setSyncStatus] = useCachedState<DropboxSyncStatus | null>('dash.syncStatus', null);
+  const [stravaStatus, setStravaStatus] = useCachedState<StravaSyncStatus | null>('dash.stravaStatus', null);
+  const [garminStatus, setGarminStatus] = useCachedState<GarminSyncStatus | null>('dash.garminStatus', null);
+  const [syncUnavailable, setSyncUnavailable] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [todaysWorkout, setTodaysWorkout] = useCachedState<SelectedWorkout | null>('dash.todaysWorkout', null);
   const [plannedToday, setPlannedToday] = useCachedState<PlannedDay | null>('dash.plannedToday', null);
   const [planWeek, setPlanWeek] = useCachedState<PlannedDay[]>('dash.planWeek', []);
@@ -58,7 +65,18 @@ export default function Dashboard() {
     apiFetch<HrZoneWeek[]>('/workouts/hr-zones-weekly').then(setHrZones);
     apiFetch<Goal[]>('/goals').then(setGoals);
     apiFetch<Workout[]>('/workouts?limit=10').then(setRecent);
-    apiFetch<DropboxSyncStatus>('/health/dropbox/status').then(setSyncStatus);
+    // A status request that fails leaves the sync UI with nothing to show, so
+    // it is tracked rather than swallowed — "cannot tell" is itself worth saying.
+    setSyncUnavailable(false);
+    apiFetch<DropboxSyncStatus>('/health/dropbox/status')
+      .then(setSyncStatus)
+      .catch(() => setSyncUnavailable(true));
+    apiFetch<StravaSyncStatus>('/health/strava/status')
+      .then(setStravaStatus)
+      .catch(() => setSyncUnavailable(true));
+    apiFetch<GarminSyncStatus>('/health/garmin/status')
+      .then(setGarminStatus)
+      .catch(() => setSyncUnavailable(true));
     apiFetch<SelectedWorkout | null>('/workout-library/selected').then(setTodaysWorkout);
     apiFetch<PlannedDay | null>('/training-plan/today').then(setPlannedToday);
     apiFetch<PlannedDay[]>('/training-plan/week').then(setPlanWeek);
@@ -71,6 +89,23 @@ export default function Dashboard() {
   }, [load]);
 
   useRefreshOnResume(load);
+
+  const retrySyncs = useCallback(
+    async (keys: string[]) => {
+      setRetrying(true);
+      try {
+        // Sequential: these hit third-party APIs that rate-limit, and firing
+        // every failing source at once is what gets this server blocked.
+        for (const key of keys) {
+          await apiFetch(`/health/${key}/sync-now`, { method: 'POST' }).catch(() => undefined);
+        }
+      } finally {
+        setRetrying(false);
+        load();
+      }
+    },
+    [load],
+  );
 
   const loading = days === null || disciplineStats === null || hrZones === null;
 
@@ -95,6 +130,17 @@ export default function Dashboard() {
               title={timeOfDayGreeting()}
               greeting={formatDateUTC(new Date(), { weekday: 'long', month: 'short', day: 'numeric' })}
               name={user?.name}
+            />
+
+            <SyncHealthBanner
+              sources={[
+                { key: 'dropbox', name: 'Apple Health', status: syncStatus },
+                { key: 'strava', name: 'Strava', status: stravaStatus },
+                { key: 'garmin', name: 'Garmin', status: garminStatus },
+              ]}
+              unavailable={syncUnavailable}
+              retrying={retrying}
+              onRetry={retrySyncs}
             />
 
             <DashboardHero workout={todaysWorkout} plannedToday={plannedToday} readiness={readiness} onCleared={load} />
@@ -128,6 +174,8 @@ export default function Dashboard() {
               goals={goals}
               recent={recent}
               syncStatus={syncStatus}
+              stravaStatus={stravaStatus}
+              garminStatus={garminStatus}
               fitness={fitness}
               onSynced={load}
             />

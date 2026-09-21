@@ -956,6 +956,167 @@ button.icon-button {
   font-size: 0.85rem;
 }
 
+/* Sync bar states. A failed sync used to read as another grey sentence in the
+   same paragraph as the success — these give each state its own colour, its
+   own explanation, and the retry right next to it. */
+
+.sync-bar-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.sync-bar-text {
+  min-width: 0;
+}
+
+.sync-bar-headline {
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Outranks the blanket `.sync-bar p { margin: 0 }` above without !important. */
+.sync-bar .sync-bar-sub,
+.sync-bar .sync-bar-note {
+  margin-top: 2px;
+  color: var(--text-dim);
+}
+
+.sync-bar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sync-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 0.4rem;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.sync-bar-good .sync-dot,
+.gd-sync-banner.is-good .sync-dot {
+  background: var(--good);
+}
+
+.sync-bar-warn .sync-dot,
+.gd-sync-banner.is-warn .sync-dot {
+  background: var(--warn);
+}
+
+.sync-bar-bad .sync-dot,
+.gd-sync-banner.is-bad .sync-dot {
+  background: var(--crit);
+}
+
+.sync-bar-warn {
+  border-color: var(--warn);
+  background: var(--warn-wash);
+}
+
+.sync-bar-bad {
+  border-color: var(--crit);
+  background: var(--crit-wash);
+}
+
+.sync-bar-bad .sync-bar-headline {
+  color: var(--crit);
+}
+
+.sync-bar-details {
+  background: none;
+  border: none;
+  padding: 4px 0 0;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  text-decoration: underline;
+}
+
+/* The raw error the service returned — kept one tap away rather than used as
+   the headline, since it is written for whoever reads the logs. */
+.sync-bar .sync-bar-raw {
+  margin-top: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+/* Top-of-dashboard freshness line: quiet when every source is current, a
+   coloured card the moment one is not. */
+.gd-sync-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.gd-sync-banner.is-good,
+.gd-sync-banner.is-idle {
+  margin-bottom: 10px;
+  padding: 0 2px;
+  border-color: transparent;
+  background: none;
+  box-shadow: none;
+}
+
+.gd-sync-banner.is-warn {
+  border-color: var(--warn);
+  background: var(--warn-wash);
+}
+
+.gd-sync-banner.is-bad {
+  border-color: var(--crit);
+  background: var(--crit-wash);
+}
+
+.gd-sync-banner-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.gd-sync-banner-headline {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.gd-sync-banner.is-good .gd-sync-banner-headline,
+.gd-sync-banner.is-idle .gd-sync-banner-headline {
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.gd-sync-banner.is-bad .gd-sync-banner-headline {
+  color: var(--crit);
+}
+
+.gd-sync-banner-sub {
+  margin: 2px 0 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.gd-sync-banner-action {
+  flex: none;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.8rem;
+}
+
 .garmin-connect-form {
   display: flex;
   flex-wrap: wrap;
