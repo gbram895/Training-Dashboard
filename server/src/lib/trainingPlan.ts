@@ -197,9 +197,9 @@ interface GeneratedDay {
   restReason?: string;
   workout?: ParsedWorkoutFile;
   category?: WorkoutCategory;
-  // Where this day sits in the build toward the athlete's TrainingTarget, and
-  // what that did to its hours. Null when there's no target, in which case the
-  // plan behaves exactly as it did before periodisation existed.
+  // Where this day sits across all of the athlete's goals, and what that did to
+  // its hours. Null when there are none, in which case the plan behaves exactly
+  // as it did before periodisation existed.
   periodization?: DayPeriodization | null;
   // Set for a day the athlete has manually rearranged (calendar drag-and-drop)
   // — its content is left alone rather than upserted, see generatePlanWindow.
@@ -279,12 +279,15 @@ async function runProjection(
   let atl = fitness.length ? fitness[fitness.length - 1].atl : 0;
   const readiness = await getReadinessModifiers(userId);
 
-  // The ramp is re-anchored to the athlete's real, current fitness on every
-  // regeneration — see lib/periodization.ts on why that matters.
-  const target = await prisma.trainingTarget.findUnique({ where: { userId } });
-  const periodizationCtx: PeriodizationContext | null = target
+  // Every goal the athlete has is periodised together, not one at a time — the
+  // ramp aims at the season's anchor while any of them can claim a given day
+  // for its taper, its race or its recovery. The ramp is re-anchored to the
+  // athlete's real, current fitness on every regeneration — see
+  // lib/periodization.ts on why both of those matter.
+  const targets = await prisma.trainingTarget.findMany({ where: { userId }, orderBy: { date: 'asc' } });
+  const periodizationCtx: PeriodizationContext | null = targets.length
     ? {
-        target,
+        targets,
         currentCtl: ctl,
         tssPerHour: await measureTssPerHour(userId),
         weeklyHours: config.weeklyHours,
@@ -316,7 +319,12 @@ async function runProjection(
       generated = { date, isRestDay: override.isRestDay, skipUpsert: true, periodization };
     } else if (periodization?.phase === 'EVENT') {
       // Race day isn't the plan's to fill in.
-      generated = { date, isRestDay: true, restReason: `${target!.name} — today's the day. Nothing else is planned.`, periodization };
+      generated = {
+        date,
+        isRestDay: true,
+        restReason: `${periodization.targetName} — today's the day. Nothing else is planned.`,
+        periodization,
+      };
     } else {
       generated = { ...decideDay(date, targetHours, tsb, config, library, readiness, recentPicks), periodization };
     }

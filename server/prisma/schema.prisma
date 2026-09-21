@@ -26,7 +26,7 @@ model User {
   plannedDays           PlannedDay[]
   cachedLibraryWorkouts CachedLibraryWorkout[]
   pushSubscriptions     PushSubscription[]
-  trainingTarget        TrainingTarget?
+  trainingTargets       TrainingTarget[]
 
   // Heart-rate zone thresholds (bpm) — upper bound of zones 1-4; zone 5 is everything above z4Max
   hrZone1Max Int @default(114)
@@ -241,21 +241,44 @@ model TrainingPlanConfig {
   updatedAt      DateTime @updatedAt
 }
 
-// The event or date the athlete is building toward. Optional — with no target
-// the plan stays purely reactive (today's Form picks today's session, which is
-// all it ever did before). With one, lib/trainingPlan.ts scales each day's
-// target hours by a periodised multiplier: a weekly ramp toward peakCtl,
-// `recoveryEveryNWeeks` cycling, and a taper over the final `taperDays`.
+// A priority tier, the standard A/B/C race scheme. It is the answer to "what
+// happens when two goals crowd each other": only an A goal reshapes the season
+// around itself, and the taper and post-race recovery each goal earns scale
+// with its tier. See lib/periodization.ts.
+enum TargetPriority {
+  // Peak for it: the full ramp is aimed here, the full taper runs into it, and
+  // the days after it are recovery.
+  A
+  // Matters, but not the one the season is built around: a short sharpening
+  // taper and a day or two off afterwards, on top of a build that carries on.
+  B
+  // Train through it: it goes on the calendar and the day itself is the event,
+  // but nothing around it moves.
+  C
+}
+
+// An event or date the athlete is building toward. There can be several, which
+// is the normal shape of a season: two or three things that matter over a year
+// plus a handful of smaller ones along the way. With none, the plan stays
+// purely reactive (today's Form picks today's session, which is all it ever did
+// before periodisation existed).
+//
+// The whole set is periodised together rather than one at a time — the ramp is
+// aimed at the season's A goal, while every goal in the list can pull a given
+// day down for its own taper, its own race day, or its own recovery afterwards.
+// See lib/periodization.ts.
 model TrainingTarget {
-  id     String   @id @default(uuid())
-  userId String   @unique
-  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name   String
-  date   DateTime
+  id       String         @id @default(uuid())
+  userId   String
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name     String
+  date     DateTime
+  priority TargetPriority @default(A)
 
   // Fitness (CTL) to arrive at on the day. Null means "build at rampPerWeek
   // for as long as there is runway", which is what most people actually want
-  // — see lib/periodization.ts's resolvePeakCtl.
+  // — see lib/periodization.ts's resolveCeiling. Only read off the season's
+  // anchor goal; a B or C goal's ceiling never reshapes the build.
   peakCtl Float?
 
   // CTL points per build week. 3-5 is the usual safe range; above ~7 is how
@@ -264,15 +287,21 @@ model TrainingTarget {
   // Every Nth week is a recovery week at `recoveryMultiplier` of normal load.
   recoveryEveryNWeeks Int   @default(4)
   recoveryMultiplier  Float @default(0.6)
-  // Days before the event over which load tapers down to taperFloor.
+  // Days before the event over which load tapers down to taperFloor. The
+  // stored value is what an A goal gets; lib/periodization.ts shortens it for
+  // a B goal and skips the taper entirely for a C goal.
   taperDays           Int   @default(10)
   taperFloor          Float @default(0.5)
 
-  // Anchors the build/recovery cycle, so week 1 is the week the target was
-  // set rather than some arbitrary epoch.
+  // Anchors the build/recovery cycle, so week 1 is the week the first goal was
+  // set rather than some arbitrary epoch. Shared across a user's goals — see
+  // lib/periodization.ts's seasonStart — so adding a goal in August doesn't
+  // restart the week count for one already being built toward.
   startedOn DateTime
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId, date])
 }
 
 // One row per calendar day: either a rest day, or a specific workout picked

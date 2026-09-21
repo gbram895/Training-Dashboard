@@ -18,7 +18,7 @@ import NewPlanModal from '../components/NewPlanModal';
 import RearrangePlanModal from '../components/RearrangePlanModal';
 import WeeklyAvailabilityModal from '../components/WeeklyAvailabilityModal';
 import PageHead from '../components/PageHead';
-import TargetCard from '../components/plan/TargetCard';
+import GoalsCard from '../components/plan/GoalsCard';
 import WeeklyReviewCard from '../components/plan/WeeklyReviewCard';
 import { useCachedState } from '../lib/pageCache';
 import { useRefreshOnResume } from '../lib/useRefreshOnResume';
@@ -283,7 +283,7 @@ export default function Plan() {
                 Set next week's availability
               </button>
 
-              <TargetCard
+              <GoalsCard
                 phase={selectedDay?.phase ?? null}
                 phaseWeek={selectedDay?.phaseWeek ?? null}
                 onChanged={loadPlan}

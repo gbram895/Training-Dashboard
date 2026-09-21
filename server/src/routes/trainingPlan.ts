@@ -12,6 +12,15 @@ import {
   swapPlannedDays,
 } from '../lib/trainingPlan.js';
 import { buildWeeklyReview } from '../lib/weeklyReview.js';
+import { computeFitnessSeries } from '../lib/fitness.js';
+import {
+  findGoalConflicts,
+  measureTssPerHour,
+  pickAnchor,
+  projectSeason,
+  type PeriodizationContext,
+} from '../lib/periodization.js';
+import { asString } from '../lib/params.js';
 import { buildFitWorkoutFile } from '../lib/garminFitWorkout.js';
 import { loadAthleteSpeedThresholds, type GarminPushSegment } from '../lib/garminWorkoutPush.js';
 
@@ -162,18 +171,63 @@ router.get('/today', async (req: AuthedRequest, res) => {
   res.send(Buffer.from(bytes));
 });
 
-// --- Training target -------------------------------------------------------
-// The event or date the athlete is building toward. With no target set, plan
-// generation stays exactly as it was; with one, each day's hours are scaled by
-// a periodised ramp. See lib/periodization.ts.
+// --- Training goals --------------------------------------------------------
+// The events the athlete is building toward. There can be several — the normal
+// shape of a season — and they are periodised together rather than one at a
+// time: the ramp aims at the season's anchor goal while any of them can claim
+// a day for its taper, its race or its recovery afterwards. With none set, plan
+// generation stays exactly as it was. See lib/periodization.ts.
 
-router.get('/target', async (req: AuthedRequest, res) => {
-  res.json(await prisma.trainingTarget.findUnique({ where: { userId: req.userId } }));
+async function targetsFor(userId: string) {
+  return prisma.trainingTarget.findMany({ where: { userId }, orderBy: { date: 'asc' } });
+}
+
+async function periodizationContextFor(userId: string): Promise<PeriodizationContext | null> {
+  const [targets, config] = await Promise.all([
+    targetsFor(userId),
+    prisma.trainingPlanConfig.findUnique({ where: { userId } }),
+  ]);
+  if (!targets.length) return null;
+
+  const series = await computeFitnessSeries(userId);
+  return {
+    targets,
+    currentCtl: series.length ? series[series.length - 1].ctl : 0,
+    tssPerHour: await measureTssPerHour(userId),
+    weeklyHours: config?.weeklyHours ?? 0,
+  };
+}
+
+router.get('/targets', async (req: AuthedRequest, res) => {
+  const userId = req.userId!;
+  const targets = await targetsFor(userId);
+  const today = utcMidnight(new Date());
+  res.json({
+    targets,
+    anchorId: pickAnchor(targets, today)?.id ?? null,
+    conflicts: findGoalConflicts(targets, today),
+  });
+});
+
+// A week-by-week view of the whole season. The rolling plan window is a
+// fortnight, so without this there is nothing that shows the athlete their
+// goals nine months out have actually been taken into account.
+router.get('/season', async (req: AuthedRequest, res) => {
+  const ctx = await periodizationContextFor(req.userId!);
+  if (!ctx) return res.json({ weeks: [], conflicts: [] });
+
+  const today = utcMidnight(new Date());
+  res.json({
+    weeks: projectSeason(ctx, today),
+    conflicts: findGoalConflicts(ctx.targets, today),
+    currentCtl: Math.round(ctx.currentCtl * 10) / 10,
+  });
 });
 
 const targetSchema = z.object({
   name: z.string().min(1).max(80),
   date: z.string(),
+  priority: z.enum(['A', 'B', 'C']).optional(),
   peakCtl: z.number().positive().max(200).nullish(),
   // Above about 7 CTL points a week is where people get hurt rather than fit,
   // so the ceiling is enforced here rather than left to the UI.
@@ -182,41 +236,78 @@ const targetSchema = z.object({
   taperDays: z.number().int().min(0).max(28).optional(),
 });
 
-router.put('/target', async (req: AuthedRequest, res) => {
-  const parsed = targetSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+function parseTargetBody(body: unknown, partial: boolean) {
+  const schema = partial ? targetSchema.partial() : targetSchema;
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) return { error: parsed.error.flatten() as unknown } as const;
 
-  const date = utcMidnight(new Date(parsed.data.date));
-  if (Number.isNaN(date.getTime())) return res.status(400).json({ error: 'Invalid date' });
-  if (date < utcMidnight(new Date())) return res.status(400).json({ error: 'Target date is in the past' });
+  const { date: rawDate, peakCtl, ...rest } = parsed.data;
+  let date: Date | undefined;
+  if (rawDate !== undefined) {
+    date = utcMidnight(new Date(rawDate));
+    if (Number.isNaN(date.getTime())) return { error: 'Invalid date' } as const;
+    if (date < utcMidnight(new Date())) return { error: 'That date has already passed' } as const;
+  }
 
-  const { name, peakCtl, rampPerWeek, recoveryEveryNWeeks, taperDays } = parsed.data;
-  const fields = {
-    name,
-    date,
-    peakCtl: peakCtl ?? null,
-    ...(rampPerWeek != null ? { rampPerWeek } : {}),
-    ...(recoveryEveryNWeeks != null ? { recoveryEveryNWeeks } : {}),
-    ...(taperDays != null ? { taperDays } : {}),
-  };
+  return {
+    fields: {
+      ...rest,
+      ...(date ? { date } : {}),
+      ...(peakCtl !== undefined ? { peakCtl: peakCtl ?? null } : {}),
+    },
+  } as const;
+}
 
-  const target = await prisma.trainingTarget.upsert({
-    where: { userId: req.userId },
-    // startedOn anchors the build/recovery cycle, so it's set once when the
-    // target is created and left alone on later edits — otherwise changing the
-    // event name would restart the athlete's week count.
-    create: { userId: req.userId!, startedOn: utcMidnight(new Date()), ...fields },
-    update: fields,
+router.post('/targets', async (req: AuthedRequest, res) => {
+  const parsed = parseTargetBody(req.body, false);
+  if ('error' in parsed) return res.status(400).json({ error: parsed.error });
+  const userId = req.userId!;
+
+  // startedOn anchors the build/recovery cycle. A new goal joins the season
+  // already in progress rather than restarting week 1 — see seasonStart.
+  const existing = await targetsFor(userId);
+  const startedOn = existing.length
+    ? existing.reduce((earliest, t) => (t.startedOn < earliest ? t.startedOn : earliest), existing[0].startedOn)
+    : utcMidnight(new Date());
+
+  const target = await prisma.trainingTarget.create({
+    data: { userId, startedOn, ...(parsed.fields as { name: string; date: Date }) },
   });
 
+  await generatePlanWindow(userId);
+  res.status(201).json(target);
+});
+
+router.put('/targets/:id', async (req: AuthedRequest, res) => {
+  const parsed = parseTargetBody(req.body, true);
+  if ('error' in parsed) return res.status(400).json({ error: parsed.error });
+
+  const id = asString(req.params.id);
+  const existing = await prisma.trainingTarget.findFirst({ where: { id, userId: req.userId } });
+  if (!existing) return res.status(404).json({ error: 'Goal not found' });
+
+  const target = await prisma.trainingTarget.update({ where: { id }, data: parsed.fields });
   await generatePlanWindow(req.userId!);
   res.json(target);
 });
 
-router.delete('/target', async (req: AuthedRequest, res) => {
-  await prisma.trainingTarget.deleteMany({ where: { userId: req.userId } });
+router.delete('/targets/:id', async (req: AuthedRequest, res) => {
+  const id = asString(req.params.id);
+  const existing = await prisma.trainingTarget.findFirst({ where: { id, userId: req.userId } });
+  if (!existing) return res.status(404).json({ error: 'Goal not found' });
+
+  await prisma.trainingTarget.delete({ where: { id } });
   await generatePlanWindow(req.userId!);
   res.status(204).send();
+});
+
+// Kept for an app still running the single-target build from a cached bundle:
+// reads back whichever goal is next rather than 404ing at it.
+router.get('/target', async (req: AuthedRequest, res) => {
+  const today = utcMidnight(new Date());
+  const targets = await targetsFor(req.userId!);
+  const ahead = targets.filter((t) => t.date >= today);
+  res.json(ahead[0] ?? null);
 });
 
 // --- Weekly review ---------------------------------------------------------
