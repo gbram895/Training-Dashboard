@@ -16,6 +16,7 @@ import WorkoutDetailView from '../components/WorkoutDetailView';
 import WorkoutProfileChart from '../components/WorkoutProfileChart';
 import NewPlanModal from '../components/NewPlanModal';
 import RearrangePlanModal from '../components/RearrangePlanModal';
+import WeeklyAvailabilityModal from '../components/WeeklyAvailabilityModal';
 import PageHead from '../components/PageHead';
 import { useCachedState } from '../lib/pageCache';
 import { weekdayLabel } from '../lib/planDates';
@@ -98,6 +99,7 @@ export default function Plan() {
   const [availability, setAvailability] = useState(0);
   const [savingAvailability, setSavingAvailability] = useState(false);
   const [showRearrangeModal, setShowRearrangeModal] = useState(false);
+  const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
 
   function load() {
     apiFetch<LibraryWorkout[]>('/workout-library')
@@ -126,6 +128,15 @@ export default function Plan() {
   }
 
   useEffect(load, []);
+
+  // Deep link from the Sunday-evening push notification.
+  useEffect(() => {
+    if (planWeek.length === 0) return;
+    if (!new URLSearchParams(window.location.search).has('checkin')) return;
+    setShowAvailabilityModal(true);
+    navigate('/plan', { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planWeek.length]);
 
   const todayIndex = planWeek.findIndex((d) => weekdayLabel(d.date).isToday);
   const todayPlanned = todayIndex >= 0 ? planWeek[todayIndex] : null;
@@ -263,6 +274,9 @@ export default function Plan() {
 
               <button type="button" className="gd-why-btn" onClick={() => setShowRearrangeModal(true)}>
                 Rearrange days
+              </button>
+              <button type="button" className="gd-why-btn" onClick={() => setShowAvailabilityModal(true)}>
+                Set next week's availability
               </button>
 
               <div className="gd-availability-card">
@@ -413,6 +427,18 @@ export default function Plan() {
           week={planWeek}
           onClose={() => setShowRearrangeModal(false)}
           onSwapped={(week) => setPlanWeek(week)}
+        />
+      )}
+
+      {showAvailabilityModal && (
+        <WeeklyAvailabilityModal
+          week={planWeek}
+          config={planConfig}
+          onClose={() => setShowAvailabilityModal(false)}
+          onSaved={(week) => {
+            setPlanWeek(week);
+            setShowAvailabilityModal(false);
+          }}
         />
       )}
 

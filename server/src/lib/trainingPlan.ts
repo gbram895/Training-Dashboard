@@ -278,15 +278,17 @@ function decideDay(
  * day reusing today's exact TSB — which is what always produced the same
  * pick before.
  *
- * `todayOverrideHours`, when set, replaces the first date's (today's) config
- * hours — see setTodayAvailability, which is the only source of this value.
+ * `hourOverrides`, keyed by date, replaces that date's config hours — see
+ * setDayAvailability, the only source of these values (the Plan tab's
+ * availability slider for today, or the weekly check-in for any day in the
+ * window).
  */
 async function runProjection(
   userId: string,
   dates: Date[],
   config: PlanConfigHours & { includeRunning: boolean; runDays: number[] },
   library: ParsedWorkoutFile[],
-  todayOverrideHours?: number | null,
+  hourOverrides?: Map<number, number>,
   manualOverrides?: Map<number, ManualOverrideRow>,
 ): Promise<GeneratedDay[]> {
   const fitness = await computeFitnessSeries(userId);
@@ -301,13 +303,14 @@ async function runProjection(
     const date = dates[i];
     const tsb = ctl - atl;
     const override = manualOverrides?.get(date.getTime());
+    const targetHours = hourOverrides?.get(date.getTime()) ?? config[dayKeyFor(date)];
 
     // A manually rearranged day (calendar drag-and-drop) keeps its own
     // content — still fed into the fitness projection below, exactly like a
     // regular planned day, just never regenerated.
     const generated: GeneratedDay = override
       ? { date, isRestDay: override.isRestDay, skipUpsert: true }
-      : decideDay(date, i === 0 && todayOverrideHours != null ? todayOverrideHours : config[dayKeyFor(date)], tsb, config, library, readiness, recentPicks);
+      : decideDay(date, targetHours, tsb, config, library, readiness, recentPicks);
     results.push(generated);
 
     const dayTss = generated.isRestDay
@@ -373,7 +376,7 @@ async function upsertPlannedDay(userId: string, generated: GeneratedDay, availab
   });
 }
 
-const ROLLING_WINDOW_DAYS = 14;
+export const ROLLING_WINDOW_DAYS = 14;
 
 /** (Re)generates today through the next `days` days for a user with an active plan config. */
 export async function generatePlanWindow(userId: string, days = ROLLING_WINDOW_DAYS): Promise<void> {
@@ -383,9 +386,6 @@ export async function generatePlanWindow(userId: string, days = ROLLING_WINDOW_D
   const library = await fetchWorkoutLibrary(userId).catch(() => [] as ParsedWorkoutFile[]);
 
   const today = utcMidnight(new Date());
-  const existingToday = await prisma.plannedDay.findUnique({ where: { userId_date: { userId, date: today } } });
-  const todayOverrideHours = existingToday?.availableHoursOverride ?? null;
-
   const dates: Date[] = [];
   for (let i = 0; i < days; i++) {
     const date = new Date(today);
@@ -393,22 +393,30 @@ export async function generatePlanWindow(userId: string, days = ROLLING_WINDOW_D
     dates.push(date);
   }
 
+  // A day's own one-off availableHoursOverride (see setDayAvailability) or
+  // manualOverride flag (see swapPlannedDays) survives regeneration — read
+  // whatever's already on each row before rebuilding the window around it.
   const existingRows = await prisma.plannedDay.findMany({
-    where: { userId, date: { in: dates }, manualOverride: true },
-    select: { date: true, isRestDay: true, trainingStress: true, sourcePath: true },
+    where: { userId, date: { in: dates } },
+    select: { date: true, isRestDay: true, trainingStress: true, sourcePath: true, manualOverride: true, availableHoursOverride: true },
   });
-  const manualOverrides = new Map<number, ManualOverrideRow>(
-    existingRows.map((row) => [
-      row.date.getTime(),
-      { isRestDay: row.isRestDay, trainingStress: row.trainingStress, sourcePath: row.sourcePath },
-    ]),
-  );
+  const manualOverrides = new Map<number, ManualOverrideRow>();
+  const hourOverrides = new Map<number, number>();
+  for (const row of existingRows) {
+    if (row.manualOverride) {
+      manualOverrides.set(row.date.getTime(), {
+        isRestDay: row.isRestDay,
+        trainingStress: row.trainingStress,
+        sourcePath: row.sourcePath,
+      });
+    }
+    if (row.availableHoursOverride != null) hourOverrides.set(row.date.getTime(), row.availableHoursOverride);
+  }
 
-  const generatedDays = await runProjection(userId, dates, config, library, todayOverrideHours, manualOverrides);
+  const generatedDays = await runProjection(userId, dates, config, library, hourOverrides, manualOverrides);
   for (const generated of generatedDays) {
     if (generated.skipUpsert) continue;
-    const isToday = generated.date.getTime() === today.getTime();
-    await upsertPlannedDay(userId, generated, isToday && todayOverrideHours != null ? todayOverrideHours : undefined);
+    await upsertPlannedDay(userId, generated, hourOverrides.get(generated.date.getTime()));
   }
 }
 
@@ -470,36 +478,30 @@ export async function revertManualOverrides(userId: string): Promise<void> {
 }
 
 /**
- * A one-off "today I actually have X hours" adjustment from the Plan tab's
- * availability slider — re-picks just today's workout (or rest day) against
- * the athlete's real current fitness, without touching the recurring weekly
- * schedule in TrainingPlanConfig or any other day in the window.
+ * A one-off "I actually have X hours this day" adjustment — the Plan tab's
+ * availability slider (today only) and the Sunday-evening "set next week's
+ * availability" check-in (any day already in the rolling window) both go
+ * through this. Records the override on that day's row, then re-runs the
+ * whole window projection so later days correctly reflect the changed load,
+ * without touching the recurring weekly schedule in TrainingPlanConfig.
  */
-export async function setTodayAvailability(userId: string, hours: number) {
+export async function setDayAvailability(userId: string, date: Date, hours: number) {
   const config = await prisma.trainingPlanConfig.findUnique({ where: { userId } });
   if (!config) return null;
 
   await ensureWindowGenerated(userId);
 
-  const library = await fetchWorkoutLibrary(userId).catch(() => [] as ParsedWorkoutFile[]);
-  const fitness = await computeFitnessSeries(userId);
-  const ctl = fitness.length ? fitness[fitness.length - 1].ctl : 0;
-  const atl = fitness.length ? fitness[fitness.length - 1].atl : 0;
-  const readiness = await getReadinessModifiers(userId);
-
+  const day = utcMidnight(date);
   const today = utcMidnight(new Date());
-  const recentDays = await prisma.plannedDay.findMany({
-    where: { userId, date: { lt: today }, isRestDay: false, sourcePath: { not: null } },
-    orderBy: { date: 'desc' },
-    take: RECENT_PICKS_MEMORY,
-    select: { sourcePath: true },
-  });
-  const recentPicks = recentDays.map((d) => d.sourcePath).filter((p): p is string => !!p);
+  if (day < today) return null;
 
-  const generated = decideDay(today, hours, ctl - atl, config, library, readiness, recentPicks);
-  await upsertPlannedDay(userId, generated, hours);
+  const existing = await prisma.plannedDay.findUnique({ where: { userId_date: { userId, date: day } } });
+  if (!existing) return null;
 
-  return prisma.plannedDay.findUnique({ where: { userId_date: { userId, date: today } } });
+  await prisma.plannedDay.update({ where: { id: existing.id }, data: { availableHoursOverride: hours } });
+  await generatePlanWindow(userId);
+
+  return prisma.plannedDay.findUnique({ where: { userId_date: { userId, date: day } } });
 }
 
 /** Ensures today's PlannedDay row (and the rest of the rolling window) exists, ignoring an inactive config. */

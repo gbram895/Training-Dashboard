@@ -7,7 +7,8 @@ import {
   getPlannedDay,
   getPlannedWeek,
   revertManualOverrides,
-  setTodayAvailability,
+  ROLLING_WINDOW_DAYS,
+  setDayAvailability,
   swapPlannedDays,
 } from '../lib/trainingPlan.js';
 import { buildFitWorkoutFile } from '../lib/garminFitWorkout.js';
@@ -79,7 +80,30 @@ router.put('/today/availability', async (req: AuthedRequest, res) => {
   const parsed = availabilitySchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const updated = await setTodayAvailability(req.userId!, parsed.data.hours);
+  const updated = await setDayAvailability(req.userId!, new Date(), parsed.data.hours);
+  if (!updated) return res.status(400).json({ error: 'Set up a training plan first' });
+  res.json(updated);
+});
+
+const dayAvailabilitySchema = z.object({ date: z.string().min(1), hours: hoursSchema });
+
+// The weekly availability check-in: set hours for any day already in the
+// rolling window, not just today (e.g. "Tuesday I only have 30 minutes").
+router.put('/day-availability', async (req: AuthedRequest, res) => {
+  const parsed = dayAvailabilitySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const date = utcMidnight(new Date(parsed.data.date));
+  if (Number.isNaN(date.getTime())) return res.status(400).json({ error: 'Invalid date' });
+
+  const today = utcMidnight(new Date());
+  const maxDate = new Date(today);
+  maxDate.setUTCDate(maxDate.getUTCDate() + ROLLING_WINDOW_DAYS - 1);
+  if (date < today || date > maxDate) {
+    return res.status(400).json({ error: 'Date must be within the plan window' });
+  }
+
+  const updated = await setDayAvailability(req.userId!, date, parsed.data.hours);
   if (!updated) return res.status(400).json({ error: 'Set up a training plan first' });
   res.json(updated);
 });
