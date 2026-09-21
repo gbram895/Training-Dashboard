@@ -106,11 +106,18 @@ app.listen(PORT, () => {
 
   if (pushConfigured()) {
     // After the training-plan cron above so the day's plan is already fresh.
-    const reminderSchedule = process.env.WORKOUT_REMINDER_CRON ?? '0 7 * * *';
-    cron.schedule(reminderSchedule, () => {
-      sendDailyWorkoutReminders().catch((err) => console.error('[push] daily reminder run failed:', err));
-    });
-    console.log(`[push] daily reminder scheduled with cron "${reminderSchedule}"`);
+    // Given as local time (default Brussels 8am) rather than UTC, so it stays
+    // correct across the CET/CEST daylight-saving switch.
+    const reminderSchedule = process.env.WORKOUT_REMINDER_CRON ?? '0 8 * * *';
+    const reminderTimezone = process.env.WORKOUT_REMINDER_TZ ?? 'Europe/Brussels';
+    cron.schedule(
+      reminderSchedule,
+      () => {
+        sendDailyWorkoutReminders().catch((err) => console.error('[push] daily reminder run failed:', err));
+      },
+      { timezone: reminderTimezone },
+    );
+    console.log(`[push] daily reminder scheduled with cron "${reminderSchedule}" (${reminderTimezone})`);
   } else {
     console.log('[push] VAPID keys not set — daily workout reminders disabled');
   }
