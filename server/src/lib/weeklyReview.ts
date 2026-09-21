@@ -61,12 +61,16 @@ export interface WeeklyReview {
     ctlDelta12w: number | null;
     tsbEnd: number | null;
   };
+  /** The next goal ahead, or the most recent one behind when none are left. */
   target: {
     name: string;
     date: string;
     daysToEvent: number;
+    priority: 'A' | 'B' | 'C';
     phase: string | null;
     phaseWeek: number | null;
+    /** How many goals are still ahead in total. Zero once they have all been. */
+    goalsAhead: number;
   } | null;
 }
 
@@ -108,7 +112,7 @@ export async function buildWeeklyReview(userId: string, weeksAgo = 1): Promise<W
   const exclusiveEnd = new Date(weekEnd);
   exclusiveEnd.setUTCDate(exclusiveEnd.getUTCDate() + 1);
 
-  const [plannedDays, workouts, series, target] = await Promise.all([
+  const [plannedDays, workouts, series, targets] = await Promise.all([
     prisma.plannedDay.findMany({
       where: { userId, date: { gte: weekStart, lte: weekEnd } },
       orderBy: { date: 'asc' },
@@ -118,8 +122,15 @@ export async function buildWeeklyReview(userId: string, weeksAgo = 1): Promise<W
       orderBy: { date: 'asc' },
     }),
     computeFitnessSeries(userId),
-    prisma.trainingTarget.findUnique({ where: { userId } }),
+    prisma.trainingTarget.findMany({ where: { userId }, orderBy: { date: 'asc' } }),
   ]);
+
+  // The review leads with whatever goal is next; the rest of the season lives
+  // in the Goals tab's outlook. With nothing ahead it falls back to the most
+  // recent goal behind, so the card can still say it has been and gone.
+  const todayStart = utcMidnight(new Date());
+  const goalsAhead = targets.filter((t) => utcMidnight(t.date) >= todayStart);
+  const target = goalsAhead[0] ?? targets[targets.length - 1] ?? null;
 
   const plannedByDate = new Map(plannedDays.map((p) => [dateKey(p.date), p]));
   const workoutsByDate = new Map<string, typeof workouts>();
@@ -238,8 +249,10 @@ export async function buildWeeklyReview(userId: string, weeksAgo = 1): Promise<W
             name: target.name,
             date: dateKey(eventDay),
             daysToEvent: Math.round((eventDay.getTime() - todayKey.getTime()) / 86_400_000),
+            priority: target.priority,
             phase: plannedByDate.get(dateKey(weekEnd))?.phase ?? null,
             phaseWeek: plannedByDate.get(dateKey(weekEnd))?.phaseWeek ?? null,
+            goalsAhead: goalsAhead.length,
           }
         : null,
   };

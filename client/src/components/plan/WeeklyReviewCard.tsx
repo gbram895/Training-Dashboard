@@ -152,6 +152,8 @@ export default function WeeklyReviewCard() {
           {review.target.daysToEvent >= 0
             ? `${review.target.daysToEvent} days to ${review.target.name}.`
             : `${review.target.name} has been and gone.`}
+          {review.target.goalsAhead > 1 &&
+            ` ${review.target.goalsAhead - 1} more goal${review.target.goalsAhead === 2 ? '' : 's'} after that.`}
         </p>
       )}
     </div>

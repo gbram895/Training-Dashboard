@@ -120,12 +120,19 @@ export interface PlannedDay {
   loadMultiplier?: number | null;
 }
 
-export type TrainingPhase = 'BUILD' | 'RECOVERY' | 'TAPER' | 'EVENT';
+export type TrainingPhase = 'BUILD' | 'RECOVERY' | 'TAPER' | 'EVENT' | 'POST_RACE';
+
+/**
+ * A = peak for it, B = matters but doesn't reshape the season, C = train
+ * through it. Decides how much of the calendar around a goal moves for it.
+ */
+export type TargetPriority = 'A' | 'B' | 'C';
 
 export interface TrainingTarget {
   id: string;
   name: string;
   date: string;
+  priority: TargetPriority;
   peakCtl?: number | null;
   rampPerWeek: number;
   recoveryEveryNWeeks: number;
@@ -133,6 +140,29 @@ export interface TrainingTarget {
   taperDays: number;
   taperFloor: number;
   startedOn: string;
+}
+
+export interface TrainingTargets {
+  targets: TrainingTarget[];
+  /** The goal the build is aimed at — the next A goal still ahead. */
+  anchorId: string | null;
+  /** Plain-language warnings where two goals are asking for incompatible things. */
+  conflicts: string[];
+}
+
+export interface SeasonWeek {
+  weekStart: string;
+  phase: TrainingPhase;
+  phaseWeek: number;
+  loadMultiplier: number;
+  projectedCtl: number;
+  events: { id: string; name: string; date: string; priority: TargetPriority }[];
+}
+
+export interface SeasonOutlook {
+  weeks: SeasonWeek[];
+  conflicts: string[];
+  currentCtl?: number;
 }
 
 export interface HrZoneValues {
@@ -200,8 +230,10 @@ export interface WeeklyReview {
     name: string;
     date: string;
     daysToEvent: number;
+    priority: TargetPriority;
     phase: string | null;
     phaseWeek: number | null;
+    goalsAhead: number;
   } | null;
 }
 

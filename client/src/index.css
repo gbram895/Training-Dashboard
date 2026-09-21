@@ -2819,8 +2819,24 @@ button.gd-cal-apply {
   margin-bottom: 5px;
 }
 
+/* .gd-set-input on its own is the borderless, right-aligned numeric field the
+   Settings rows use. A goal's name and date are free text the athlete types
+   into a form, so inside a goal field they get a real box. */
 .gd-target-field .gd-set-input {
   width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  font-family: inherit;
+  font-size: 15px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-sunken);
+}
+
+.gd-target-field .gd-set-input:focus {
+  outline: none;
+  border-color: var(--accent-solid);
 }
 
 .gd-phase-pill {
@@ -2850,6 +2866,291 @@ button.gd-cal-apply {
 .gd-phase-event {
   background: var(--crit-wash);
   color: var(--crit);
+}
+
+.gd-phase-post-race {
+  background: var(--good-wash);
+  color: var(--good);
+}
+
+/* Goals (Plan) */
+
+.gd-goal-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.gd-goal-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 4px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.gd-goal-list li:last-child .gd-goal-row {
+  border-bottom: none;
+}
+
+/* The global `button:hover` paints every button accent-coloured, and outranks
+   a plain class selector — these rows and the priority options are buttons for
+   the keyboard and the screen reader, not accent-filled ones. */
+.gd-goal-row:hover,
+.gd-goal-row:focus-visible {
+  background: var(--surface-sunken);
+  border-radius: 10px;
+}
+
+.gd-goal-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.gd-goal-name {
+  font-size: 15px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gd-goal-when {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.gd-goal-anchor {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-strong);
+  background: var(--accent-wash);
+  padding: 4px 8px;
+  border-radius: 999px;
+}
+
+.gd-goal-conflict {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--warn);
+  background: var(--warn-wash);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin: 12px 0 0;
+}
+
+.gd-goal-past {
+  margin-top: 12px;
+}
+
+/* A past goal's row is a container, not a button — nothing to open, since the
+   API won't accept an edit that carries a date already gone. */
+.gd-goal-row-static {
+  cursor: default;
+}
+
+.gd-goal-row-static:hover {
+  background: none;
+}
+
+/* A/B/C priority */
+
+.gd-priority-tag {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.gd-priority-a {
+  background: var(--crit-wash);
+  color: var(--crit);
+}
+
+.gd-priority-b {
+  background: var(--warn-wash);
+  color: var(--warn);
+}
+
+.gd-priority-c {
+  background: var(--surface-sunken);
+  color: var(--text-dim);
+}
+
+.gd-priority-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gd-priority-opt {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 4px 10px;
+  align-items: center;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.gd-priority-opt:hover,
+.gd-priority-opt:focus-visible {
+  background: var(--surface-sunken);
+}
+
+.gd-priority-opt.gd-selected,
+.gd-priority-opt.gd-selected:hover {
+  border-color: var(--accent-solid);
+  background: var(--accent-wash);
+}
+
+.gd-priority-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.gd-priority-blurb {
+  grid-column: 2;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+/* Season outlook (Plan) */
+
+.gd-season-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 16px;
+  box-shadow: var(--shadow);
+  margin-bottom: 14px;
+}
+
+.gd-season-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  margin: 14px 0 0;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.gd-season-week {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1 0 14px;
+  min-width: 14px;
+}
+
+.gd-season-bar-wrap {
+  position: relative;
+  width: 100%;
+  height: 76px;
+  background: var(--surface-sunken);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.gd-season-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 5px;
+}
+
+/* The projected-fitness line, drawn as a 2px marker per week so the curve
+   reads across the bars without needing a second chart. */
+.gd-season-ctl {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--text-faint);
+  z-index: 1;
+}
+
+.gd-season-build {
+  background: var(--accent-solid);
+}
+
+.gd-season-recovery {
+  background: var(--good);
+}
+
+.gd-season-taper {
+  background: var(--warn);
+}
+
+.gd-season-event {
+  background: var(--crit);
+}
+
+.gd-season-post-race {
+  background: var(--good);
+  opacity: 0.6;
+}
+
+.gd-season-month {
+  font-size: 10px;
+  color: var(--text-faint);
+  height: 12px;
+  white-space: nowrap;
+}
+
+.gd-season-flag {
+  font-size: 9.5px;
+  font-weight: 700;
+  width: 14px;
+  height: 14px;
+  line-height: 14px;
+  text-align: center;
+  border-radius: 5px;
+}
+
+.gd-season-flag-empty {
+  background: none;
+}
+
+.gd-season-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 10px 0 12px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.gd-season-swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  margin-right: 3px;
 }
 
 /* Weekly review (Plan) */

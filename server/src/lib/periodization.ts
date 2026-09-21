@@ -1,30 +1,52 @@
-import type { TrainingTarget } from '@prisma/client';
+import type { TrainingTarget, TargetPriority } from '@prisma/client';
 import { prisma } from './prisma.js';
 
 /**
- * Turns "I'm doing X on this date" into a load trajectory.
+ * Turns "these are the things I'm doing this year" into a load trajectory.
  *
- * Without a target the plan is purely reactive: the standing weekly hours never
+ * Without a goal the plan is purely reactive: the standing weekly hours never
  * move, and the only thing that ever changes a day is fatigue making it easier.
- * That keeps an athlete exactly as fit as they already are. With a target, each
- * day's hours get scaled by a multiplier that ramps week over week toward the
- * event, drops every Nth week for recovery, and tapers over the final stretch.
+ * That keeps an athlete exactly as fit as they already are. With goals, each
+ * day's hours get scaled by a multiplier that ramps week over week, drops every
+ * Nth week for recovery, tapers into each event and eases off after it.
+ *
+ * The whole list is periodised together rather than one goal at a time, which
+ * is the difference between a season and a series of unrelated training blocks:
+ *
+ *  - One goal is the season's ANCHOR — the next A-priority goal still ahead
+ *    (see pickAnchor). The ramp aims there and only there, so a club race in
+ *    three weeks never quietly becomes the thing the whole year is built around.
+ *  - EVERY goal still ahead gets a say over any given day, and the smallest
+ *    multiplier wins. A day inside two goals' taper windows takes the deeper
+ *    taper; a day two days after a race is a recovery day even if the anchor's
+ *    build says otherwise.
+ *  - How much a goal is allowed to bend the season is its priority: an A goal
+ *    gets its full taper and a real recovery block afterwards, a B goal gets a
+ *    short sharpening taper and a day or two, and a C goal is trained through.
+ *  - Weeks that are spoken for by someone else's taper or recovery don't count
+ *    as build weeks toward the anchor, so the ramp knows it has less runway
+ *    than the calendar suggests and doesn't promise fitness it can't deliver.
  *
  * The ramp is anchored to the athlete's CURRENT fitness every time the plan
- * regenerates, not to a schedule laid down when the target was created. Miss a
+ * regenerates, not to a schedule laid down when the goal was created. Miss a
  * week and the plan rebuilds from where you actually are rather than demanding
  * you make up the difference — which is the failure mode of every static plan.
  */
 
-export type Phase = 'BUILD' | 'RECOVERY' | 'TAPER' | 'EVENT';
+export type Phase = 'BUILD' | 'RECOVERY' | 'TAPER' | 'EVENT' | 'POST_RACE';
 
 export interface DayPeriodization {
   phase: Phase;
-  /** 1-based week of the plan, counted from the target's startedOn. */
+  /** 1-based week of the plan, counted from the season start. */
   phaseWeek: number;
   /** Scales that weekday's standing hours from TrainingPlanConfig. */
   loadMultiplier: number;
+  /** Days to the next goal still ahead — the one this day is pointed at. */
   daysToEvent: number;
+  /** The goal that decided this day's phase: the one tapering, racing or being recovered from. */
+  targetId: string;
+  targetName: string;
+  targetPriority: TargetPriority;
 }
 
 // Raising CTL by R points in a week needs daily TSS of about CTL + 6.5R: a
@@ -54,8 +76,33 @@ const SUSTAINABLE_STRETCH = 1.15;
 // block — starting one at 150% of the athlete's usual hours is not a taper.
 const TAPER_CEILING = 1;
 
+/**
+ * What each priority tier is allowed to do to the days around it.
+ *
+ * `taperScale` shortens the goal's own configured taper: a B goal sharpens for
+ * a few days rather than running the full pre-race taper, and a C goal is
+ * trained straight through. `recoveryDays` is how long afterwards stays easy,
+ * which is the other half of "two goals close together" — a hard event leaves
+ * a hole whether or not the next one is soon.
+ */
+const PRIORITY_RULES: Record<TargetPriority, { taperScale: number; recoveryDays: number; recoveryFloor: number }> = {
+  // Peak for it, then take the better part of a week to come back.
+  A: { taperScale: 1, recoveryDays: 5, recoveryFloor: 0.5 },
+  // Arrive fresh-ish, lose a couple of days.
+  B: { taperScale: 0.4, recoveryDays: 2, recoveryFloor: 0.6 },
+  // On the calendar, but the training week around it doesn't move.
+  C: { taperScale: 0, recoveryDays: 0, recoveryFloor: 1 },
+};
+
+// Two A goals closer together than this can't both be peaked for — there isn't
+// room for a taper, a race, recovery and a rebuild in between. The plan peaks
+// for the first and the second rides that peak; findGoalConflicts says so
+// rather than leaving the athlete to work it out from the numbers.
+export const MIN_DAYS_BETWEEN_A_GOALS = 21;
+
 export interface PeriodizationContext {
-  target: TrainingTarget;
+  /** Every goal the athlete has, past ones included — periodizeDay ignores what's behind. */
+  targets: TrainingTarget[];
   /** The athlete's real CTL right now, from lib/fitness.ts. */
   currentCtl: number;
   /** Measured from their own recent training — see measureTssPerHour. */
@@ -72,6 +119,10 @@ function utcMidnight(date: Date): Date {
 
 function daysBetween(from: Date, to: Date): number {
   return Math.round((utcMidnight(to).getTime() - utcMidnight(from).getTime()) / 86_400_000);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 /**
@@ -93,98 +144,384 @@ export async function measureTssPerHour(userId: string): Promise<number> {
   return totalTss / totalHours;
 }
 
-/** Build weeks between two week indices, i.e. excluding the recovery weeks. */
-function buildWeeksBetween(fromWeek: number, toWeek: number, recoveryEveryNWeeks: number): number {
-  if (toWeek <= fromWeek) return 0;
-  let count = 0;
-  for (let w = fromWeek + 1; w <= toWeek; w++) {
-    if (recoveryEveryNWeeks > 0 && w % recoveryEveryNWeeks === 0) continue;
-    count++;
-  }
-  return count;
+/** How many days before its date a goal's taper starts, given its priority. */
+export function effectiveTaperDays(target: TrainingTarget): number {
+  return Math.round(target.taperDays * PRIORITY_RULES[target.priority].taperScale);
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
+/**
+ * The season's week 1. Goals share one anchor — the earliest startedOn — so
+ * adding a September goal in the middle of building toward a June one doesn't
+ * restart the athlete's week count or resynchronise their recovery weeks.
+ */
+export function seasonStart(targets: TrainingTarget[]): Date {
+  const earliest = targets.reduce<Date | null>(
+    (best, t) => (best == null || t.startedOn < best ? t.startedOn : best),
+    null,
+  );
+  return utcMidnight(earliest ?? new Date());
+}
+
+/**
+ * The goal the ramp is aimed at: the next A goal still ahead, or — when there
+ * are none left — the last goal of any priority, so a season of nothing but
+ * club races still builds toward its final one rather than drifting.
+ */
+export function pickAnchor(targets: TrainingTarget[], from: Date): TrainingTarget | null {
+  const ahead = targets
+    .filter((t) => daysBetween(from, t.date) >= 0)
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
+  if (ahead.length === 0) return null;
+  return ahead.find((t) => t.priority === 'A') ?? ahead[ahead.length - 1];
+}
+
+/** The next goal on or after `day`, whatever its priority — what the day counts down to. */
+function nextTarget(targets: TrainingTarget[], day: Date): TrainingTarget | null {
+  let best: TrainingTarget | null = null;
+  for (const t of targets) {
+    if (daysBetween(day, t.date) < 0) continue;
+    if (best == null || t.date < best.date) best = t;
+  }
+  return best;
+}
+
+/**
+ * What one goal wants a given day to be, or null if that goal has no opinion
+ * about it (too far out, or already recovered from). Every goal ahead gets
+ * asked, and resolveDay takes the most conservative answer.
+ */
+interface TargetClaim {
+  target: TrainingTarget;
+  phase: Exclude<Phase, 'BUILD' | 'RECOVERY'>;
+  /** A multiplier, or a cap applied to whatever the build wanted (taper). */
+  multiplier: number;
+  daysToEvent: number;
+}
+
+function claimFor(target: TrainingTarget, day: Date, buildMultiplier: number): TargetClaim | null {
+  const daysToEvent = daysBetween(day, target.date);
+  const rules = PRIORITY_RULES[target.priority];
+
+  if (daysToEvent === 0) {
+    // Race day isn't the plan's to fill in, whatever its priority.
+    return { target, phase: 'EVENT', multiplier: 0, daysToEvent };
+  }
+
+  if (daysToEvent > 0) {
+    const taperDays = effectiveTaperDays(target);
+    if (taperDays <= 0 || daysToEvent > taperDays) return null;
+    // Ease down from wherever the build had got to, capped at a normal week —
+    // a taper from a modest block and one from a big block shouldn't land on
+    // the same number, but neither should start above the athlete's usual load.
+    const atTaperStart = clamp(buildMultiplier, MIN_MULTIPLIER, TAPER_CEILING);
+    const progress = daysToEvent / taperDays; // 1 at the start, ~0 at the event
+    const multiplier = target.taperFloor + (atTaperStart - target.taperFloor) * progress;
+    return { target, phase: 'TAPER', multiplier: clamp(multiplier, target.taperFloor, MAX_MULTIPLIER), daysToEvent };
+  }
+
+  // Behind us: the days an event leaves flat afterwards.
+  const daysSince = -daysToEvent;
+  if (rules.recoveryDays <= 0 || daysSince > rules.recoveryDays) return null;
+  // Easiest on day one and climbing back to normal, rather than a cliff edge
+  // back to full training the morning after the recovery window ends.
+  const progress = (daysSince - 1) / Math.max(1, rules.recoveryDays);
+  const multiplier = rules.recoveryFloor + (1 - rules.recoveryFloor) * progress;
+  return { target, phase: 'POST_RACE', multiplier: clamp(multiplier, rules.recoveryFloor, 1), daysToEvent };
 }
 
 /**
  * The un-tapered, un-recovery-adjusted multiplier for a given week: how much
  * bigger (or smaller) that week needs to be than the standing weekly hours for
- * CTL to be on its ramp by then.
+ * CTL to be on its ramp by then. Read off the anchor goal only.
  */
-function rampMultiplier(ctx: PeriodizationContext, buildWeeksAhead: number): number {
-  const { target, currentCtl, tssPerHour, weeklyHours } = ctx;
+function rampMultiplier(ctx: PeriodizationContext, anchor: TrainingTarget, buildWeeksAhead: number): number {
+  const { currentCtl, tssPerHour, weeklyHours } = ctx;
 
   const baselineDailyTss = (weeklyHours * tssPerHour) / 7;
   if (baselineDailyTss <= 0) return 1;
 
   // CTL settles at whatever the average daily load is, so the athlete's own
   // weekly hours already say what fitness they can hold.
-  const ceiling = target.peakCtl ?? baselineDailyTss * SUSTAINABLE_STRETCH;
-  const desiredCtl = Math.min(ceiling, currentCtl + target.rampPerWeek * buildWeeksAhead);
+  const ceiling = anchor.peakCtl ?? baselineDailyTss * SUSTAINABLE_STRETCH;
+  const desiredCtl = Math.min(ceiling, currentCtl + anchor.rampPerWeek * buildWeeksAhead);
 
   // Once the ceiling is reached the job is to hold it, which needs daily load
   // equal to CTL rather than above it.
   const atPeak = desiredCtl >= ceiling;
-  const requiredDailyTss = desiredCtl + (atPeak ? 0 : target.rampPerWeek * DAILY_TSS_PER_CTL_POINT);
+  const requiredDailyTss = desiredCtl + (atPeak ? 0 : anchor.rampPerWeek * DAILY_TSS_PER_CTL_POINT);
 
   return requiredDailyTss / baselineDailyTss;
 }
 
 /**
- * Where a given date sits in the plan, and what that does to its hours.
- * Returns null once the event is in the past — the target stops influencing
+ * Build weeks between two week indices: the ones that are neither a scheduled
+ * recovery week nor already spoken for by some goal's taper, race or recovery.
+ *
+ * This is what stops the ramp over-promising. Three club races between here and
+ * the A goal cost real build time, and a plan that counts those weeks as build
+ * weeks will keep asking for a fitness it has no way to reach, pin against
+ * MAX_MULTIPLIER, and hand the athlete a block they can't complete.
+ */
+function countBuildWeeks(
+  ctx: PeriodizationContext,
+  anchor: TrainingTarget,
+  start: Date,
+  fromWeek: number,
+  toWeek: number,
+): number {
+  if (toWeek <= fromWeek) return 0;
+  let count = 0;
+  for (let w = fromWeek + 1; w <= toWeek; w++) {
+    if (anchor.recoveryEveryNWeeks > 0 && w % anchor.recoveryEveryNWeeks === 0) continue;
+    // Judge the week by its midpoint — a Thursday is a fair stand-in for
+    // whether a week is a training week or a race week.
+    const midweek = new Date(start);
+    midweek.setUTCDate(midweek.getUTCDate() + (w - 1) * 7 + 3);
+    const claimed = ctx.targets.some((t) => claimFor(t, midweek, 1) != null);
+    if (claimed) continue;
+    count++;
+  }
+  return count;
+}
+
+/**
+ * Where a given date sits in the season, and what that does to its hours.
+ * Returns null once every goal is in the past — the goals stop influencing
  * anything rather than silently going on forever.
  */
 export function periodizeDay(date: Date, today: Date, ctx: PeriodizationContext): DayPeriodization | null {
-  const { target } = ctx;
-  const eventDay = utcMidnight(target.date);
   const day = utcMidnight(date);
-  const daysToEvent = daysBetween(day, eventDay);
-  if (daysToEvent < 0) return null;
+  const upcoming = nextTarget(ctx.targets, day);
+  const anchor = pickAnchor(ctx.targets, day);
 
-  const weekOf = (d: Date) => Math.floor(daysBetween(utcMidnight(target.startedOn), d) / 7) + 1;
-  const phaseWeek = Math.max(1, weekOf(day));
-  const todayWeek = Math.max(1, weekOf(today));
-  const buildWeeksAhead = buildWeeksBetween(todayWeek, phaseWeek, target.recoveryEveryNWeeks);
-
-  if (daysToEvent === 0) {
-    return { phase: 'EVENT', phaseWeek, loadMultiplier: 0, daysToEvent };
+  // Everything is behind us — except that the days right after a race still
+  // belong to it, so a goal that has just happened keeps its say.
+  if (!upcoming || !anchor) {
+    const trailing = ctx.targets
+      .map((t) => claimFor(t, day, 1))
+      .filter((c): c is TargetClaim => c != null)
+      .sort((a, b) => a.multiplier - b.multiplier)[0];
+    if (!trailing) return null;
+    const start = seasonStart(ctx.targets);
+    return {
+      phase: trailing.phase,
+      phaseWeek: Math.max(1, Math.floor(daysBetween(start, day) / 7) + 1),
+      loadMultiplier: trailing.multiplier,
+      daysToEvent: trailing.daysToEvent,
+      targetId: trailing.target.id,
+      targetName: trailing.target.name,
+      targetPriority: trailing.target.priority,
+    };
   }
 
-  const base = rampMultiplier(ctx, buildWeeksAhead);
+  const start = seasonStart(ctx.targets);
+  const weekOf = (d: Date) => Math.max(1, Math.floor(daysBetween(start, d) / 7) + 1);
+  const phaseWeek = weekOf(day);
+  const buildWeeksAhead = countBuildWeeks(ctx, anchor, start, weekOf(today), phaseWeek);
 
-  if (daysToEvent <= target.taperDays) {
-    // Ease down from wherever the build had got to, capped at a normal week —
-    // a taper from a modest block and one from a big block shouldn't land on
-    // the same number, but neither should start above the athlete's usual load.
-    const atTaperStart = clamp(base, MIN_MULTIPLIER, TAPER_CEILING);
-    const progress = daysToEvent / target.taperDays; // 1 at the start, ~0 at the event
-    const multiplier = target.taperFloor + (atTaperStart - target.taperFloor) * progress;
-    return { phase: 'TAPER', phaseWeek, loadMultiplier: clamp(multiplier, target.taperFloor, MAX_MULTIPLIER), daysToEvent };
+  const isRecoveryWeek = anchor.recoveryEveryNWeeks > 0 && phaseWeek % anchor.recoveryEveryNWeeks === 0;
+  const ramp = rampMultiplier(ctx, anchor, buildWeeksAhead);
+  const buildMultiplier =
+    clamp(ramp, MIN_MULTIPLIER, MAX_MULTIPLIER) * (isRecoveryWeek ? anchor.recoveryMultiplier : 1);
+
+  // Every goal gets a say on this day, and the quietest day wins: a day caught
+  // between one race's taper and another's recovery should be the easier of
+  // the two, never the average and never the louder one.
+  const claims = ctx.targets
+    .map((t) => claimFor(t, day, buildMultiplier))
+    .filter((c): c is TargetClaim => c != null);
+  // Race day outranks everything, even a deeper taper for a bigger goal later.
+  const winner =
+    claims.find((c) => c.phase === 'EVENT') ??
+    claims.sort((a, b) => a.multiplier - b.multiplier)[0];
+
+  if (winner && winner.multiplier <= buildMultiplier) {
+    return {
+      phase: winner.phase,
+      phaseWeek,
+      loadMultiplier: clamp(winner.multiplier, 0, MAX_MULTIPLIER),
+      daysToEvent: daysBetween(day, upcoming.date),
+      targetId: winner.target.id,
+      targetName: winner.target.name,
+      targetPriority: winner.target.priority,
+    };
   }
-
-  const isRecoveryWeek = target.recoveryEveryNWeeks > 0 && phaseWeek % target.recoveryEveryNWeeks === 0;
-  const multiplier = clamp(base, MIN_MULTIPLIER, MAX_MULTIPLIER) * (isRecoveryWeek ? target.recoveryMultiplier : 1);
 
   return {
     phase: isRecoveryWeek ? 'RECOVERY' : 'BUILD',
     phaseWeek,
-    loadMultiplier: clamp(multiplier, MIN_MULTIPLIER, MAX_MULTIPLIER),
-    daysToEvent,
+    loadMultiplier: clamp(buildMultiplier, MIN_MULTIPLIER, MAX_MULTIPLIER),
+    daysToEvent: daysBetween(day, upcoming.date),
+    targetId: anchor.id,
+    targetName: anchor.name,
+    targetPriority: anchor.priority,
   };
 }
 
-export function describePhase(p: DayPeriodization, targetName: string): string {
+export function describePhase(p: DayPeriodization): string {
   switch (p.phase) {
     case 'EVENT':
-      return targetName;
+      return p.targetName;
     case 'TAPER':
-      return `Taper — ${p.daysToEvent} day${p.daysToEvent === 1 ? '' : 's'} to ${targetName}`;
+      return `Taper — ${p.daysToEvent} day${p.daysToEvent === 1 ? '' : 's'} to ${p.targetName}`;
+    case 'POST_RACE':
+      return `Easy after ${p.targetName}`;
     case 'RECOVERY':
       return `Recovery week — week ${p.phaseWeek}`;
     case 'BUILD':
       return `Build week ${p.phaseWeek}`;
   }
+}
+
+/**
+ * Where the athlete's goals are asking for something the calendar can't give,
+ * said plainly enough to act on. Surfaced on the Plan tab rather than silently
+ * resolved, because the fix is a decision only they can make: drop one, move
+ * one, or accept that one of them is a training day.
+ */
+export function findGoalConflicts(targets: TrainingTarget[], from: Date): string[] {
+  const ahead = targets
+    .filter((t) => daysBetween(from, t.date) >= 0)
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
+  const warnings: string[] = [];
+
+  const aGoals = ahead.filter((t) => t.priority === 'A');
+  for (let i = 1; i < aGoals.length; i++) {
+    const gap = daysBetween(aGoals[i - 1].date, aGoals[i].date);
+    if (gap < MIN_DAYS_BETWEEN_A_GOALS) {
+      warnings.push(
+        `${aGoals[i - 1].name} and ${aGoals[i].name} are ${gap} day${gap === 1 ? '' : 's'} apart — ` +
+          `there isn't room to build, peak and recover twice. The plan peaks for ${aGoals[i - 1].name}, ` +
+          `and ${aGoals[i].name} comes off that same peak: recovery and a short sharpening rather than a block of its own. ` +
+          `Make ${aGoals[i - 1].name} a B goal if ${aGoals[i].name} is the one that matters.`,
+      );
+    }
+  }
+
+  // A run of events with no clear build in between is the other way a season
+  // quietly stops working: every week is a taper or a recovery, and fitness
+  // slides all year.
+  for (let i = 1; i < ahead.length; i++) {
+    const gap = daysBetween(ahead[i - 1].date, ahead[i].date);
+    const recovery = PRIORITY_RULES[ahead[i - 1].priority].recoveryDays;
+    const taper = effectiveTaperDays(ahead[i]);
+    if (gap > 0 && gap <= recovery + taper) {
+      warnings.push(
+        `There's no real training between ${ahead[i - 1].name} and ${ahead[i].name} — ` +
+          `${gap} day${gap === 1 ? '' : 's'} is recovery and taper back to back. That's fine for a block of racing, ` +
+          `but you won't gain fitness across it.`,
+      );
+    }
+  }
+
+  return warnings;
+}
+
+/**
+ * A week-by-week look at the whole season: what each week is for, and where
+ * fitness is projected to be by the end of it.
+ *
+ * The rolling plan window is a fortnight, so without this the athlete can set
+ * goals ten months out and see nothing that tells them the plan has taken them
+ * into account. This is projected, not promised — it re-derives from real
+ * fitness on every call, exactly like the plan itself.
+ */
+export interface SeasonWeek {
+  weekStart: string; // YYYY-MM-DD
+  phase: Phase;
+  phaseWeek: number;
+  /** Mean of the week's daily multipliers. */
+  loadMultiplier: number;
+  projectedCtl: number;
+  /** Goals falling in this week. */
+  events: { id: string; name: string; date: string; priority: TargetPriority }[];
+}
+
+const CTL_DECAY = 1 - Math.exp(-1 / 42);
+
+function dateKey(d: Date): string {
+  return utcMidnight(d).toISOString().slice(0, 10);
+}
+
+export function projectSeason(ctx: PeriodizationContext, today: Date, maxWeeks = 60): SeasonWeek[] {
+  const ahead = ctx.targets.filter((t) => daysBetween(today, t.date) >= 0);
+  if (ahead.length === 0) return [];
+
+  const lastDate = ahead.reduce((latest, t) => (t.date > latest ? t.date : latest), ahead[0].date);
+  const totalDays = Math.min(maxWeeks * 7, daysBetween(today, lastDate) + 7);
+
+  // Walk the same day-by-day CTL projection the plan itself runs, so the curve
+  // the athlete sees is the one the generator is working to.
+  const dailyTssBaseline = (ctx.weeklyHours * ctx.tssPerHour) / 7;
+  let ctl = ctx.currentCtl;
+
+  const weeks: SeasonWeek[] = [];
+  let current: { day: Date; multipliers: number[]; phases: Phase[]; periodization: DayPeriodization | null } | null = null;
+  const flush = () => {
+    if (!current) return;
+    const p = current.periodization;
+    const weekStart = new Date(current.day);
+    const events = ahead
+      .filter((t) => {
+        const offset = daysBetween(weekStart, t.date);
+        return offset >= 0 && offset < 7;
+      })
+      .map((t) => ({ id: t.id, name: t.name, date: dateKey(t.date), priority: t.priority }));
+    const mean = current.multipliers.reduce((a, b) => a + b, 0) / Math.max(1, current.multipliers.length);
+    weeks.push({
+      weekStart: dateKey(weekStart),
+      phase: dominantPhase(current.phases),
+      phaseWeek: p?.phaseWeek ?? 1,
+      loadMultiplier: Math.round(mean * 100) / 100,
+      projectedCtl: Math.round(ctl * 10) / 10,
+      events,
+    });
+  };
+
+  for (let i = 0; i < totalDays; i++) {
+    const day = new Date(utcMidnight(today));
+    day.setUTCDate(day.getUTCDate() + i);
+
+    // A fresh context each day, carrying the projected CTL forward — the ramp
+    // re-anchors to actual fitness nightly, and the projection mirrors that.
+    const periodization = periodizeDay(day, day, { ...ctx, currentCtl: ctl });
+    const multiplier = periodization?.loadMultiplier ?? 1;
+
+    if (i % 7 === 0) {
+      flush();
+      current = { day, multipliers: [], phases: [], periodization };
+    }
+    if (current) {
+      current.multipliers.push(multiplier);
+      current.phases.push(periodization?.phase ?? 'BUILD');
+      if (periodization && current.periodization == null) current.periodization = periodization;
+    }
+
+    const dayTss = dailyTssBaseline * multiplier;
+    ctl = ctl + (dayTss - ctl) * CTL_DECAY;
+  }
+  flush();
+
+  return weeks;
+}
+
+/**
+ * What to call a week that isn't all one thing. A week containing a race is a
+ * race week whatever else is in it; otherwise the week is whatever most of its
+ * days are, so a block that turns into a taper on Friday still reads as a
+ * build week.
+ */
+function dominantPhase(phases: Phase[]): Phase {
+  if (phases.includes('EVENT')) return 'EVENT';
+  const counts = new Map<Phase, number>();
+  for (const p of phases) counts.set(p, (counts.get(p) ?? 0) + 1);
+  let best: Phase = 'BUILD';
+  let bestCount = -1;
+  for (const [phase, count] of counts) {
+    if (count > bestCount) {
+      best = phase;
+      bestCount = count;
+    }
+  }
+  return best;
 }
