@@ -59,3 +59,8 @@ export async function unsubscribeFromPush(): Promise<void> {
   });
   await subscription.unsubscribe();
 }
+
+/** Asks the server to immediately push a one-off test notification to this user. */
+export async function sendTestPush(): Promise<void> {
+  await apiFetch('/push/test', { method: 'POST' });
+}

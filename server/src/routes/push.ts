@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, AuthedRequest } from '../middleware/auth.js';
-import { getVapidPublicKey, pushConfigured } from '../lib/webPush.js';
+import { getVapidPublicKey, pushConfigured, sendToUser } from '../lib/webPush.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -44,6 +44,13 @@ router.delete('/subscribe', async (req: AuthedRequest, res) => {
 
   await prisma.pushSubscription.deleteMany({ where: { userId: req.userId, endpoint: parsed.data.endpoint } });
   res.json({ subscribed: false });
+});
+
+// Lets a user confirm delivery is actually working, instead of waiting for the daily cron.
+router.post('/test', async (req: AuthedRequest, res) => {
+  if (!pushConfigured()) return res.status(404).json({ error: 'Push notifications are not configured on this server' });
+  await sendToUser(req.userId!, { title: 'Gradient', body: 'Test notification — push is working!', url: '/' });
+  res.status(204).end();
 });
 
 export default router;

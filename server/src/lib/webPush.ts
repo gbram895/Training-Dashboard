@@ -28,7 +28,7 @@ interface NotificationPayload {
 }
 
 /** Sends to every subscription on file for a user, dropping any the push service reports as gone. */
-async function sendToUser(userId: string, payload: NotificationPayload): Promise<void> {
+export async function sendToUser(userId: string, payload: NotificationPayload): Promise<void> {
   ensureConfigured();
   const subs = await prisma.pushSubscription.findMany({ where: { userId } });
 

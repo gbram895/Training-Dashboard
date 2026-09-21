@@ -6,7 +6,7 @@ import PageHead from '../components/PageHead';
 import { useAuth } from '../context/AuthContext';
 import { useCachedState } from '../lib/pageCache';
 import { getStoredTheme, setTheme, type Theme } from '../lib/theme';
-import { getExistingSubscription, pushSupported, subscribeToPush, unsubscribeFromPush } from '../lib/push';
+import { getExistingSubscription, pushSupported, sendTestPush, subscribeToPush, unsubscribeFromPush } from '../lib/push';
 
 const THEME_OPTIONS: { key: Theme; label: string }[] = [
   { key: 'light', label: 'Light' },
@@ -43,6 +43,7 @@ export default function Settings() {
   const [pushSubscribed, setPushSubscribed] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushError, setPushError] = useState<string | null>(null);
+  const [testSent, setTestSent] = useState(false);
 
   useEffect(() => {
     apiFetch<HrZoneSettings>('/settings/hr-zones').then(setZones);
@@ -64,6 +65,20 @@ export default function Settings() {
         await subscribeToPush();
         setPushSubscribed(true);
       }
+    } catch (err) {
+      setPushError(err instanceof Error ? err.message : 'Something went wrong');
+    } finally {
+      setPushBusy(false);
+    }
+  }
+
+  async function sendTest() {
+    setPushBusy(true);
+    setPushError(null);
+    try {
+      await sendTestPush();
+      setTestSent(true);
+      setTimeout(() => setTestSent(false), 3000);
     } catch (err) {
       setPushError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
@@ -163,6 +178,11 @@ export default function Settings() {
                 </button>
               </div>
             </div>
+            {pushSubscribed && (
+              <button type="button" className="gd-set-save" onClick={sendTest} disabled={pushBusy}>
+                {testSent ? 'Sent ✓ — check your notifications' : 'Send test notification'}
+              </button>
+            )}
             {pushError && <p className="gd-set-note gd-set-danger">{pushError}</p>}
           </div>
         )}
