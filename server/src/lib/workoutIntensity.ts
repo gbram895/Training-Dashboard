@@ -133,6 +133,13 @@ export function estimatedTssForBucket(bucket: number | null | undefined): number
  */
 export type WorkoutCategory = 'ENDURANCE' | 'TEMPO' | 'THRESHOLD' | 'VO2MAX';
 
+/**
+ * Easiest to hardest. Several places need to reason about "one step easier" or
+ * "everything at or below this", so the order lives with the type rather than
+ * being re-declared wherever it's needed.
+ */
+export const CATEGORY_ORDER: WorkoutCategory[] = ['ENDURANCE', 'TEMPO', 'THRESHOLD', 'VO2MAX'];
+
 const SUSTAINED_EFFORT_MIN_SEC = 20;
 
 export function classifyWorkoutCategory(

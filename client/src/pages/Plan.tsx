@@ -414,9 +414,14 @@ export default function Plan() {
                     </div>
                     {showWhy && (
                       <p className="gd-plan-why-text">
-                        {selectedDay.category
-                          ? `Picked as a ${selectedDay.category.toLowerCase()} session based on your current fitness and recovery. `
-                          : ''}
+                        {/* With a typed goal the plan can say which of that
+                            event's demands today is training; without one the
+                            only honest answer is fitness and recovery. */}
+                        {selectedDay.focus
+                          ? `${selectedDay.focus} `
+                          : selectedDay.category
+                            ? `Picked as a ${selectedDay.category.toLowerCase()} session based on your current fitness and recovery. `
+                            : ''}
                         {selectedDay.profile ?? ''}
                       </p>
                     )}
