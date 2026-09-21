@@ -2704,3 +2704,285 @@ button.gd-goal-remove {
   background: var(--surface-sunken);
   color: var(--text);
 }
+
+/* Calibration (Settings) — current vs what the athlete's own data suggests */
+
+.gd-cal-list {
+  margin-top: 12px;
+}
+
+.gd-cal-row {
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.gd-cal-row:first-child {
+  border-top: none;
+  padding-top: 4px;
+}
+
+.gd-cal-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.gd-cal-values {
+  font-size: 13px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.gd-cal-arrow {
+  margin: 0 5px;
+  color: var(--text-faint);
+}
+
+.gd-cal-new {
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.gd-cal-basis {
+  font-size: 12.5px;
+  color: var(--text-faint);
+  line-height: 1.45;
+  margin: 4px 0 0;
+}
+
+button.gd-cal-apply {
+  margin-top: 10px;
+}
+
+.gd-cal-applied {
+  font-size: 13px;
+  color: var(--good);
+  margin: 8px 0 0;
+}
+
+.gd-cal-error {
+  font-size: 13px;
+  color: var(--crit);
+  margin: 8px 0 0;
+}
+
+.gd-cal-ok {
+  margin-top: 10px;
+  margin-bottom: 0;
+}
+
+/* Training target (Plan) */
+
+.gd-target-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 16px;
+  box-shadow: var(--shadow);
+  margin-bottom: 14px;
+}
+
+.gd-target-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.gd-target-name {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.gd-target-when {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin: 3px 0 0;
+}
+
+.gd-target-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.gd-target-field {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.gd-target-field > span {
+  display: block;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  margin-bottom: 5px;
+}
+
+.gd-target-field .gd-set-input {
+  width: 100%;
+}
+
+.gd-phase-pill {
+  flex-shrink: 0;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.gd-phase-build {
+  background: var(--accent-wash);
+  color: var(--accent-strong);
+}
+
+.gd-phase-recovery {
+  background: var(--good-wash);
+  color: var(--good);
+}
+
+.gd-phase-taper {
+  background: var(--warn-wash);
+  color: var(--warn);
+}
+
+.gd-phase-event {
+  background: var(--crit-wash);
+  color: var(--crit);
+}
+
+/* Weekly review (Plan) */
+
+.gd-review-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 16px;
+  box-shadow: var(--shadow);
+  margin-top: 18px;
+}
+
+.gd-review-nav {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.gd-review-nav button {
+  padding: 2px 9px;
+}
+
+.gd-review-verdict {
+  font-size: 14.5px;
+  line-height: 1.5;
+  margin: 12px 0 14px;
+}
+
+.gd-review-strip {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.gd-review-day {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.gd-review-letter {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-faint);
+}
+
+.gd-review-dot {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+}
+
+.gd-review-hit .gd-review-dot {
+  background: var(--good);
+}
+
+.gd-review-miss .gd-review-dot {
+  background: var(--crit-wash);
+  border: 1px solid var(--crit);
+}
+
+.gd-review-extra .gd-review-dot {
+  background: var(--accent-solid);
+}
+
+.gd-review-stats {
+  display: flex;
+  gap: 10px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.gd-review-stats > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.gd-review-stat {
+  display: block;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.gd-review-stat-label {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  margin-top: 2px;
+  line-height: 1.35;
+}
+
+.gd-review-breakdown {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+}
+
+.gd-review-breakdown li {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  padding: 5px 0;
+}
+
+.gd-review-sport {
+  color: var(--text-dim);
+}
+
+.gd-review-fitness {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.gd-review-fitness > span {
+  flex: 1;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+.gd-review-fitness strong {
+  display: block;
+  font-size: 16px;
+  color: var(--text);
+  margin-top: 2px;
+}
+
+.gd-review-target {
+  margin: 12px 2px 0;
+}

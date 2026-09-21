@@ -8,6 +8,10 @@ export interface ExerciseEntry {
   weightKg?: number | null;
 }
 
+// How a workout's training load was measured — power is the most precise,
+// heart rate the catch-all that lets non-bike/run sessions count at all.
+export type TssSource = 'POWER' | 'PACE' | 'HR';
+
 export interface Workout {
   id: string;
   type: WorkoutType;
@@ -24,6 +28,7 @@ export interface Workout {
   calorieKcal?: number | null;
   kilojoules?: number | null;
   tss?: number | null;
+  tssSource?: TssSource | null;
   avgPowerWatts?: number | null;
   normalizedPowerWatts?: number | null;
   rpe?: number | null;
@@ -110,6 +115,94 @@ export interface PlannedDay {
   category?: WorkoutCategory | null;
   availableHoursOverride?: number | null;
   manualOverride?: boolean;
+  phase?: TrainingPhase | null;
+  phaseWeek?: number | null;
+  loadMultiplier?: number | null;
+}
+
+export type TrainingPhase = 'BUILD' | 'RECOVERY' | 'TAPER' | 'EVENT';
+
+export interface TrainingTarget {
+  id: string;
+  name: string;
+  date: string;
+  peakCtl?: number | null;
+  rampPerWeek: number;
+  recoveryEveryNWeeks: number;
+  recoveryMultiplier: number;
+  taperDays: number;
+  taperFloor: number;
+  startedOn: string;
+}
+
+export interface HrZoneValues {
+  hrZone1Max: number;
+  hrZone2Max: number;
+  hrZone3Max: number;
+  hrZone4Max: number;
+}
+
+export interface CalibrationSuggestion<T> {
+  current: T;
+  suggested: T | null;
+  basis: string;
+}
+
+export interface CalibrationReport {
+  windowDays: number;
+  ftpWatts: CalibrationSuggestion<number>;
+  thresholdPaceSecPerKm: CalibrationSuggestion<number>;
+  hrZones: CalibrationSuggestion<HrZoneValues>;
+}
+
+export interface ReviewDay {
+  date: string;
+  planned: {
+    isRestDay: boolean;
+    name: string | null;
+    discipline: PlannedDiscipline | null;
+    durationMin: number | null;
+    trainingStress: number | null;
+    phase: string | null;
+  } | null;
+  actual: {
+    type: WorkoutType;
+    durationMin: number;
+    distanceKm: number | null;
+    tss: number | null;
+    tssSource: TssSource | null;
+    rpe: number | null;
+  }[];
+  completed: boolean | null;
+}
+
+export interface WeeklyReview {
+  weekStart: string;
+  weekEnd: string;
+  isCurrentWeek: boolean;
+  days: ReviewDay[];
+  plannedSessions: number;
+  completedSessions: number;
+  plannedHours: number;
+  actualHours: number;
+  plannedTss: number;
+  actualTss: number;
+  byDiscipline: { type: WorkoutType; sessions: number; hours: number; tss: number }[];
+  fitness: {
+    ctlStart: number | null;
+    ctlEnd: number | null;
+    ctlDelta: number | null;
+    ctlDelta4w: number | null;
+    ctlDelta12w: number | null;
+    tsbEnd: number | null;
+  };
+  target: {
+    name: string;
+    date: string;
+    daysToEvent: number;
+    phase: string | null;
+    phaseWeek: number | null;
+  } | null;
 }
 
 export interface DisciplineTotals {

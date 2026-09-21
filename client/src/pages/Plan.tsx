@@ -18,6 +18,8 @@ import NewPlanModal from '../components/NewPlanModal';
 import RearrangePlanModal from '../components/RearrangePlanModal';
 import WeeklyAvailabilityModal from '../components/WeeklyAvailabilityModal';
 import PageHead from '../components/PageHead';
+import TargetCard from '../components/plan/TargetCard';
+import WeeklyReviewCard from '../components/plan/WeeklyReviewCard';
 import { useCachedState } from '../lib/pageCache';
 import { useRefreshOnResume } from '../lib/useRefreshOnResume';
 import { weekdayLabel } from '../lib/planDates';
@@ -280,6 +282,12 @@ export default function Plan() {
               <button type="button" className="gd-why-btn" onClick={() => setShowAvailabilityModal(true)}>
                 Set next week's availability
               </button>
+
+              <TargetCard
+                phase={selectedDay?.phase ?? null}
+                phaseWeek={selectedDay?.phaseWeek ?? null}
+                onChanged={loadPlan}
+              />
 
               <div className="gd-availability-card">
                 <div className="gd-availability-row">
@@ -589,6 +597,8 @@ export default function Plan() {
           )}
         </>
       )}
+
+      {planConfig && <WeeklyReviewCard />}
     </div>
   );
 }

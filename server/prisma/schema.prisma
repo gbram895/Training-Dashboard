@@ -26,6 +26,7 @@ model User {
   plannedDays           PlannedDay[]
   cachedLibraryWorkouts CachedLibraryWorkout[]
   pushSubscriptions     PushSubscription[]
+  trainingTarget        TrainingTarget?
 
   // Heart-rate zone thresholds (bpm) — upper bound of zones 1-4; zone 5 is everything above z4Max
   hrZone1Max Int @default(114)
@@ -36,6 +37,17 @@ model User {
   // Used to estimate intensity/training-stress for .fit and .zwo workout library files
   ftpWatts              Int @default(200)
   thresholdPaceSecPerKm Int @default(300)
+}
+
+// How a workout's `tss` was arrived at, so the UI can be honest about
+// precision: POWER (per-second power vs FTP) is the most accurate, PACE
+// (average pace vs threshold pace) next, and HR (time-in-zone vs the user's
+// zone thresholds) is the catch-all that lets badminton, hikes, swims and
+// strength sessions count toward training load at all. See lib/trainingLoad.ts.
+enum TssSource {
+  POWER
+  PACE
+  HR
 }
 
 enum WorkoutType {
@@ -70,6 +82,7 @@ model Workout {
   calorieKcal          Float?
   kilojoules           Float?
   tss                  Float?
+  tssSource            TssSource?
   avgPowerWatts        Float?
   normalizedPowerWatts Float?
 
@@ -228,6 +241,40 @@ model TrainingPlanConfig {
   updatedAt      DateTime @updatedAt
 }
 
+// The event or date the athlete is building toward. Optional — with no target
+// the plan stays purely reactive (today's Form picks today's session, which is
+// all it ever did before). With one, lib/trainingPlan.ts scales each day's
+// target hours by a periodised multiplier: a weekly ramp toward peakCtl,
+// `recoveryEveryNWeeks` cycling, and a taper over the final `taperDays`.
+model TrainingTarget {
+  id     String   @id @default(uuid())
+  userId String   @unique
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name   String
+  date   DateTime
+
+  // Fitness (CTL) to arrive at on the day. Null means "build at rampPerWeek
+  // for as long as there is runway", which is what most people actually want
+  // — see lib/periodization.ts's resolvePeakCtl.
+  peakCtl Float?
+
+  // CTL points per build week. 3-5 is the usual safe range; above ~7 is how
+  // people get injured, so the API caps it.
+  rampPerWeek         Float @default(4)
+  // Every Nth week is a recovery week at `recoveryMultiplier` of normal load.
+  recoveryEveryNWeeks Int   @default(4)
+  recoveryMultiplier  Float @default(0.6)
+  // Days before the event over which load tapers down to taperFloor.
+  taperDays           Int   @default(10)
+  taperFloor          Float @default(0.5)
+
+  // Anchors the build/recovery cycle, so week 1 is the week the target was
+  // set rather than some arbitrary epoch.
+  startedOn DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 // One row per calendar day: either a rest day, or a specific workout picked
 // from the Dropbox workout library for that day. Regenerated daily on a
 // rolling basis from the TrainingPlanConfig plus the user's current fitness.
@@ -253,6 +300,13 @@ model PlannedDay {
   // into "today" always starts unset. See lib/trainingPlan.ts's
   // setTodayAvailability.
   availableHoursOverride Float?
+  // What the periodisation asked of this day, recorded so the Plan tab and the
+  // weekly review can explain why a day is bigger or smaller than the standing
+  // weekly hours. Null when the user has no TrainingTarget. See
+  // lib/periodization.ts.
+  phase                  String?
+  phaseWeek              Int?
+  loadMultiplier         Float?
   generatedAt            DateTime           @default(now())
   // Set once a day's content is rearranged by hand (calendar drag-and-drop) —
   // the nightly/rolling regeneration in lib/trainingPlan.ts leaves a

@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { apiFetch, ApiError } from '../api/client';
 import type { HrZoneSettings, ThresholdSettings } from '../api/types';
 import ApiTokenCard from '../components/settings/ApiTokenCard';
+import CalibrationCard from '../components/settings/CalibrationCard';
 import PageHead from '../components/PageHead';
 import { useAuth } from '../context/AuthContext';
 import { useCachedState } from '../lib/pageCache';
@@ -298,6 +299,11 @@ export default function Settings() {
               {thresholdSaving ? 'Saving…' : thresholdSaved ? 'Saved ✓' : 'Save thresholds'}
             </button>
           </form>
+        </div>
+
+        <div className="gd-set-group">
+          <p className="gd-set-group-label">Calibration</p>
+          <CalibrationCard />
         </div>
 
         <div className="gd-set-group">

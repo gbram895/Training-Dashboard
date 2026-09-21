@@ -92,6 +92,33 @@ function stressBucket(tss: number): number {
 }
 
 /**
+ * The rough inverse of stressBucket: a representative TSS for each 1-5 bucket.
+ *
+ * `trainingStress` on a library workout and on a PlannedDay is one of those
+ * buckets, NOT a training-stress score — so anywhere a planned session has to
+ * be compared against real, logged load (projecting fitness forward in
+ * lib/trainingPlan.ts, the planned-vs-actual totals in lib/weeklyReview.ts) it
+ * has to come back through here first. It's an estimate: precise TSS only
+ * exists once a workout has actually been done.
+ */
+export function estimatedTssForBucket(bucket: number | null | undefined): number {
+  switch (bucket) {
+    case 1:
+      return 25;
+    case 2:
+      return 55;
+    case 3:
+      return 85;
+    case 4:
+      return 120;
+    case 5:
+      return 160;
+    default:
+      return 50;
+  }
+}
+
+/**
  * Labels a workout by the hardest zone its main effort actually reaches -
  * the same way a coach would ("this is a VO2max session"), not by its
  * whole-session average, which a brief peak wouldn't move much.
