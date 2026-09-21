@@ -1577,6 +1577,24 @@ button.gd-date-card.gd-selected .gd-dc-under {
   accent-color: var(--accent-solid);
 }
 
+button.gd-no-time-btn {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+button.gd-no-time-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .gd-sec-title {
   display: flex;
   align-items: center;

@@ -456,6 +456,20 @@ export async function swapPlannedDays(userId: string, dateA: Date, dateB: Date) 
 }
 
 /**
+ * Undoes every manually-rearranged day from today onward — clears
+ * manualOverride and regenerates, handing those days back to the algorithm
+ * (against current fitness/readiness, same as any other regeneration).
+ */
+export async function revertManualOverrides(userId: string): Promise<void> {
+  const today = utcMidnight(new Date());
+  await prisma.plannedDay.updateMany({
+    where: { userId, date: { gte: today }, manualOverride: true },
+    data: { manualOverride: false },
+  });
+  await generatePlanWindow(userId);
+}
+
+/**
  * A one-off "today I actually have X hours" adjustment from the Plan tab's
  * availability slider — re-picks just today's workout (or rest day) against
  * the athlete's real current fitness, without touching the recurring weekly

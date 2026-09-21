@@ -282,6 +282,19 @@ export default function Plan() {
                   onTouchEnd={(e) => commitAvailability(Number((e.target as HTMLInputElement).value))}
                   aria-label="Today's availability in hours"
                 />
+                {availability > 0 && (
+                  <button
+                    type="button"
+                    className="gd-no-time-btn"
+                    disabled={!todayPlanned || savingAvailability}
+                    onClick={() => {
+                      setAvailability(0);
+                      commitAvailability(0);
+                    }}
+                  >
+                    I don't have time today
+                  </button>
+                )}
               </div>
 
               <div className="gd-sec-title">

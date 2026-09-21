@@ -6,6 +6,7 @@ import {
   generatePlanWindow,
   getPlannedDay,
   getPlannedWeek,
+  revertManualOverrides,
   setTodayAvailability,
   swapPlannedDays,
 } from '../lib/trainingPlan.js';
@@ -107,6 +108,13 @@ router.put('/swap', async (req: AuthedRequest, res) => {
 
   const result = await swapPlannedDays(req.userId!, dateA, dateB);
   if (!result) return res.status(404).json({ error: 'One of those days has no plan yet' });
+  res.json(await getPlannedWeek(req.userId!));
+});
+
+// Undoes every manual rearrangement from today onward, handing the whole
+// window back to the algorithm.
+router.post('/revert', async (req: AuthedRequest, res) => {
+  await revertManualOverrides(req.userId!);
   res.json(await getPlannedWeek(req.userId!));
 });
 

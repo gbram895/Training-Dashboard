@@ -20,8 +20,23 @@ export default function RearrangePlanModal({
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
   const [swapping, setSwapping] = useState(false);
+  const [reverting, setReverting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dragRef = useRef<{ pointerId: number; index: number } | null>(null);
+  const hasOverrides = week.some((d) => d.manualOverride);
+
+  async function revert() {
+    setReverting(true);
+    setError(null);
+    try {
+      const updated = await apiFetch<PlannedDay[]>('/training-plan/revert', { method: 'POST' });
+      onSwapped(updated);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to revert plan');
+    } finally {
+      setReverting(false);
+    }
+  }
 
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>, index: number) {
     if (swapping) return;
@@ -115,6 +130,12 @@ export default function RearrangePlanModal({
         </div>
 
         {error && <div className="alert">{error}</div>}
+
+        {hasOverrides && (
+          <button type="button" className="gd-why-btn" onClick={revert} disabled={reverting || swapping}>
+            {reverting ? 'Reverting…' : 'Revert to original plan'}
+          </button>
+        )}
 
         <div className="form-actions">
           <button type="button" className="secondary" onClick={onClose}>
