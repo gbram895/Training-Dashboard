@@ -3466,3 +3466,257 @@ button.gd-cal-apply {
 .gd-forecast-caveat {
   color: var(--text-faint) !important;
 }
+
+/* Against the plan — how the session done compared with the session asked for
+   (SessionReviewCard). The grade pill carries the whole verdict at a glance,
+   so its colour is the one thing here that must survive being skimmed. */
+
+.gd-sr-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 16px;
+  box-shadow: var(--shadow);
+  margin: 14px 0;
+}
+
+.gd-sr-compact {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  padding: 14px 16px;
+}
+
+.gd-sr-top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 12px;
+}
+
+.gd-sr-compact .gd-sr-top {
+  margin-top: 0;
+}
+
+.gd-sr-pill {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.gd-sr-good {
+  color: var(--good);
+}
+
+.gd-sr-warn {
+  color: var(--warn);
+}
+
+.gd-sr-crit {
+  color: var(--crit);
+}
+
+.gd-sr-neutral {
+  color: var(--text-dim);
+}
+
+.gd-sr-pill.gd-sr-good {
+  background: var(--good-wash);
+}
+
+.gd-sr-pill.gd-sr-warn {
+  background: var(--warn-wash);
+}
+
+.gd-sr-pill.gd-sr-crit {
+  background: var(--crit-wash);
+}
+
+.gd-sr-pill.gd-sr-neutral {
+  background: var(--surface-sunken);
+}
+
+.gd-sr-headline {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.gd-sr-score {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--text-faint);
+}
+
+.gd-sr-planned,
+.gd-sr-compact-note {
+  margin: 8px 2px 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.gd-sr-checks {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gd-sr-check {
+  border: 1px solid var(--border);
+  /* The verdict colour runs down the edge rather than filling the row: three
+     washed panels stacked read as an alert, and most sessions are fine. */
+  border-left-width: 3px;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: var(--surface-sunken);
+}
+
+.gd-sr-check.gd-sr-good {
+  border-left-color: var(--good);
+}
+
+.gd-sr-check.gd-sr-warn {
+  border-left-color: var(--warn);
+}
+
+.gd-sr-check.gd-sr-crit {
+  border-left-color: var(--crit);
+}
+
+.gd-sr-check-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.gd-sr-check-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.gd-sr-check-values {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.gd-sr-check-note {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.gd-sr-bands {
+  margin-top: 14px;
+}
+
+.gd-sr-bands-title,
+.gd-sr-legend {
+  margin: 0 2px 8px;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.gd-sr-band {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.gd-sr-band-label {
+  flex: 0 0 68px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.gd-sr-band-bars {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.gd-sr-band-bar {
+  height: 6px;
+  border-radius: 3px;
+  min-width: 2px;
+}
+
+.gd-sr-band-planned {
+  background: var(--text-faint);
+}
+
+.gd-sr-band-actual {
+  background: var(--accent-solid);
+}
+
+.gd-sr-band-values {
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.gd-sr-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.gd-sr-key {
+  display: inline-block;
+  width: 14px;
+  height: 6px;
+  border-radius: 3px;
+}
+
+.gd-sr-key + .gd-sr-key,
+.gd-sr-legend .gd-sr-key:not(:first-child) {
+  margin-left: 8px;
+}
+
+.gd-sr-notes {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.gd-sr-notes li {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-dim);
+  padding-left: 12px;
+  position: relative;
+}
+
+.gd-sr-notes li::before {
+  content: '·';
+  position: absolute;
+  left: 2px;
+  color: var(--text-faint);
+}
+
+.gd-sr-load {
+  margin: 14px 2px 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
