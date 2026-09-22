@@ -1709,46 +1709,53 @@ button.gd-date-card.gd-selected .gd-dc-under {
 .gd-availability-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 14px 16px;
+  border-radius: 14px;
+  padding: 9px 14px 10px;
   box-shadow: var(--shadow);
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .gd-availability-row {
   display: flex;
-  justify-content: space-between;
   align-items: baseline;
-  margin-bottom: 8px;
+  gap: 10px;
+  margin-bottom: 2px;
 }
 
 .gd-availability-label {
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--text-dim);
 }
 
+/* Pushed right so the hours and the "no time" shortcut sit together at the
+   end of the label's row, instead of each claiming a row of their own. */
 .gd-availability-value {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
+  margin-left: auto;
 }
 
 .gd-availability-card input[type='range'] {
+  display: block;
   width: 100%;
+  height: 18px;
+  margin: 0;
   accent-color: var(--accent-solid);
 }
 
 button.gd-no-time-btn {
-  display: block;
-  width: 100%;
-  margin-top: 10px;
+  flex: none;
+  padding: 0;
   background: none;
   border: none;
   font-family: inherit;
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--text-dim);
   cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 button.gd-no-time-btn:disabled {

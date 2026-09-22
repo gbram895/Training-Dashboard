@@ -305,10 +305,27 @@ export default function Plan() {
                 </p>
               )}
 
+              {/* Kept to two tight lines: the hours and the "no time" shortcut
+                  share the label's row rather than each taking one of their own. */}
               <div className="gd-availability-card">
                 <div className="gd-availability-row">
                   <span className="gd-availability-label">Today's availability</span>
                   <span className="gd-availability-value mono">{formatHours(availability)}</span>
+                  {availability > 0 && (
+                    <button
+                      type="button"
+                      className="gd-no-time-btn"
+                      disabled={!todayPlanned || savingAvailability}
+                      title="I don't have time today"
+                      aria-label="I don't have time today"
+                      onClick={() => {
+                        setAvailability(0);
+                        commitAvailability(0);
+                      }}
+                    >
+                      No time
+                    </button>
+                  )}
                 </div>
                 <input
                   type="range"
@@ -322,19 +339,6 @@ export default function Plan() {
                   onTouchEnd={(e) => commitAvailability(Number((e.target as HTMLInputElement).value))}
                   aria-label="Today's availability in hours"
                 />
-                {availability > 0 && (
-                  <button
-                    type="button"
-                    className="gd-no-time-btn"
-                    disabled={!todayPlanned || savingAvailability}
-                    onClick={() => {
-                      setAvailability(0);
-                      commitAvailability(0);
-                    }}
-                  >
-                    I don't have time today
-                  </button>
-                )}
               </div>
 
               <div className="gd-sec-title">
