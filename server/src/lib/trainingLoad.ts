@@ -87,7 +87,7 @@ export function computeRunTss(durationMin: number, distanceKm: number, threshold
 // into a training-stress number for everything power and pace can't measure:
 // badminton, hikes, swims, strength, and any ride or run whose stream came
 // through without power or distance.
-const ZONE_INTENSITY: Record<keyof HrZoneMinutes, number> = {
+export const ZONE_INTENSITY: Record<keyof HrZoneMinutes, number> = {
   z1: 0.55,
   z2: 0.7,
   z3: 0.83,

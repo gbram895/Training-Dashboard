@@ -11,6 +11,7 @@ import type {
   HrZoneWeek,
   PlannedDay,
   SelectedWorkout,
+  SessionReview,
   StravaSyncStatus,
   Workout,
 } from '../api/types';
@@ -26,6 +27,7 @@ import GradientStatRow from '../components/dashboard/GradientStatRow';
 import WeekStrip from '../components/dashboard/WeekStrip';
 import GradientActivityList from '../components/dashboard/GradientActivityList';
 import SyncHealthBanner from '../components/dashboard/SyncHealthBanner';
+import SessionReviewCard from '../components/SessionReviewCard';
 
 // Everything below the "More" divider (the pre-Gradient recharts analytics)
 // in its own chunk — see LegacyAnalytics.tsx for why.
@@ -54,6 +56,7 @@ export default function Dashboard() {
   const [plannedToday, setPlannedToday] = useCachedState<PlannedDay | null>('dash.plannedToday', null);
   const [planWeek, setPlanWeek] = useCachedState<PlannedDay[]>('dash.planWeek', []);
   const [fitness, setFitness] = useCachedState<FitnessPoint[] | null>('dash.fitness', null);
+  const [sessionReview, setSessionReview] = useCachedState<SessionReview | null>('dash.sessionReview', null);
 
   // Stable identity (empty deps) — several memoized chart components take this
   // as a prop, and a new function reference on every render would defeat the
@@ -81,6 +84,11 @@ export default function Dashboard() {
     apiFetch<PlannedDay | null>('/training-plan/today').then(setPlannedToday);
     apiFetch<PlannedDay[]>('/training-plan/week').then(setPlanWeek);
     apiFetch<FitnessPoint[]>('/workouts/fitness').then(setFitness);
+    // The last day that had both a plan and something logged against it — the
+    // answer to "did I do a good job yesterday", where he is already looking.
+    apiFetch<SessionReview | null>('/workouts/plan-review/latest')
+      .then(setSessionReview)
+      .catch(() => setSessionReview(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -144,6 +152,8 @@ export default function Dashboard() {
             />
 
             <DashboardHero workout={todaysWorkout} plannedToday={plannedToday} readiness={readiness} onCleared={load} />
+
+            {sessionReview && <SessionReviewCard review={sessionReview} compact />}
 
             <GradientStatRow days={days} fitness={fitness} />
 

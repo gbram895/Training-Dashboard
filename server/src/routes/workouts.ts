@@ -6,6 +6,7 @@ import { requireAuth, AuthedRequest } from '../middleware/auth.js';
 import { asString } from '../lib/params.js';
 import { recomputeTrainingLoad, recomputeAllTrainingLoad } from '../lib/trainingLoad.js';
 import { computeFitnessSeries } from '../lib/fitness.js';
+import { latestSessionReview, reviewSessionForWorkout } from '../lib/sessionReview.js';
 import { backfillGarminCalories } from '../lib/garminSync.js';
 import { backfillStravaCalories } from '../lib/stravaSync.js';
 
@@ -182,6 +183,22 @@ router.post('/backfill-training-load', async (req: AuthedRequest, res) => {
   }
 
   res.json({ recomputed, caloriesBackfilled });
+});
+
+// How the last session that had a plan behind it actually went. Registered
+// before /:id so "plan-review" is never read as a workout id — it is two path
+// segments, but the ordering is the thing that guarantees it.
+router.get('/plan-review/latest', async (req: AuthedRequest, res) => {
+  const review = await latestSessionReview(req.userId!);
+  res.json(review);
+});
+
+// Judges a logged workout against the session the plan asked for that day.
+// Derived on request rather than stored — see lib/sessionReview.ts.
+router.get('/:id/plan-review', async (req: AuthedRequest, res) => {
+  const review = await reviewSessionForWorkout(req.userId!, asString(req.params.id));
+  if (!review) return res.status(404).json({ error: 'Workout not found' });
+  res.json(review);
 });
 
 router.get('/:id', async (req: AuthedRequest, res) => {

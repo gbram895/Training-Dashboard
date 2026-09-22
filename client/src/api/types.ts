@@ -122,6 +122,56 @@ export interface PlannedDay {
   loadMultiplier?: number | null;
 }
 
+/**
+ * How the session that was actually done measured up against the one the plan
+ * asked for that day. Derived server-side on request — see
+ * server/src/lib/sessionReview.ts, which explains why this is not a comparison
+ * of training-load numbers.
+ */
+export type SessionGrade = 'NAILED' | 'SOLID' | 'OFF' | 'MISSED' | 'REST_DAY' | 'UNJUDGED';
+export type CheckVerdict = 'GOOD' | 'FAIR' | 'POOR';
+export type EffortSource = 'POWER' | 'PACE' | 'HR' | 'NONE';
+export type ReviewBasis = 'TIME_IN_ZONE' | 'RESTRAINT' | 'INTENSITY' | 'NONE';
+
+export interface SessionCheck {
+  key: 'discipline' | 'duration' | 'execution';
+  label: string;
+  verdict: CheckVerdict;
+  planned: string | null;
+  actual: string | null;
+  note: string;
+}
+
+export interface SessionBandMinutes {
+  band: WorkoutCategory;
+  plannedMin: number | null;
+  actualMin: number | null;
+}
+
+export interface SessionReview {
+  date: string;
+  workoutIds: string[];
+  planned: {
+    name: string | null;
+    discipline: PlannedDiscipline | null;
+    durationMin: number | null;
+    category: WorkoutCategory | null;
+    focus: string | null;
+    isRestDay: boolean;
+    restReason: string | null;
+  } | null;
+  actual: { types: WorkoutType[]; durationMin: number; tss: number | null; rpe: number | null };
+  grade: SessionGrade;
+  score: number | null;
+  headline: string;
+  checks: SessionCheck[];
+  bands: SessionBandMinutes[];
+  basis: ReviewBasis;
+  effortSource: EffortSource;
+  notes: string[];
+  load: { plannedTss: number | null; actualTss: number | null };
+}
+
 export type TrainingPhase = 'BUILD' | 'RECOVERY' | 'TAPER' | 'EVENT' | 'POST_RACE';
 
 /**

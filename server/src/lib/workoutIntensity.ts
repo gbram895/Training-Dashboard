@@ -142,6 +142,22 @@ export const CATEGORY_ORDER: WorkoutCategory[] = ['ENDURANCE', 'TEMPO', 'THRESHO
 
 const SUSTAINED_EFFORT_MIN_SEC = 20;
 
+/**
+ * Which band of effort a single intensity fraction (of threshold) falls in.
+ *
+ * These are the boundaries classifyWorkoutCategory has always used, pulled out
+ * on their own because lib/sessionReview.ts has to bucket a stream of real,
+ * ridden efforts the same way the plan buckets the ones it prescribed - if the
+ * two ever disagreed, "you did 28 of the 36 minutes asked at threshold" would
+ * be comparing two different definitions of threshold.
+ */
+export function bandForIntensity(fraction: number): WorkoutCategory {
+  if (fraction > 1.05) return 'VO2MAX';
+  if (fraction > 0.9) return 'THRESHOLD';
+  if (fraction > 0.75) return 'TEMPO';
+  return 'ENDURANCE';
+}
+
 export function classifyWorkoutCategory(
   segments: WorkoutSegment[],
   fallbackIntensity?: number,
@@ -152,11 +168,7 @@ export function classifyWorkoutCategory(
   const sustained = withTarget.filter((s) => s.durationSec >= SUSTAINED_EFFORT_MIN_SEC);
   const targets = (sustained.length > 0 ? sustained : withTarget).map((s) => s.intensityFraction);
   if (targets.length > 0) {
-    const peak = Math.max(...targets);
-    if (peak > 1.05) return 'VO2MAX';
-    if (peak > 0.9) return 'THRESHOLD';
-    if (peak > 0.75) return 'TEMPO';
-    return 'ENDURANCE';
+    return bandForIntensity(Math.max(...targets));
   }
   if (fallbackIntensity != null) {
     if (fallbackIntensity >= 5) return 'VO2MAX';
