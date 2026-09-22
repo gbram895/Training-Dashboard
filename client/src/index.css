@@ -3301,3 +3301,122 @@ button.gd-cal-apply {
 .gd-review-target {
   margin: 12px 2px 0;
 }
+
+/* Fitness-at-each-goal forecast (Goals) */
+
+.gd-forecast-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 16px;
+  box-shadow: var(--shadow);
+  margin-bottom: 14px;
+}
+
+.gd-forecast-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.gd-forecast-row {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: var(--surface-sunken);
+}
+
+.gd-forecast-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.gd-forecast-name {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.gd-forecast-anchor {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent-solid);
+  background: var(--accent-wash);
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+
+.gd-forecast-when {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.gd-forecast-metrics {
+  display: flex;
+  gap: 22px;
+  margin-top: 10px;
+}
+
+.gd-forecast-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.gd-forecast-num {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--text);
+}
+
+.gd-forecast-lbl {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.gd-delta {
+  font-size: 12px;
+  font-weight: 600;
+  font-style: normal;
+}
+
+.gd-delta-up {
+  color: var(--good);
+}
+
+.gd-delta-down {
+  color: var(--warn);
+}
+
+.gd-form-good {
+  color: var(--good);
+}
+
+.gd-form-neutral {
+  color: var(--text);
+}
+
+.gd-form-warn {
+  color: var(--warn);
+}
+
+.gd-forecast-target {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.gd-forecast-ok {
+  color: var(--good);
+}
+
+.gd-forecast-short {
+  color: var(--warn);
+}

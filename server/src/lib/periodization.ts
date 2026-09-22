@@ -106,6 +106,10 @@ export interface PeriodizationContext {
   targets: TrainingTarget[];
   /** The athlete's real CTL right now, from lib/fitness.ts. */
   currentCtl: number;
+  /** The athlete's real ATL right now — only used to seed the Form (TSB)
+   * projection in forecastGoals; the ramp itself never reads it. Defaults to
+   * currentCtl (Form 0) when unknown. */
+  currentAtl?: number;
   /** Measured from their own recent training — see measureTssPerHour. */
   tssPerHour: number;
   /** Standing weekly hours from TrainingPlanConfig. */
@@ -465,71 +469,188 @@ export interface SeasonWeek {
 }
 
 const CTL_DECAY = 1 - Math.exp(-1 / 42);
+const ATL_DECAY = 1 - Math.exp(-1 / 7);
 
 function dateKey(d: Date): string {
   return utcMidnight(d).toISOString().slice(0, 10);
+}
+
+/**
+ * One day of the forward projection: the plan the athlete is on, walked into
+ * the future the same way lib/fitness.ts walks it into the past. Fitness (CTL)
+ * and Fatigue (ATL) are both carried across the whole horizon so that both the
+ * season chart and the per-goal forecast read off ONE projection rather than
+ * two that could drift apart.
+ *
+ * `ctlStart`/`atlStart` are the values going INTO the day, before its own load
+ * is folded in — which is the freshness the athlete would carry to a race that
+ * morning, and matches the "going into that day" TSB convention in fitness.ts.
+ */
+interface ProjectedDay {
+  day: Date;
+  periodization: DayPeriodization | null;
+  multiplier: number;
+  ctlStart: number;
+  atlStart: number;
+  ctlEnd: number;
+  atlEnd: number;
+}
+
+/**
+ * Walk the same day-by-day CTL/ATL projection the plan itself runs, re-anchoring
+ * the ramp to the projected fitness each day exactly as generatePlanWindow does
+ * nightly. This is projected, not promised: it re-derives from real current
+ * fitness on every call, so a missed week shows up here next time rather than
+ * being made up.
+ */
+function walkProjection(ctx: PeriodizationContext, today: Date, totalDays: number): ProjectedDay[] {
+  const dailyTssBaseline = (ctx.weeklyHours * ctx.tssPerHour) / 7;
+  let ctl = ctx.currentCtl;
+  let atl = ctx.currentAtl ?? ctx.currentCtl;
+
+  const days: ProjectedDay[] = [];
+  for (let i = 0; i < totalDays; i++) {
+    const day = new Date(utcMidnight(today));
+    day.setUTCDate(day.getUTCDate() + i);
+
+    const periodization = periodizeDay(day, day, { ...ctx, currentCtl: ctl });
+    const multiplier = periodization?.loadMultiplier ?? 1;
+    const dayTss = dailyTssBaseline * multiplier;
+
+    const ctlStart = ctl;
+    const atlStart = atl;
+    ctl = ctl + (dayTss - ctl) * CTL_DECAY;
+    atl = atl + (dayTss - atl) * ATL_DECAY;
+
+    days.push({ day, periodization, multiplier, ctlStart, atlStart, ctlEnd: ctl, atlEnd: atl });
+  }
+  return days;
+}
+
+/** How many days of projection reach the last goal, plus a trailing week. */
+function projectionHorizon(ahead: TrainingTarget[], today: Date, maxWeeks: number): number {
+  const lastDate = ahead.reduce((latest, t) => (t.date > latest ? t.date : latest), ahead[0].date);
+  return Math.min(maxWeeks * 7, daysBetween(today, lastDate) + 7);
 }
 
 export function projectSeason(ctx: PeriodizationContext, today: Date, maxWeeks = 60): SeasonWeek[] {
   const ahead = ctx.targets.filter((t) => daysBetween(today, t.date) >= 0);
   if (ahead.length === 0) return [];
 
-  const lastDate = ahead.reduce((latest, t) => (t.date > latest ? t.date : latest), ahead[0].date);
-  const totalDays = Math.min(maxWeeks * 7, daysBetween(today, lastDate) + 7);
-
-  // Walk the same day-by-day CTL projection the plan itself runs, so the curve
-  // the athlete sees is the one the generator is working to.
-  const dailyTssBaseline = (ctx.weeklyHours * ctx.tssPerHour) / 7;
-  let ctl = ctx.currentCtl;
+  const days = walkProjection(ctx, today, projectionHorizon(ahead, today, maxWeeks));
 
   const weeks: SeasonWeek[] = [];
-  let current: { day: Date; multipliers: number[]; phases: Phase[]; periodization: DayPeriodization | null } | null = null;
-  const flush = () => {
-    if (!current) return;
-    const p = current.periodization;
-    const weekStart = new Date(current.day);
+  for (let w = 0; w * 7 < days.length; w++) {
+    const chunk = days.slice(w * 7, w * 7 + 7);
+    const weekStart = chunk[0].day;
+    const firstPeriodized = chunk.find((d) => d.periodization != null)?.periodization ?? null;
     const events = ahead
       .filter((t) => {
         const offset = daysBetween(weekStart, t.date);
         return offset >= 0 && offset < 7;
       })
       .map((t) => ({ id: t.id, name: t.name, date: dateKey(t.date), priority: t.priority }));
-    const mean = current.multipliers.reduce((a, b) => a + b, 0) / Math.max(1, current.multipliers.length);
+    const mean = chunk.reduce((a, d) => a + d.multiplier, 0) / chunk.length;
     weeks.push({
       weekStart: dateKey(weekStart),
-      phase: dominantPhase(current.phases),
-      phaseWeek: p?.phaseWeek ?? 1,
+      phase: dominantPhase(chunk.map((d) => d.periodization?.phase ?? 'BUILD')),
+      phaseWeek: firstPeriodized?.phaseWeek ?? 1,
       loadMultiplier: Math.round(mean * 100) / 100,
-      projectedCtl: Math.round(ctl * 10) / 10,
+      // The week's fitness is where the projection has got to by its last day.
+      projectedCtl: Math.round(chunk[chunk.length - 1].ctlEnd * 10) / 10,
       events,
     });
-  };
-
-  for (let i = 0; i < totalDays; i++) {
-    const day = new Date(utcMidnight(today));
-    day.setUTCDate(day.getUTCDate() + i);
-
-    // A fresh context each day, carrying the projected CTL forward — the ramp
-    // re-anchors to actual fitness nightly, and the projection mirrors that.
-    const periodization = periodizeDay(day, day, { ...ctx, currentCtl: ctl });
-    const multiplier = periodization?.loadMultiplier ?? 1;
-
-    if (i % 7 === 0) {
-      flush();
-      current = { day, multipliers: [], phases: [], periodization };
-    }
-    if (current) {
-      current.multipliers.push(multiplier);
-      current.phases.push(periodization?.phase ?? 'BUILD');
-      if (periodization && current.periodization == null) current.periodization = periodization;
-    }
-
-    const dayTss = dailyTssBaseline * multiplier;
-    ctl = ctl + (dayTss - ctl) * CTL_DECAY;
   }
-  flush();
 
   return weeks;
+}
+
+/** How fresh the athlete is projected to be on the day, from the projected TSB. */
+export type Freshness = 'fresh' | 'neutral' | 'fatigued';
+
+// TrainingPeaks-style Form bands: comfortably positive is tapered and race-ready,
+// deeply negative is buried under fatigue, and the grey zone between is neither.
+function freshnessOf(tsb: number): Freshness {
+  if (tsb > 5) return 'fresh';
+  if (tsb < -10) return 'fatigued';
+  return 'neutral';
+}
+
+/**
+ * The answer to "how fit will I be for each of my goals". For every goal still
+ * ahead, this samples the one shared projection on the goal's own date and
+ * reports the fitness (CTL) and freshness (Form/TSB) the athlete is on course
+ * to bring to it — the number the season chart draws, made explicit per goal.
+ *
+ * peakCtl is a target only the anchor is actually built toward (a B or C goal's
+ * ceiling never reshapes the ramp — see rampMultiplier), so `meetsPeak` is only
+ * reported for the anchor. For every other goal the projected fitness is simply
+ * whatever the anchor-driven build has the athlete at on that date.
+ */
+export interface GoalForecast {
+  id: string;
+  name: string;
+  date: string; // YYYY-MM-DD
+  priority: TargetPriority;
+  daysAway: number;
+  isAnchor: boolean;
+  /** Projected Fitness (CTL) carried into the goal's day. */
+  projectedCtl: number;
+  /** Change in fitness from now to the goal. */
+  ctlDelta: number;
+  /** Projected Form (TSB) on the day — freshness, what the taper is for. */
+  projectedTsb: number;
+  freshness: Freshness;
+  /** The anchor's fitness target, if it set one; null for every other goal. */
+  peakCtl: number | null;
+  /** Whether the projection reaches that target; null when there is no target. */
+  meetsPeak: boolean | null;
+}
+
+export interface FitnessForecast {
+  currentCtl: number;
+  goals: GoalForecast[];
+}
+
+export function forecastGoals(ctx: PeriodizationContext, today: Date, maxWeeks = 60): FitnessForecast {
+  const currentCtl = Math.round(ctx.currentCtl * 10) / 10;
+  const ahead = ctx.targets
+    .filter((t) => daysBetween(today, t.date) >= 0)
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
+  if (ahead.length === 0) return { currentCtl, goals: [] };
+
+  const days = walkProjection(ctx, today, projectionHorizon(ahead, today, maxWeeks));
+  const byDate = new Map(days.map((d) => [dateKey(d.day), d]));
+  const anchor = pickAnchor(ctx.targets, today);
+
+  // Fitness for a race day is what you carry INTO it, so the last projected day
+  // before the goal stands in when the goal itself falls past the horizon.
+  const lastDay = days[days.length - 1];
+
+  const goals: GoalForecast[] = ahead.map((t) => {
+    const point = byDate.get(dateKey(t.date)) ?? lastDay;
+    const projectedCtl = Math.round(point.ctlStart * 10) / 10;
+    const projectedTsb = Math.round((point.ctlStart - point.atlStart) * 10) / 10;
+    const isAnchor = anchor?.id === t.id;
+    const peakCtl = isAnchor && t.peakCtl != null ? t.peakCtl : null;
+    return {
+      id: t.id,
+      name: t.name,
+      date: dateKey(t.date),
+      priority: t.priority,
+      daysAway: daysBetween(today, t.date),
+      isAnchor,
+      projectedCtl,
+      ctlDelta: Math.round((projectedCtl - currentCtl) * 10) / 10,
+      projectedTsb,
+      freshness: freshnessOf(projectedTsb),
+      peakCtl,
+      // A point or two short of a target isn't a miss worth flagging.
+      meetsPeak: peakCtl != null ? projectedCtl >= peakCtl - 2 : null,
+    };
+  });
+
+  return { currentCtl, goals };
 }
 
 /**
