@@ -68,6 +68,10 @@ model Workout {
   date        DateTime
   durationMin Int
   distanceKm  Float?
+  // The name the source gave the activity ("Ventoux repeats"). Distinct from
+  // `notes`, which is the athlete's own text. NULL for anything imported
+  // before this existed until the backfill on /backfill-training-load runs.
+  title       String?
   notes       String?
   source      String          @default("manual")
   externalId  String?         @unique
