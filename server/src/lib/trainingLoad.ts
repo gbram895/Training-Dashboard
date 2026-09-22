@@ -1,5 +1,6 @@
 import { prisma } from './prisma.js';
 import { computeHrZoneMinutesFromOffsets, type HrZoneMinutes, type HrZoneThresholds } from './appleHealth.js';
+import { storePowerBests } from './powerCurve.js';
 
 interface PowerSample {
   offsetSec: number;
@@ -167,13 +168,26 @@ export async function recomputeTrainingLoad(workoutId: string): Promise<void> {
   if (!user) return;
 
   await recomputeOne(workout, workout.samples, user);
+
+  // A single workout gets here after its samples were (re)imported, so its
+  // power-curve efforts are recomputed unconditionally — re-syncing a ride
+  // whose stream changed has to move its bests with it. The bulk path below
+  // deliberately doesn't: see recomputeAllTrainingLoad.
+  if (workout.type === 'RIDE') {
+    await storePowerBests(workout, workout.samples).catch((err) =>
+      console.error(`[trainingLoad] power bests failed for workout ${workout.id}:`, err),
+    );
+  }
 }
 
 type LoadInputs = {
   id: string;
+  userId: string;
   type: string;
+  date: Date;
   durationMin: number;
   distanceKm: number | null;
+  powerBestsAt: Date | null;
 } & StoredZones;
 
 type LoadSample = { offsetSec: number; heartRate: number | null; powerWatts: number | null };
@@ -261,9 +275,12 @@ export async function recomputeAllTrainingLoad(userId: string): Promise<number> 
     where: { userId },
     select: {
       id: true,
+      userId: true,
       type: true,
+      date: true,
       durationMin: true,
       distanceKm: true,
+      powerBestsAt: true,
       hrZone1Min: true,
       hrZone2Min: true,
       hrZone3Min: true,
@@ -279,6 +296,16 @@ export async function recomputeAllTrainingLoad(userId: string): Promise<number> 
       orderBy: { offsetSec: 'asc' },
     });
     await recomputeOne(workout, samples, user);
+
+    // Power bests don't depend on any threshold, so a recalibration doesn't
+    // invalidate them — only a ride that has never been analysed is done here.
+    // That makes this the backfill for the power curve as well, without
+    // rewriting a few thousand rows every time an FTP changes.
+    if (workout.type === 'RIDE' && workout.powerBestsAt == null) {
+      await storePowerBests(workout, samples).catch((err) =>
+        console.error(`[trainingLoad] power bests failed for workout ${workout.id}:`, err),
+      );
+    }
   }
   return workouts.length;
 }
