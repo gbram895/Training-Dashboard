@@ -6,6 +6,7 @@ import PageHead from '../components/PageHead';
 import ProgressRing from '../components/ProgressRing';
 import GoalsCard from '../components/plan/GoalsCard';
 import SeasonOutlookCard from '../components/plan/SeasonOutlookCard';
+import GoalForecastCard from '../components/plan/GoalForecastCard';
 
 export default function Goals() {
   const [goals, setGoals] = useCachedState<Goal[] | null>('goals.list', null);
@@ -90,6 +91,7 @@ export default function Goals() {
         <PageHead title="Goals" />
 
         <GoalsCard onChanged={() => setSeasonKey((k) => k + 1)} />
+        <GoalForecastCard reloadKey={seasonKey} />
         <SeasonOutlookCard reloadKey={seasonKey} />
 
         <form className="gd-set-card goal-search-form" onSubmit={openWebSearch}>

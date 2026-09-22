@@ -15,6 +15,7 @@ import { buildWeeklyReview } from '../lib/weeklyReview.js';
 import { computeFitnessSeries } from '../lib/fitness.js';
 import {
   findGoalConflicts,
+  forecastGoals,
   measureTssPerHour,
   pickAnchor,
   projectSeason,
@@ -190,9 +191,11 @@ async function periodizationContextFor(userId: string): Promise<PeriodizationCon
   if (!targets.length) return null;
 
   const series = await computeFitnessSeries(userId);
+  const last = series.length ? series[series.length - 1] : null;
   return {
     targets,
-    currentCtl: series.length ? series[series.length - 1].ctl : 0,
+    currentCtl: last?.ctl ?? 0,
+    currentAtl: last?.atl ?? 0,
     tssPerHour: await measureTssPerHour(userId),
     weeklyHours: config?.weeklyHours ?? 0,
   };
@@ -222,6 +225,16 @@ router.get('/season', async (req: AuthedRequest, res) => {
     conflicts: findGoalConflicts(ctx.targets, today),
     currentCtl: Math.round(ctx.currentCtl * 10) / 10,
   });
+});
+
+// The straight answer to "how fit will I be for each of my goals": the season
+// projection sampled on each goal's own date, giving the fitness (CTL) and
+// freshness (Form) the athlete is on course to bring to it. Shares the same
+// projection as /season, so the numbers here and the season chart agree.
+router.get('/forecast', async (req: AuthedRequest, res) => {
+  const ctx = await periodizationContextFor(req.userId!);
+  if (!ctx) return res.json({ currentCtl: 0, goals: [] });
+  res.json(forecastGoals(ctx, utcMidnight(new Date())));
 });
 
 const targetSchema = z.object({
