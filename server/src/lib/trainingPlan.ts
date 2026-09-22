@@ -80,7 +80,7 @@ function downgrade(category: WorkoutCategory, steps: number): WorkoutCategory {
 const FORCED_REST_TSB = -30;
 
 interface ReadinessModifiers {
-  hrvRatio: number | null; // most recent HRV vs its own 7-day rolling average
+  hrvRatio: number | null; // most recent HRV vs the 7 days before it (null until there is a baseline)
   sleepHours: number | null; // most recent night's sleep
   lastRpe: number | null; // RPE (1-10) logged against the most recent workout, if any
   missedHardSessionYesterday: boolean; // yesterday was planned THRESHOLD/VO2MAX but never logged
@@ -101,7 +101,13 @@ async function getReadinessModifiers(userId: string): Promise<ReadinessModifiers
 
   const hrvValues = days.map((d) => d.avgHrv).filter((v): v is number => v != null);
   const lastHrv = hrvValues[hrvValues.length - 1] ?? null;
-  const baselineHrv = hrvValues.length ? hrvValues.reduce((a, b) => a + b, 0) / hrvValues.length : null;
+  // The baseline deliberately excludes the most recent reading. Averaging it
+  // into its own baseline drags the ratio towards 1.0 — and with a single
+  // reading in the window the ratio is exactly 1.0, so the low-HRV downgrade
+  // below could never fire no matter how far HRV had dropped. Same rule the
+  // dashboard's readiness ring uses (client/src/lib/readiness.ts).
+  const priorHrv = hrvValues.slice(0, -1);
+  const baselineHrv = priorHrv.length ? priorHrv.reduce((a, b) => a + b, 0) / priorHrv.length : null;
   const hrvRatio = lastHrv != null && baselineHrv ? lastHrv / baselineHrv : null;
 
   const lastSleep = days.length ? (days[days.length - 1].sleepHours ?? null) : null;
