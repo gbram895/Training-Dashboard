@@ -6,6 +6,7 @@ import { requireAuth, AuthedRequest } from '../middleware/auth.js';
 import { asString } from '../lib/params.js';
 import { recomputeTrainingLoad, recomputeAllTrainingLoad } from '../lib/trainingLoad.js';
 import { computeFitnessSeries } from '../lib/fitness.js';
+import { getRampStatus } from '../lib/rampRate.js';
 import { latestSessionReview, reviewSessionForWorkout } from '../lib/sessionReview.js';
 import { backfillGarminCalories } from '../lib/garminSync.js';
 import { backfillStravaCalories } from '../lib/stravaSync.js';
@@ -164,6 +165,15 @@ router.get('/hr-zones-weekly', async (req: AuthedRequest, res) => {
 router.get('/fitness', async (req: AuthedRequest, res) => {
   const series = await computeFitnessSeries(req.userId!);
   res.json(series);
+});
+
+// Whether training load is climbing faster than it is being absorbed. Read off
+// the same CTL/ATL curves as /fitness rather than a second load model, and
+// derived on request so a recalibration re-judges it — see lib/rampRate.ts.
+// Null when there is no training history at all.
+router.get('/ramp-status', async (req: AuthedRequest, res) => {
+  const status = await getRampStatus(req.userId!);
+  res.json(status);
 });
 
 router.post('/backfill-training-load', async (req: AuthedRequest, res) => {

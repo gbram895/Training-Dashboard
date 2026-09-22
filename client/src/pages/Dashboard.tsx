@@ -10,6 +10,7 @@ import type {
   Goal,
   HrZoneWeek,
   PlannedDay,
+  RampStatus,
   SelectedWorkout,
   SessionReview,
   StravaSyncStatus,
@@ -28,6 +29,7 @@ import WeekStrip from '../components/dashboard/WeekStrip';
 import GradientActivityList from '../components/dashboard/GradientActivityList';
 import SyncHealthBanner from '../components/dashboard/SyncHealthBanner';
 import SessionReviewCard from '../components/SessionReviewCard';
+import RampRateCard from '../components/dashboard/RampRateCard';
 
 // Everything below the "More" divider (the pre-Gradient recharts analytics)
 // in its own chunk — see LegacyAnalytics.tsx for why.
@@ -57,6 +59,7 @@ export default function Dashboard() {
   const [planWeek, setPlanWeek] = useCachedState<PlannedDay[]>('dash.planWeek', []);
   const [fitness, setFitness] = useCachedState<FitnessPoint[] | null>('dash.fitness', null);
   const [sessionReview, setSessionReview] = useCachedState<SessionReview | null>('dash.sessionReview', null);
+  const [rampStatus, setRampStatus] = useCachedState<RampStatus | null>('dash.rampStatus', null);
 
   // Stable identity (empty deps) — several memoized chart components take this
   // as a prop, and a new function reference on every render would defeat the
@@ -84,6 +87,12 @@ export default function Dashboard() {
     apiFetch<PlannedDay | null>('/training-plan/today').then(setPlannedToday);
     apiFetch<PlannedDay[]>('/training-plan/week').then(setPlanWeek);
     apiFetch<FitnessPoint[]>('/workouts/fitness').then(setFitness);
+    // Whether load is climbing faster than it is being absorbed. Its own
+    // request rather than derived from the series above, so the plan generator
+    // and the dashboard cannot drift apart on what counts as a spike.
+    apiFetch<RampStatus | null>('/workouts/ramp-status')
+      .then(setRampStatus)
+      .catch(() => setRampStatus(null));
     // The last day that had both a plan and something logged against it — the
     // answer to "did I do a good job yesterday", where he is already looking.
     apiFetch<SessionReview | null>('/workouts/plan-review/latest')
@@ -154,6 +163,8 @@ export default function Dashboard() {
             <DashboardHero workout={todaysWorkout} plannedToday={plannedToday} readiness={readiness} onCleared={load} />
 
             {sessionReview && <SessionReviewCard review={sessionReview} compact />}
+
+            <RampRateCard status={rampStatus} />
 
             <GradientStatRow days={days} fitness={fitness} />
 
