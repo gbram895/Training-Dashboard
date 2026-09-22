@@ -1,6 +1,11 @@
 import type { TrainingTarget, TargetPriority } from '@prisma/client';
 import { prisma } from './prisma.js';
-import { projectFtp, projectThresholdPace, type ThresholdTrends } from './thresholdTrend.js';
+import {
+  projectFtpPotential,
+  projectPacePotential,
+  type PotentialRange,
+  type ThresholdPotentials,
+} from './thresholdPotential.js';
 import { goalKindLabel, profileFor } from './goalSpecificity.js';
 
 /**
@@ -612,10 +617,14 @@ export interface GoalForecast {
    * projections below are carried over.
    */
   buildWeeks: number;
-  /** Projected FTP on the day, or null when there isn't enough to measure a trend from. */
-  projectedFtpWatts: number | null;
-  /** Projected threshold pace in seconds per km, or null for the same reason. */
-  projectedThresholdPaceSecPerKm: number | null;
+  /**
+   * What FTP could be by the goal: `hold` is what the athlete has already
+   * demonstrated, `potential` is that plus what the build weeks can add. Null
+   * when there is no qualifying effort to read a ceiling off.
+   */
+  ftpPotential: PotentialRange | null;
+  /** The same for threshold pace, in seconds per km — quicker is a smaller number. */
+  pacePotential: PotentialRange | null;
 }
 
 export interface FitnessForecast {
@@ -632,15 +641,15 @@ export interface FitnessForecast {
 export function forecastGoals(
   ctx: PeriodizationContext,
   today: Date,
-  trends?: ThresholdTrends,
+  potentials?: ThresholdPotentials,
   maxWeeks = 60,
 ): FitnessForecast {
   const currentCtl = Math.round(ctx.currentCtl * 10) / 10;
   const thresholds = {
-    currentFtpWatts: trends?.ftp?.current ?? null,
-    currentThresholdPaceSecPerKm: trends?.pace?.current ?? null,
-    ftpBasis: trends?.ftpBasis ?? 'Not measured',
-    paceBasis: trends?.paceBasis ?? 'Not measured',
+    currentFtpWatts: potentials?.ftp?.current ?? null,
+    currentThresholdPaceSecPerKm: potentials?.pace?.current ?? null,
+    ftpBasis: potentials?.ftpBasis ?? 'Not measured',
+    paceBasis: potentials?.paceBasis ?? 'Not measured',
   };
   const ahead = ctx.targets
     .filter((t) => daysBetween(today, t.date) >= 0)
@@ -682,8 +691,8 @@ export function forecastGoals(
       // A point or two short of a target isn't a miss worth flagging.
       meetsPeak: peakCtl != null ? projectedCtl >= peakCtl - 2 : null,
       buildWeeks,
-      projectedFtpWatts: trends?.ftp ? projectFtp(trends.ftp, buildWeeks) : null,
-      projectedThresholdPaceSecPerKm: trends?.pace ? projectThresholdPace(trends.pace, buildWeeks) : null,
+      ftpPotential: potentials?.ftp ? projectFtpPotential(potentials.ftp, buildWeeks) : null,
+      pacePotential: potentials?.pace ? projectPacePotential(potentials.pace, buildWeeks) : null,
     };
   });
 
