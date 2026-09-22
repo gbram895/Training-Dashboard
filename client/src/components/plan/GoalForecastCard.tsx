@@ -89,26 +89,25 @@ export default function GoalForecastCard({ reloadKey }: { reloadKey: number }) {
  * is only worth anything if you can see what it was read off.
  */
 function ThresholdBasis({ forecast }: { forecast: FitnessForecast }) {
-  const projected = forecast.goals.some(
-    (g) => g.projectedFtpWatts != null || g.projectedThresholdPaceSecPerKm != null,
-  );
+  const projected = forecast.goals.some((g) => g.ftpPotential != null || g.pacePotential != null);
   return (
     <div className="gd-forecast-basis">
       <p>
-        <strong>FTP</strong> {forecast.ftpBasis}
+        <strong>FTP from</strong> {forecast.ftpBasis}
         {forecast.currentFtpWatts != null && <> · now {forecast.currentFtpWatts}W</>}
       </p>
       <p>
-        <strong>Pace</strong> {forecast.paceBasis}
+        <strong>Pace from</strong> {forecast.paceBasis}
         {forecast.currentThresholdPaceSecPerKm != null && (
           <> · now {formatPace(forecast.currentThresholdPaceSecPerKm)}/km</>
         )}
       </p>
       {projected && (
         <p className="gd-forecast-caveat">
-          These carry your own recent rate of change forward over the build weeks before each goal, easing off the
-          further out it gets — training load doesn't translate into watts on a fixed exchange rate, so treat them as a
-          trend, not a test result. Check Settings &rarr; Calibration if the current values look wrong.
+          The low end of each range is what you've already shown you can do, so it holds whatever happens. The top end
+          assumes a consistent build adds about 1.7% a month, easing off over a long season — that's an assumption about
+          training, not a measurement of you, so treat it as the upside rather than a forecast. Check Settings &rarr;
+          Calibration if the current values look wrong.
         </p>
       )}
     </div>
@@ -144,20 +143,32 @@ function GoalForecastRow({ goal }: { goal: GoalForecast }) {
         </div>
       </div>
 
-      {(goal.projectedFtpWatts != null || goal.projectedThresholdPaceSecPerKm != null) && (
+      {(goal.ftpPotential != null || goal.pacePotential != null) && (
         <div className="gd-forecast-thresholds">
-          {goal.projectedFtpWatts != null && (
+          {goal.ftpPotential != null && (
             <span>
-              FTP <strong className="mono">{goal.projectedFtpWatts}W</strong>
+              FTP{' '}
+              <strong className="mono">
+                {goal.ftpPotential.hold === goal.ftpPotential.potential
+                  ? `${goal.ftpPotential.hold}W`
+                  : `${goal.ftpPotential.hold}–${goal.ftpPotential.potential}W`}
+              </strong>
             </span>
           )}
-          {goal.projectedThresholdPaceSecPerKm != null && (
+          {goal.pacePotential != null && (
             <span>
-              Threshold pace <strong className="mono">{formatPace(goal.projectedThresholdPaceSecPerKm)}/km</strong>
+              Pace{' '}
+              <strong className="mono">
+                {goal.pacePotential.hold === goal.pacePotential.potential
+                  ? `${formatPace(goal.pacePotential.hold)}/km`
+                  : `${formatPace(goal.pacePotential.hold)}–${formatPace(goal.pacePotential.potential)}/km`}
+              </strong>
             </span>
           )}
           <span className="gd-forecast-buildweeks">
-            over {goal.buildWeeks} build week{goal.buildWeeks === 1 ? '' : 's'}
+            {goal.buildWeeks === 0
+              ? 'no build weeks left before this one'
+              : `potential over ${goal.buildWeeks} build week${goal.buildWeeks === 1 ? '' : 's'}`}
           </span>
         </div>
       )}
