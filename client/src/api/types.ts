@@ -192,6 +192,28 @@ export interface SeasonOutlook {
   currentCtl?: number;
 }
 
+export type Freshness = 'fresh' | 'neutral' | 'fatigued';
+
+export interface GoalForecast {
+  id: string;
+  name: string;
+  date: string;
+  priority: TargetPriority;
+  daysAway: number;
+  isAnchor: boolean;
+  projectedCtl: number;
+  ctlDelta: number;
+  projectedTsb: number;
+  freshness: Freshness;
+  peakCtl: number | null;
+  meetsPeak: boolean | null;
+}
+
+export interface FitnessForecast {
+  currentCtl: number;
+  goals: GoalForecast[];
+}
+
 export interface HrZoneValues {
   hrZone1Max: number;
   hrZone2Max: number;
