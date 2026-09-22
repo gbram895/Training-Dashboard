@@ -10,6 +10,7 @@ import { getRampStatus } from '../lib/rampRate.js';
 import { latestSessionReview, reviewSessionForWorkout } from '../lib/sessionReview.js';
 import { backfillGarminCalories } from '../lib/garminSync.js';
 import { backfillStravaCalories } from '../lib/stravaSync.js';
+import { buildPowerCurve, rebuildPowerBests } from '../lib/powerCurve.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -170,10 +171,28 @@ router.get('/fitness', async (req: AuthedRequest, res) => {
 // Whether training load is climbing faster than it is being absorbed. Read off
 // the same CTL/ATL curves as /fitness rather than a second load model, and
 // derived on request so a recalibration re-judges it — see lib/rampRate.ts.
-// Null when there is no training history at all.
+// Null when there is no training history at all. Declared before the `/:id`
+// routes below, which would otherwise swallow the path.
 router.get('/ramp-status', async (req: AuthedRequest, res) => {
   const status = await getRampStatus(req.userId!);
   res.json(status);
+});
+
+// The power curve and its critical-power fit. Declared before the `/:id`
+// routes below, which would otherwise swallow the path.
+router.get('/power-curve', async (req: AuthedRequest, res) => {
+  res.json(await buildPowerCurve(req.userId!));
+});
+
+// Extracts best efforts from rides that have never been analysed, a chunk at a
+// time. Chunked because a season of rides is hundreds of thousands of sample
+// rows and a free-tier instance will not read them all inside one request —
+// the client loops while `remaining` is above zero, so the work survives being
+// interrupted and nothing is redone.
+const REBUILD_CHUNK = 20;
+
+router.post('/power-curve/rebuild', async (req: AuthedRequest, res) => {
+  res.json(await rebuildPowerBests(req.userId!, REBUILD_CHUNK));
 });
 
 router.post('/backfill-training-load', async (req: AuthedRequest, res) => {
