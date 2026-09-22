@@ -20,6 +20,8 @@ import {
   projectSeason,
   type PeriodizationContext,
 } from '../lib/periodization.js';
+import { isBikeKind, isRunKind } from '../lib/goalSpecificity.js';
+import type { GoalKind } from '@prisma/client';
 import { asString } from '../lib/params.js';
 import { buildFitWorkoutFile } from '../lib/garminFitWorkout.js';
 import { loadAthleteSpeedThresholds, type GarminPushSegment } from '../lib/garminWorkoutPush.js';
@@ -233,6 +235,19 @@ router.get('/season', async (req: AuthedRequest, res) => {
   });
 });
 
+const goalKind = z.enum([
+  'GENERAL',
+  'LONG_RIDE',
+  'HILLY_RIDE',
+  'RACE_RIDE',
+  'TIME_TRIAL',
+  'GRAVEL_MTB',
+  'RUN_SHORT',
+  'RUN_LONG',
+  'TRAIL_ULTRA',
+  'MULTISPORT',
+]);
+
 const targetSchema = z.object({
   name: z.string().min(1).max(80),
   date: z.string(),
@@ -240,20 +255,11 @@ const targetSchema = z.object({
   // What kind of event it is, which is what makes the plan train for it rather
   // than just around it. GENERAL is "no particular event" — see
   // lib/goalSpecificity.ts.
-  kind: z
-    .enum([
-      'GENERAL',
-      'LONG_RIDE',
-      'HILLY_RIDE',
-      'RACE_RIDE',
-      'TIME_TRIAL',
-      'GRAVEL_MTB',
-      'RUN_SHORT',
-      'RUN_LONG',
-      'TRAIL_ULTRA',
-      'MULTISPORT',
-    ])
-    .optional(),
+  kind: goalKind.optional(),
+  // For a MULTISPORT goal only: what each leg of it is. Validated against the
+  // discipline they stand for, so a "run leg" can't be a time trial.
+  bikeKind: goalKind.nullish(),
+  runKind: goalKind.nullish(),
   peakCtl: z.number().positive().max(200).nullish(),
   // Above about 7 CTL points a week is where people get hurt rather than fit,
   // so the ceiling is enforced here rather than left to the UI.
@@ -262,12 +268,16 @@ const targetSchema = z.object({
   taperDays: z.number().int().min(0).max(28).optional(),
 });
 
-function parseTargetBody(body: unknown, partial: boolean) {
+/**
+ * `currentKind` is what the goal is already stored as, so a partial update that
+ * doesn't mention `kind` still resolves its legs against the right one.
+ */
+function parseTargetBody(body: unknown, partial: boolean, currentKind: GoalKind = 'GENERAL') {
   const schema = partial ? targetSchema.partial() : targetSchema;
   const parsed = schema.safeParse(body);
   if (!parsed.success) return { error: parsed.error.flatten() as unknown } as const;
 
-  const { date: rawDate, peakCtl, ...rest } = parsed.data;
+  const { date: rawDate, peakCtl, bikeKind, runKind, ...rest } = parsed.data;
   let date: Date | undefined;
   if (rawDate !== undefined) {
     date = utcMidnight(new Date(rawDate));
@@ -275,11 +285,31 @@ function parseTargetBody(body: unknown, partial: boolean) {
     if (date < utcMidnight(new Date())) return { error: 'That date has already passed' } as const;
   }
 
+  // Legs belong to a multisport goal and nothing else. A goal that stops being
+  // multisport has them cleared rather than left behind to confuse whatever
+  // reads the row next; one that is multisport must have legs in the right
+  // discipline, so a "run leg" can never be a time trial.
+  const effectiveKind = rest.kind ?? currentKind;
+  // A key left out is left alone by Prisma, which is what a partial update
+  // should do; an explicit null clears that leg back to the default.
+  let legs: Partial<{ bikeKind: GoalKind | null; runKind: GoalKind | null }> | null = null;
+  if (effectiveKind === 'MULTISPORT') {
+    if (bikeKind != null && !isBikeKind(bikeKind)) return { error: 'The bike leg has to be a bike event' } as const;
+    if (runKind != null && !isRunKind(runKind)) return { error: 'The run leg has to be a run event' } as const;
+    legs = {
+      ...(bikeKind !== undefined ? { bikeKind: bikeKind ?? null } : {}),
+      ...(runKind !== undefined ? { runKind: runKind ?? null } : {}),
+    };
+  } else if (rest.kind !== undefined || !partial) {
+    legs = { bikeKind: null, runKind: null };
+  }
+
   return {
     fields: {
       ...rest,
       ...(date ? { date } : {}),
       ...(peakCtl !== undefined ? { peakCtl: peakCtl ?? null } : {}),
+      ...(legs ?? {}),
     },
   } as const;
 }
@@ -305,12 +335,12 @@ router.post('/targets', async (req: AuthedRequest, res) => {
 });
 
 router.put('/targets/:id', async (req: AuthedRequest, res) => {
-  const parsed = parseTargetBody(req.body, true);
-  if ('error' in parsed) return res.status(400).json({ error: parsed.error });
-
   const id = asString(req.params.id);
   const existing = await prisma.trainingTarget.findFirst({ where: { id, userId: req.userId } });
   if (!existing) return res.status(404).json({ error: 'Goal not found' });
+
+  const parsed = parseTargetBody(req.body, true, existing.kind);
+  if ('error' in parsed) return res.status(400).json({ error: parsed.error });
 
   const target = await prisma.trainingTarget.update({ where: { id }, data: parsed.fields });
   await generatePlanWindow(req.userId!);
