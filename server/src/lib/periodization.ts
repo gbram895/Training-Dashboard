@@ -1,5 +1,6 @@
 import type { TrainingTarget, TargetPriority } from '@prisma/client';
 import { prisma } from './prisma.js';
+import { goalKindLabel, profileFor } from './goalSpecificity.js';
 
 /**
  * Turns "these are the things I'm doing this year" into a load trajectory.
@@ -383,7 +384,15 @@ export function describePhase(p: DayPeriodization): string {
  * resolved, because the fix is a decision only they can make: drop one, move
  * one, or accept that one of them is a training day.
  */
-export function findGoalConflicts(targets: TrainingTarget[], from: Date): string[] {
+export interface ConflictConfig {
+  includeRunning: boolean;
+}
+
+export function findGoalConflicts(
+  targets: TrainingTarget[],
+  from: Date,
+  config?: ConflictConfig | null,
+): string[] {
   const ahead = targets
     .filter((t) => daysBetween(from, t.date) >= 0)
     .sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -414,6 +423,24 @@ export function findGoalConflicts(targets: TrainingTarget[], from: Date): string
         `There's no real training between ${ahead[i - 1].name} and ${ahead[i].name} — ` +
           `${gap} day${gap === 1 ? '' : 's'} is recovery and taper back to back. That's fine for a block of racing, ` +
           `but you won't gain fitness across it.`,
+      );
+    }
+  }
+
+  // A running goal with running switched off is the plan being asked for
+  // something it has been told not to do. Resolving it quietly either way —
+  // planning runs they said they don't want, or training a run goal entirely
+  // on the bike — would be worse than saying so.
+  if (config && !config.includeRunning) {
+    const runGoals = ahead.filter((t) => {
+      const profile = profileFor(t.kind);
+      return profile != null && (profile.sport === 'RUN' || profile.sport === 'BOTH');
+    });
+    for (const goal of runGoals) {
+      warnings.push(
+        `${goal.name} is a ${goalKindLabel(goal.kind).toLowerCase()}, but running is switched off in your plan ` +
+          `settings — so every session is being planned on the bike. Turn running on (and set which days are runs) ` +
+          `to get the sessions that actually prepare you for it.`,
       );
     }
   }

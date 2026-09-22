@@ -113,6 +113,8 @@ export interface PlannedDay {
   profile?: string | null;
   segments?: WorkoutProfileSegment[] | null;
   category?: WorkoutCategory | null;
+  /** One line on which demand of which goal this session trains. */
+  focus?: string | null;
   availableHoursOverride?: number | null;
   manualOverride?: boolean;
   phase?: TrainingPhase | null;
@@ -128,11 +130,30 @@ export type TrainingPhase = 'BUILD' | 'RECOVERY' | 'TAPER' | 'EVENT' | 'POST_RAC
  */
 export type TargetPriority = 'A' | 'B' | 'C';
 
+/**
+ * What kind of event a goal is. Priority says how much of the calendar bends
+ * for it; this says what the sessions in the run-up actually are — a bunch
+ * race and a 200km gravel day need completely different training. GENERAL is
+ * "no particular event", which is how every goal behaved before types existed.
+ */
+export type GoalKind =
+  | 'GENERAL'
+  | 'LONG_RIDE'
+  | 'HILLY_RIDE'
+  | 'RACE_RIDE'
+  | 'TIME_TRIAL'
+  | 'GRAVEL_MTB'
+  | 'RUN_SHORT'
+  | 'RUN_LONG'
+  | 'TRAIL_ULTRA'
+  | 'MULTISPORT';
+
 export interface TrainingTarget {
   id: string;
   name: string;
   date: string;
   priority: TargetPriority;
+  kind: GoalKind;
   peakCtl?: number | null;
   rampPerWeek: number;
   recoveryEveryNWeeks: number;
