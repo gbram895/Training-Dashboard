@@ -310,6 +310,16 @@ model TrainingTarget {
   // the sessions the plan picks. See lib/goalSpecificity.ts.
   kind     GoalKind       @default(GENERAL)
 
+  // For a MULTISPORT goal only: what each leg of it actually is. A sprint
+  // duathlon and a long-course triathlon are both "multisport" and share
+  // almost no training — the bike leg of one is a 20km blast and of the other
+  // a five-hour ride. Each leg carries its own GoalKind (bikeKind must be a
+  // bike kind, runKind a run kind) and trains to its own demands, so the plan
+  // is composed from two profiles rather than one averaged one. Null on every
+  // other kind of goal, and cleared when a goal stops being MULTISPORT.
+  bikeKind GoalKind?
+  runKind  GoalKind?
+
   // Fitness (CTL) to arrive at on the day. Null means "build at rampPerWeek
   // for as long as there is runway", which is what most people actually want
   // — see lib/periodization.ts's resolveCeiling. Only read off the season's
