@@ -62,9 +62,9 @@ enum WorkoutType {
 }
 
 model Workout {
-  id          String          @id @default(uuid())
+  id          String             @id @default(uuid())
   userId      String
-  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   type        WorkoutType
   date        DateTime
   durationMin Int
@@ -74,9 +74,9 @@ model Workout {
   // before this existed until the backfill on /backfill-training-load runs.
   title       String?
   notes       String?
-  source      String          @default("manual")
-  externalId  String?         @unique
-  createdAt   DateTime        @default(now())
+  source      String             @default("manual")
+  externalId  String?            @unique
+  createdAt   DateTime           @default(now())
   exercises   ExerciseEntry[]
   samples     WorkoutSample[]
   powerBests  WorkoutPowerBest[]
@@ -111,7 +111,7 @@ model Workout {
   // what the power curve's rebuild walks — including for rides that turned
   // out to have no power at all, which are stamped anyway so they are never
   // re-scanned. See lib/powerCurve.ts.
-  powerBestsAt  DateTime?
+  powerBestsAt DateTime?
 
   @@index([userId, date])
 }
@@ -169,22 +169,49 @@ model WorkoutPowerBest {
 }
 
 model DailyHealthSummary {
-  id               String   @id @default(uuid())
-  userId           String
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  date             DateTime
-  steps            Int?
-  distanceKm       Float?
-  activeEnergyKcal Float?
-  avgHeartRate     Float?
-  restingHeartRate Float?
-  sleepHours       Float?
-  exerciseMinutes  Float?
-  flightsClimbed   Int?
-  vo2Max           Float?
-  avgHrv           Float?
-  avgBloodOxygen   Float?
-  updatedAt        DateTime @updatedAt
+  id                   String    @id @default(uuid())
+  userId               String
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date                 DateTime
+  steps                Int?
+  distanceKm           Float?
+  activeEnergyKcal     Float?
+  avgHeartRate         Float?
+  restingHeartRate     Float?
+  // Total time actually asleep, and what that sleep was made of. Hours
+  // throughout. sleepHours stays the one number the rest of the app reads, so
+  // nothing that already uses it has to change; the stage fields sit beside
+  // it and are null for a night whose source didn't report stages — an Apple
+  // Watch does, a phone on the nightstand does not.
+  //
+  // sleepDeep + sleepCore + sleepRem adds up to sleepHours. sleepAwakeHours
+  // is time awake *within* the night and sits outside that total.
+  sleepHours           Float?
+  sleepDeepHours       Float?
+  sleepCoreHours       Float?
+  sleepRemHours        Float?
+  sleepAwakeHours      Float?
+  // Lights-out to getting up. sleepHours / sleepInBedHours is sleep
+  // efficiency, and the gap between them is the time spent awake in bed.
+  sleepInBedHours      Float?
+  // When the night began and ended. Stored so the app can show a bedtime and
+  // a wake time rather than only a duration.
+  sleepStart           DateTime?
+  sleepEnd             DateTime?
+  // Which device reported the night, e.g. "Apple Watch van Bram". Two sources
+  // covering one night disagree, so this records which one was believed.
+  sleepSource          String?
+  // Apple only records wrist temperature while asleep; a night warmer than
+  // usual is one of the earlier signs of being run down.
+  sleepingWristTempC   Float?
+  // Breathing rate averaged across the night. Apple only measures it asleep.
+  sleepRespiratoryRate Float?
+  exerciseMinutes      Float?
+  flightsClimbed       Int?
+  vo2Max               Float?
+  avgHrv               Float?
+  avgBloodOxygen       Float?
+  updatedAt            DateTime  @updatedAt
 
   @@unique([userId, date])
 }
@@ -207,7 +234,7 @@ model HealthSyncConfig {
   // the migration that added it: a connection whose library has never been
   // read has no cache to tell old files from new, and would otherwise push
   // the entire library on the first run. See lib/newWorkoutNotifications.ts.
-  libraryBaselineAt   DateTime?
+  libraryBaselineAt DateTime?
 }
 
 model GarminSyncConfig {
@@ -356,7 +383,7 @@ model TrainingTarget {
   // What kind of event it is. Priority answers "how much does this matter";
   // this answers "what does it actually demand of me", which is what decides
   // the sessions the plan picks. See lib/goalSpecificity.ts.
-  kind     GoalKind       @default(GENERAL)
+  kind GoalKind @default(GENERAL)
 
   // For a MULTISPORT goal only: what each leg of it actually is. A sprint
   // duathlon and a long-course triathlon are both "multisport" and share
@@ -469,8 +496,8 @@ model CachedLibraryWorkout {
   // leaves firstSeenAt alone. notifiedAt records that the athlete has been
   // told about this path; null means it is still owed a notification. See
   // lib/newWorkoutNotifications.ts.
-  firstSeenAt    DateTime  @default(now())
-  notifiedAt     DateTime?
+  firstSeenAt DateTime  @default(now())
+  notifiedAt  DateTime?
 
   @@unique([userId, path])
 }
