@@ -1,4 +1,12 @@
 import { prisma } from './prisma.js';
+import { bestRollingAverage, PLAUSIBLE_FTP_WATTS, PLAUSIBLE_PACE_SEC_PER_KM } from './bestEfforts.js';
+import { best20MinPower } from './powerCurve.js';
+
+// Re-exported because they are part of this module's contract to the rest of
+// the app (lib/thresholdPotential.ts bounds its projections with them); they
+// live in bestEfforts.js so the power curve can share them without importing
+// this module back. See lib/bestEfforts.ts.
+export { PLAUSIBLE_FTP_WATTS, PLAUSIBLE_PACE_SEC_PER_KM };
 
 /**
  * Derives FTP, threshold pace and heart-rate zones from what the athlete has
@@ -40,18 +48,7 @@ const ZONE_FRACTIONS_OF_MAX = [0.68, 0.83, 0.91, 0.99];
 // is sustained for at least this long.
 const MAX_HR_WINDOW_SEC = 30;
 
-/**
- * Outside these, the input was wrong rather than the athlete exceptional, and
- * no suggestion is offered at all.
- *
- * Accepting a suggestion rescales the athlete's entire history, so a number
- * derived from bad data is worse than no number: a confident, one-tap "Use
- * 1:46/km" is exactly how a mistake gets applied. The floor on pace is well
- * inside world-record territory (a 10k world record is about 2:35/km), so
- * anything under it means the data is not someone running.
- */
-export const PLAUSIBLE_FTP_WATTS = { min: 40, max: 600 };
-export const PLAUSIBLE_PACE_SEC_PER_KM = { min: 150, max: 900 };
+// Heart rate is only used here, so its bounds stay local.
 const PLAUSIBLE_MAX_HR_BPM = { min: 120, max: 220 };
 
 function withinBounds(value: number | null, bounds: { min: number; max: number }): number | null {
@@ -71,38 +68,6 @@ export interface CalibrationReport {
   ftpWatts: Suggestion<number>;
   thresholdPaceSecPerKm: Suggestion<number>;
   hrZones: Suggestion<{ hrZone1Max: number; hrZone2Max: number; hrZone3Max: number; hrZone4Max: number }>;
-}
-
-interface Sample {
-  offsetSec: number;
-  value: number;
-}
-
-/**
- * Best average value sustained over `windowSec`. Assumes roughly 1 sample per
- * second — which is what Garmin, Strava and Apple Health all stream at, and the
- * same assumption computeNormalizedPower already makes — so the mean over a
- * span of samples stands in for a time-weighted mean.
- */
-function bestRollingAverage(samples: Sample[], windowSec: number): number | null {
-  const sorted = [...samples].sort((a, b) => a.offsetSec - b.offsetSec);
-  if (sorted.length === 0) return null;
-
-  const prefix: number[] = [0];
-  for (const s of sorted) prefix.push(prefix[prefix.length - 1] + s.value);
-
-  let best: number | null = null;
-  let start = 0;
-  for (let end = 0; end < sorted.length; end++) {
-    // Shrink from the left while the window is longer than it needs to be, so
-    // `start` always sits at the tightest span still covering windowSec.
-    while (start < end && sorted[end].offsetSec - sorted[start + 1].offsetSec >= windowSec) start++;
-    const span = sorted[end].offsetSec - sorted[start].offsetSec;
-    if (span < windowSec) continue;
-    const mean = (prefix[end + 1] - prefix[start]) / (end + 1 - start);
-    if (best == null || mean > best) best = mean;
-  }
-  return best;
 }
 
 function since(days: number): Date {
@@ -159,6 +124,12 @@ export async function buildCalibrationReport(userId: string): Promise<Calibratio
   });
   if (!user) throw new Error('User not found');
 
+  // FTP comes off the stored power curve when there is one: it already holds
+  // the best 20 minutes of every ride ever analysed, which is both cheaper to
+  // read and a wider search than the walk below, which only ever looked at the
+  // 40 most recent rides. See lib/powerCurve.ts.
+  const curveBest = await best20MinPower(userId, WINDOW_DAYS);
+
   let bestPower: number | null = null;
   let bestSpeed: number | null = null;
   let bestHr: number | null = null;
@@ -176,7 +147,9 @@ export async function buildCalibrationReport(userId: string): Promise<Calibratio
     // runner, so pace has to be read from runs alone — reading it from whatever
     // happened to have a speed stream turned 30 km/h gravel rides into a
     // "threshold pace" of 1:46/km.
-    if (type === 'RIDE') {
+    // Only walked when the curve has nothing for this window — an athlete
+    // whose rides have never been analysed still gets a suggestion.
+    if (type === 'RIDE' && curveBest == null) {
       const power = samples
         .filter((s): s is typeof s & { powerWatts: number } => s.powerWatts != null)
         .map((s) => ({ offsetSec: s.offsetSec, value: s.powerWatts }));
@@ -199,7 +172,8 @@ export async function buildCalibrationReport(userId: string): Promise<Calibratio
     }
   });
 
-  const best20Power: number | null = bestPower;
+  const best20Power: number | null = curveBest ? curveBest.watts : bestPower;
+  const powerRideCount = curveBest ? curveBest.rideCount : rideCount;
   const best20Speed: number | null = bestSpeed;
   const maxHr: number | null = bestHr;
 
@@ -252,7 +226,9 @@ export async function buildCalibrationReport(userId: string): Promise<Calibratio
       suggested: suggestedFtp,
       basis:
         suggestedFtp != null
-          ? `95% of your best 20 minutes at ${Math.round(best20Power!)}W, across ${rideCount} ride${rideCount === 1 ? '' : 's'} with power`
+          ? `95% of your best 20 minutes at ${Math.round(best20Power!)}W${
+              curveBest ? ` (${monthYear(curveBest.on)})` : ''
+            }, across ${powerRideCount} ride${powerRideCount === 1 ? '' : 's'} with power`
           : `No rides with usable power data in the last ${WINDOW_DAYS} days`,
     },
     thresholdPaceSecPerKm: {
@@ -274,6 +250,10 @@ export async function buildCalibrationReport(userId: string): Promise<Calibratio
           : `No usable heart-rate data in the last ${WINDOW_DAYS} days`,
     },
   };
+}
+
+function monthYear(date: Date): string {
+  return date.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 }
 
 function formatPace(secPerKm: number): string {
