@@ -30,6 +30,15 @@ export interface WorkoutSegment {
   intensityLow?: number;
   intensityHigh?: number;
   role?: 'warmup' | 'cooldown';
+  /**
+   * Which metric the segment was actually prescribed in. Everything downstream
+   * reasons in fractions of threshold regardless, but pushing a session back to
+   * a watch has to turn the fraction into a real target again — and a rep the
+   * source file prescribed as "198bpm" should go back out as 198bpm, not as the
+   * pace that fraction happens to correspond to. Absent on sources that carry no
+   * metric of their own (a hand-typed workout note), where the discipline decides.
+   */
+  targetMetric?: 'power' | 'pace' | 'hr';
 }
 
 export interface EstimatedIntensity {

@@ -58,6 +58,8 @@ export interface WorkoutProfileSegment {
   intensityLow?: number;
   intensityHigh?: number;
   role?: 'warmup' | 'cooldown';
+  /** Which metric the source file prescribed the segment in. See server/src/lib/workoutIntensity.ts. */
+  targetMetric?: 'power' | 'pace' | 'hr';
 }
 
 export interface LibraryWorkout {

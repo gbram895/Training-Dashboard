@@ -38,9 +38,16 @@ router.get('/selected', async (req: AuthedRequest, res) => {
   res.json(selected);
 });
 
+// Keeps every field the parser produces: a selected workout is handed straight
+// back to the profile chart, the segment cards and the Garmin push, and each of
+// those reads something the narrower shape used to drop on the floor.
 const segmentSchema = z.object({
   durationSec: z.number().positive(),
   intensityFraction: z.number().optional(),
+  intensityLow: z.number().optional(),
+  intensityHigh: z.number().optional(),
+  role: z.enum(['warmup', 'cooldown']).optional(),
+  targetMetric: z.enum(['power', 'pace', 'hr']).optional(),
 });
 
 const selectSchema = z.object({
