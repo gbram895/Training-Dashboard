@@ -15,9 +15,10 @@ import {
   emphasisFor,
   focusLine,
   goalForDay,
-  profileFor,
+  legForDay,
+  legsFor,
   selectCategory,
-  type GoalProfile,
+  type GoalLegs,
 } from './goalSpecificity.js';
 
 const DAY_KEYS = [
@@ -283,13 +284,24 @@ function recentPicksMemory(libraryCount: number): number {
  * alone — exactly how every day was decided before goal types existed.
  */
 interface GoalContext {
-  profile: GoalProfile;
+  legs: GoalLegs;
   goalName: string;
   emphasis: ReturnType<typeof emphasisFor>;
   isLongDay: boolean;
-  /** Session types already planned, oldest first, real history then this window. */
+  /**
+   * Session types already planned, oldest first, real history then this
+   * window. A single-sport goal measures its mix across the whole week, since
+   * its target shares are a whole-week budget; a composed multisport goal
+   * measures each leg against its own history, because a triathlete's bike and
+   * run budgets are genuinely separate.
+   */
   recentCategories: WorkoutCategory[];
+  recentByDiscipline: Record<PlannedDiscipline, WorkoutCategory[]>;
   keySessionsSoFar: number;
+  /** Training days already given to this goal, so a composed goal alternates legs. */
+  disciplineTurns: number;
+  /** Week of the plan window, so a long ride and a long run take turns. */
+  weekIndex: number;
 }
 
 /** Picks a rest day or a specific workout for one day, given its target hours and projected Form. */
@@ -328,24 +340,52 @@ function decideDay(
   let focus: string | null = null;
 
   if (goal) {
-    const selection = selectCategory({
-      ceiling,
-      profile: goal.profile,
-      emphasis: goal.emphasis,
-      recent: goal.recentCategories,
-      isLongDay: goal.isLongDay,
-    });
-    category = selection.category;
-    discipline = disciplineFor({
-      profile: goal.profile,
-      category,
-      isLongDay: goal.isLongDay,
-      scheduledAsRun,
-      includeRunning: config.includeRunning,
-      keySessionsSoFar: goal.keySessionsSoFar,
-    });
-    if (selection.goalDriven) {
-      focus = focusLine(goal.profile, category, goal.emphasis, goal.goalName, goal.isLongDay);
+    // A composed multisport goal picks its leg first, because which leg the
+    // day belongs to is what decides the mix. A single-sport goal goes the
+    // other way round: one mix covers the week, and the discipline follows
+    // from how hard the session turned out to be.
+    const leg: PlannedDiscipline | null = goal.legs.composed
+      ? legForDay({
+          legs: goal.legs,
+          scheduledAsRun,
+          includeRunning: config.includeRunning,
+          isLongDay: goal.isLongDay,
+          disciplineTurns: goal.disciplineTurns,
+          weekIndex: goal.weekIndex,
+        })
+      : null;
+
+    const profile = leg ? (leg === 'RUN' ? goal.legs.run : goal.legs.bike) : (goal.legs.bike ?? goal.legs.run);
+
+    if (profile) {
+      const selection = selectCategory({
+        ceiling,
+        profile,
+        emphasis: goal.emphasis,
+        recent: leg ? goal.recentByDiscipline[leg] : goal.recentCategories,
+        isLongDay: goal.isLongDay,
+      });
+      category = selection.category;
+      discipline =
+        leg ??
+        disciplineFor({
+          profile,
+          category,
+          isLongDay: goal.isLongDay,
+          scheduledAsRun,
+          includeRunning: config.includeRunning,
+          keySessionsSoFar: goal.keySessionsSoFar,
+        });
+      if (selection.goalDriven) {
+        focus = focusLine({
+          profile,
+          category,
+          emphasis: goal.emphasis,
+          goalName: goal.goalName,
+          isLongDay: goal.isLongDay,
+          leg: goal.legs.composed ? discipline : null,
+        });
+      }
     }
   }
 
@@ -401,17 +441,30 @@ const LONG_DAY_MIN_HOURS = 1.5;
  * slate. Without this the plan would re-deal the same opening sessions every
  * time it regenerated, which is several times a day.
  */
-async function recentPlannedCategories(userId: string, today: Date): Promise<WorkoutCategory[]> {
+interface RecentCategories {
+  /** Every training day, for a single-sport goal's whole-week mix. */
+  all: WorkoutCategory[];
+  /** Split by discipline, for a composed multisport goal's per-leg mixes. */
+  byDiscipline: Record<PlannedDiscipline, WorkoutCategory[]>;
+}
+
+async function recentPlannedCategories(userId: string, today: Date): Promise<RecentCategories> {
   const since = new Date(today);
   since.setUTCDate(since.getUTCDate() - 14);
   const rows = await prisma.plannedDay.findMany({
     where: { userId, date: { gte: since, lt: today }, isRestDay: false, category: { not: null } },
     orderBy: { date: 'asc' },
-    select: { category: true },
+    select: { category: true, discipline: true },
   });
-  return rows
-    .map((r) => r.category as WorkoutCategory)
-    .filter((c) => CATEGORY_ORDER.includes(c));
+
+  const recent: RecentCategories = { all: [], byDiscipline: { BIKE: [], RUN: [] } };
+  for (const row of rows) {
+    const category = row.category as WorkoutCategory;
+    if (!CATEGORY_ORDER.includes(category)) continue;
+    recent.all.push(category);
+    if (row.discipline) recent.byDiscipline[row.discipline].push(category);
+  }
+  return recent;
 }
 
 /**
@@ -465,9 +518,10 @@ async function runProjection(
   // athlete — both needed before the first day so the window continues the
   // training that came before it rather than restarting it.
   const anchor = targets.length ? pickAnchor(targets, today) : null;
-  const recentCategories = await recentPlannedCategories(userId, today);
+  const recent = await recentPlannedCategories(userId, today);
   const longDay = longestScheduledDay(config);
   let keySessionsSoFar = 0;
+  let disciplineTurns = 0;
 
   for (let i = 0; i < dates.length; i++) {
     const date = dates[i];
@@ -478,16 +532,19 @@ async function runProjection(
     // Which goal's demands this day trains for: normally the anchor, but a day
     // inside another goal's taper belongs to that goal instead.
     const dayGoal = targets.length ? goalForDay(targets, periodization?.targetId ?? null, anchor) : null;
-    const profile = dayGoal ? profileFor(dayGoal.kind) : null;
+    const legs = dayGoal ? legsFor(dayGoal) : null;
     const goalContext: GoalContext | null =
-      dayGoal && profile
+      dayGoal && legs && (legs.bike || legs.run)
         ? {
-            profile,
+            legs,
             goalName: dayGoal.name,
             emphasis: emphasisFor(periodization?.phase ?? null, periodization?.daysToEvent ?? Number.MAX_SAFE_INTEGER),
             isLongDay: date.getUTCDay() === longDay.dayOfWeek && longDay.hours >= LONG_DAY_MIN_HOURS,
-            recentCategories,
+            recentCategories: recent.all,
+            recentByDiscipline: recent.byDiscipline,
             keySessionsSoFar,
+            disciplineTurns,
+            weekIndex: Math.floor(i / 7),
           }
         : null;
 
@@ -524,8 +581,11 @@ async function runProjection(
     // window converges on the goal's target shares rather than each day being
     // decided in isolation.
     if (!generated.isRestDay && generated.category) {
-      recentCategories.push(generated.category);
+      recent.all.push(generated.category);
+      const placedDiscipline = generated.workout?.discipline;
+      if (placedDiscipline) recent.byDiscipline[placedDiscipline].push(generated.category);
       if (generated.category === 'THRESHOLD' || generated.category === 'VO2MAX') keySessionsSoFar++;
+      if (goalContext) disciplineTurns++;
     }
 
     const dayTss = generated.isRestDay

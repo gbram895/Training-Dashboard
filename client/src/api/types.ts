@@ -154,6 +154,12 @@ export interface TrainingTarget {
   date: string;
   priority: TargetPriority;
   kind: GoalKind;
+  /**
+   * For a MULTISPORT goal only: what each leg of it actually is, each training
+   * to its own demands. Null on every other kind of goal.
+   */
+  bikeKind?: GoalKind | null;
+  runKind?: GoalKind | null;
   peakCtl?: number | null;
   rampPerWeek: number;
   recoveryEveryNWeeks: number;

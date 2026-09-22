@@ -30,6 +30,13 @@ import type { Phase } from './periodization.js';
  * ceiling derived from Form, HRV, sleep and RPE (see lib/trainingPlan.ts) and
  * never picks above it. Goal specificity decides which session to do among the
  * ones the body can take today — it never argues for a hard day on a flat one.
+ *
+ * A multisport goal is COMPOSED rather than averaged. A sprint duathlon and a
+ * long-course triathlon are both "multisport" and share almost no training:
+ * one bike leg is a 20km blast, the other a five-hour ride. So each leg
+ * carries its own kind, the day's leg is chosen first, and that leg's own
+ * profile picks the session — against that leg's own trailing mix, since a
+ * triathlete's bike and run budgets are separate. See legsFor and legForDay.
  */
 
 export type GoalSport = 'BIKE' | 'RUN' | 'BOTH';
@@ -189,6 +196,9 @@ const PROFILES: Record<Exclude<GoalKind, 'GENERAL'>, Omit<GoalProfile, 'kind'>> 
       RECOVERY: VERY_EASY_MIX,
     },
   },
+  // A multisport goal is normally composed from its two legs (see legsFor),
+  // so this mix is only the fallback for anywhere that asks for a multisport
+  // profile without a leg — the label and sport are what get used.
   MULTISPORT: {
     label: 'Triathlon or duathlon',
     sport: 'BOTH',
@@ -214,6 +224,101 @@ export function profileFor(kind: GoalKind): GoalProfile | null {
   if (kind === 'GENERAL') return null;
   const base = PROFILES[kind];
   return base ? { kind, ...base } : null;
+}
+
+/** The kinds that can stand as the bike leg of a multisport goal. */
+export const BIKE_KINDS: GoalKind[] = ['LONG_RIDE', 'HILLY_RIDE', 'RACE_RIDE', 'TIME_TRIAL', 'GRAVEL_MTB'];
+/** The kinds that can stand as the run leg of a multisport goal. */
+export const RUN_KINDS: GoalKind[] = ['RUN_SHORT', 'RUN_LONG', 'TRAIL_ULTRA'];
+
+/**
+ * What a multisport goal is assumed to be when its legs haven't been set —
+ * roughly a middle-distance triathlon, which is the least wrong guess across
+ * the range. Goals created before legs existed land here until the athlete
+ * says otherwise.
+ */
+const DEFAULT_BIKE_LEG: GoalKind = 'LONG_RIDE';
+const DEFAULT_RUN_LEG: GoalKind = 'RUN_LONG';
+
+export function isBikeKind(kind: GoalKind | null | undefined): boolean {
+  return kind != null && BIKE_KINDS.includes(kind);
+}
+
+export function isRunKind(kind: GoalKind | null | undefined): boolean {
+  return kind != null && RUN_KINDS.includes(kind);
+}
+
+/**
+ * The profile behind each discipline of a goal.
+ *
+ * A single-sport goal has one leg and the other is null; a multisport goal has
+ * both, each with its own kind, and `composed` says so. Composing beats
+ * averaging because the average of a 20km time-trial leg and a marathon leg is
+ * a session neither leg wants.
+ */
+export interface GoalLegs {
+  bike: GoalProfile | null;
+  run: GoalProfile | null;
+  /** True when the goal is contested in both disciplines, each on its own terms. */
+  composed: boolean;
+}
+
+export type GoalLegSource = Pick<TrainingTarget, 'kind' | 'bikeKind' | 'runKind'>;
+
+export function legsFor(target: GoalLegSource): GoalLegs {
+  if (target.kind === 'MULTISPORT') {
+    return {
+      bike: profileFor(isBikeKind(target.bikeKind) ? target.bikeKind! : DEFAULT_BIKE_LEG),
+      run: profileFor(isRunKind(target.runKind) ? target.runKind! : DEFAULT_RUN_LEG),
+      composed: true,
+    };
+  }
+  const profile = profileFor(target.kind);
+  if (!profile) return { bike: null, run: null, composed: false };
+  return {
+    bike: profile.sport === 'BIKE' ? profile : null,
+    run: profile.sport === 'RUN' ? profile : null,
+    composed: false,
+  };
+}
+
+export interface LegForDayInput {
+  legs: GoalLegs;
+  /** The athlete's own weekly schedule says this day is a run. */
+  scheduledAsRun: boolean;
+  includeRunning: boolean;
+  isLongDay: boolean;
+  /** Training days already given to this goal, so the two legs alternate. */
+  disciplineTurns: number;
+  /** Week of the plan, so a long ride and a long run take turns week by week. */
+  weekIndex: number;
+}
+
+/**
+ * Which discipline a day of a composed multisport goal is.
+ *
+ * Decided BEFORE the session type, because for a composed goal the mix depends
+ * on which leg the day belongs to — the reverse of a single-sport goal, where
+ * one mix covers the week and the discipline follows from how hard the session
+ * turned out to be.
+ */
+export function legForDay(input: LegForDayInput): PlannedDiscipline {
+  const { legs, scheduledAsRun, includeRunning, isLongDay, disciplineTurns, weekIndex } = input;
+  if (!includeRunning) return 'BIKE';
+  if (scheduledAsRun) return 'RUN';
+
+  if (isLongDay) {
+    const bikeWantsIt = legs.bike?.longSessionMatters ?? false;
+    const runWantsIt = legs.run?.longSessionMatters ?? false;
+    // Both legs needing a long session is the normal case for anything past
+    // sprint distance, and there is only one long day in the week — so they
+    // take it in turns rather than one quietly always winning.
+    if (bikeWantsIt && runWantsIt) return weekIndex % 2 === 0 ? 'BIKE' : 'RUN';
+    if (bikeWantsIt) return 'BIKE';
+    if (runWantsIt) return 'RUN';
+  }
+
+  return disciplineTurns % 2 === 0 ? 'BIKE' : 'RUN';
 }
 
 export function goalKindLabel(kind: GoalKind): string {
@@ -314,6 +419,28 @@ export function selectCategory(input: SelectCategoryInput): CategorySelection {
     return idx === -1 ? Number.POSITIVE_INFINITY : window.length - idx;
   };
 
+  /**
+   * Ties are not rare — a profile that wants equal shares of two session types
+   * produces one on almost every pick — so how they break matters as much as
+   * the deficit itself. Resolving them by position in CATEGORY_ORDER would
+   * hand every tie to the easier session, and a 10k leg asking for equal
+   * threshold and VO2max would quietly never see a VO2max session.
+   *
+   * So: least recently used first, then whichever is closest to the event's
+   * own session, then the harder of the two — the ceiling has already said
+   * the athlete can take it, and freshness spent on the specific work is
+   * worth more than freshness spent on a steadier day.
+   */
+  const keyIdx = CATEGORY_ORDER.indexOf(profile.keyCategory);
+  const beatsOnTie = (c: WorkoutCategory, incumbent: WorkoutCategory) => {
+    const recency = sinceLastUsed(c) - sinceLastUsed(incumbent);
+    if (recency !== 0 && !Number.isNaN(recency)) return recency > 0;
+    const specificity =
+      Math.abs(CATEGORY_ORDER.indexOf(incumbent) - keyIdx) - Math.abs(CATEGORY_ORDER.indexOf(c) - keyIdx);
+    if (specificity !== 0) return specificity > 0;
+    return CATEGORY_ORDER.indexOf(c) > CATEGORY_ORDER.indexOf(incumbent);
+  };
+
   let best = pool[0];
   let bestDeficit = target[best] - observed(best);
   for (const c of pool.slice(1)) {
@@ -321,7 +448,7 @@ export function selectCategory(input: SelectCategoryInput): CategorySelection {
     if (deficit > bestDeficit + 1e-9) {
       best = c;
       bestDeficit = deficit;
-    } else if (Math.abs(deficit - bestDeficit) <= 1e-9 && sinceLastUsed(c) > sinceLastUsed(best)) {
+    } else if (Math.abs(deficit - bestDeficit) <= 1e-9 && beatsOnTie(c, best)) {
       best = c;
       bestDeficit = deficit;
     }
@@ -387,13 +514,28 @@ function sentenceCase(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-export function focusLine(
-  profile: GoalProfile,
-  category: WorkoutCategory,
-  emphasis: EmphasisPhase,
-  goalName: string,
-  isLongDay: boolean,
-): string {
+export interface FocusLineInput {
+  profile: GoalProfile;
+  category: WorkoutCategory;
+  emphasis: EmphasisPhase;
+  goalName: string;
+  isLongDay: boolean;
+  /**
+   * Which leg of a multisport goal this day trains, when the goal is composed.
+   * "Threshold work for Ironman Hamburg" is ambiguous when the event has two
+   * disciplines; "for Ironman Hamburg's bike leg" is not.
+   */
+  leg?: PlannedDiscipline | null;
+}
+
+export function focusLine(input: FocusLineInput): string {
+  const { profile, category, emphasis, isLongDay } = input;
+  // Naming the leg where there is one turns the goal's name into the thing the
+  // session is actually for, and reads naturally in every sentence below.
+  const goalName = input.leg
+    ? `${input.goalName}'s ${input.leg === 'RUN' ? 'run' : 'bike'} leg`
+    : input.goalName;
+
   if (isLongDay && profile.longSessionMatters && category === 'ENDURANCE') {
     return `Your long day. ${sentenceCase(profile.demand)} is what ${goalName} comes down to.`;
   }
