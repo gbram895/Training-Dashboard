@@ -21,7 +21,7 @@ import {
   projectSeason,
   type PeriodizationContext,
 } from '../lib/periodization.js';
-import { measureThresholdTrends } from '../lib/thresholdTrend.js';
+import { measureThresholdPotentials } from '../lib/thresholdPotential.js';
 import { isBikeKind, isRunKind } from '../lib/goalSpecificity.js';
 import type { GoalKind } from '@prisma/client';
 import { asString } from '../lib/params.js';
@@ -246,20 +246,20 @@ router.get('/season', async (req: AuthedRequest, res) => {
 router.get('/forecast', async (req: AuthedRequest, res) => {
   const userId = req.userId!;
   const loaded = await periodizationContextFor(userId);
-  // The threshold trends are measured from workout summaries either way, so the
-  // basis lines can still explain themselves when there are no goals yet.
-  const trends = await measureThresholdTrends(userId);
+  // Measured from workout summaries either way, so the basis lines can still
+  // explain themselves when there are no goals set yet.
+  const potentials = await measureThresholdPotentials(userId);
   if (!loaded) {
     return res.json({
       currentCtl: 0,
       goals: [],
-      currentFtpWatts: trends.ftp?.current ?? null,
-      currentThresholdPaceSecPerKm: trends.pace?.current ?? null,
-      ftpBasis: trends.ftpBasis,
-      paceBasis: trends.paceBasis,
+      currentFtpWatts: potentials.ftp?.current ?? null,
+      currentThresholdPaceSecPerKm: potentials.pace?.current ?? null,
+      ftpBasis: potentials.ftpBasis,
+      paceBasis: potentials.paceBasis,
     });
   }
-  res.json(forecastGoals(loaded.ctx, utcMidnight(new Date()), trends));
+  res.json(forecastGoals(loaded.ctx, utcMidnight(new Date()), potentials));
 });
 
 const goalKind = z.enum([

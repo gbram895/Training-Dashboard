@@ -210,8 +210,14 @@ export interface GoalForecast {
   peakCtl: number | null;
   meetsPeak: boolean | null;
   buildWeeks: number;
-  projectedFtpWatts: number | null;
-  projectedThresholdPaceSecPerKm: number | null;
+  ftpPotential: PotentialRange | null;
+  pacePotential: PotentialRange | null;
+}
+
+/** `hold` is already demonstrated; `potential` is the upside from the build weeks. */
+export interface PotentialRange {
+  hold: number;
+  potential: number;
 }
 
 export interface FitnessForecast {

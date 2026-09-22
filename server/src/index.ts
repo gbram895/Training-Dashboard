@@ -20,6 +20,7 @@ import { stravaConfigured } from './lib/strava.js';
 import { runAllStravaSyncs } from './lib/stravaSync.js';
 import { regenerateAllPlans } from './lib/trainingPlan.js';
 import { pushConfigured, sendDailyWorkoutReminders, sendWeeklyAvailabilityCheckin } from './lib/webPush.js';
+import { notifyAllNewLibraryWorkouts } from './lib/newWorkoutNotifications.js';
 import { ALWAYS_CATCH_UP, primeJobs, registerJob, runDueJobs } from './lib/scheduler.js';
 
 const app = express();
@@ -147,6 +148,24 @@ function registerScheduledJobs() {
       catchUpWindowMinutes: 6 * 60,
       firstRun: 'next',
     });
+
+    if (dropboxConfigured()) {
+      registerJob({
+        name: 'push-new-library-workouts',
+        schedule: process.env.NEW_WORKOUT_CRON ?? '*/30 * * * *',
+        timezone: reminderTimezone,
+        run: notifyAllNewLibraryWorkouts,
+        // Unlike the two reminders above, this one never goes off. They are
+        // about a particular time of day and are noise once it has passed; a
+        // workout file uploaded while the service was asleep is still news
+        // whenever we get round to noticing it.
+        catchUpWindowMinutes: ALWAYS_CATCH_UP,
+        // 'next' rather than 'now' for the usual reason — a deploy should not
+        // fire a push — and because the first run of all is the one that
+        // establishes what "already in the library" means.
+        firstRun: 'next',
+      });
+    }
   } else {
     console.log('[push] VAPID keys not set — daily workout reminders disabled');
   }
