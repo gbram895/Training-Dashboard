@@ -3,6 +3,7 @@ import { prisma } from './prisma.js';
 import { fetchWorkoutLibrary, type ParsedWorkoutFile, type PlannedDiscipline } from './workoutLibrary.js';
 import { CATEGORY_ORDER, estimatedTssForBucket, type WorkoutCategory } from './workoutIntensity.js';
 import { computeFitnessSeries } from './fitness.js';
+import { sleepQualityScore } from './sleepAnalysis.js';
 import {
   measureTssPerHour,
   periodizeDay,
@@ -82,6 +83,7 @@ const FORCED_REST_TSB = -30;
 interface ReadinessModifiers {
   hrvRatio: number | null; // most recent HRV vs the 7 days before it (null until there is a baseline)
   sleepHours: number | null; // most recent night's sleep
+  sleepQuality: number | null; // 0-100 from that night's stage breakdown (null without one)
   lastRpe: number | null; // RPE (1-10) logged against the most recent workout, if any
   missedHardSessionYesterday: boolean; // yesterday was planned THRESHOLD/VO2MAX but never logged
 }
@@ -96,7 +98,13 @@ async function getReadinessModifiers(userId: string): Promise<ReadinessModifiers
   const days = await prisma.dailyHealthSummary.findMany({
     where: { userId, date: { gte: since } },
     orderBy: { date: 'asc' },
-    select: { avgHrv: true, sleepHours: true },
+    select: {
+      avgHrv: true,
+      sleepHours: true,
+      sleepDeepHours: true,
+      sleepRemHours: true,
+      sleepInBedHours: true,
+    },
   });
 
   const hrvValues = days.map((d) => d.avgHrv).filter((v): v is number => v != null);
@@ -110,7 +118,16 @@ async function getReadinessModifiers(userId: string): Promise<ReadinessModifiers
   const baselineHrv = priorHrv.length ? priorHrv.reduce((a, b) => a + b, 0) / priorHrv.length : null;
   const hrvRatio = lastHrv != null && baselineHrv ? lastHrv / baselineHrv : null;
 
-  const lastSleep = days.length ? (days[days.length - 1].sleepHours ?? null) : null;
+  const lastNight = days.length ? days[days.length - 1] : null;
+  const lastSleep = lastNight?.sleepHours ?? null;
+  const lastSleepQuality = lastNight
+    ? sleepQualityScore({
+        totalHours: lastNight.sleepHours,
+        deepHours: lastNight.sleepDeepHours,
+        remHours: lastNight.sleepRemHours,
+        inBedHours: lastNight.sleepInBedHours,
+      })
+    : null;
 
   // Bounded to the last 2 days — a brutal session should ease off tomorrow,
   // not silently suppress intensity for a week until another RPE is logged.
@@ -147,13 +164,27 @@ async function getReadinessModifiers(userId: string): Promise<ReadinessModifiers
     missedHardSessionYesterday = !logged;
   }
 
-  return { hrvRatio, sleepHours: lastSleep, lastRpe: lastLoggedWorkout?.rpe ?? null, missedHardSessionYesterday };
+  return {
+    hrvRatio,
+    sleepHours: lastSleep,
+    sleepQuality: lastSleepQuality,
+    lastRpe: lastLoggedWorkout?.rpe ?? null,
+    missedHardSessionYesterday,
+  };
 }
 
 // A brutally hard session (self-reported RPE 9-10) is a stronger, more
 // immediate fatigue signal than HRV/sleep can pick up same-day — ease off
 // the very next session regardless of what the fitness curve alone says.
 const HIGH_RPE_THRESHOLD = 9;
+
+// A night can be long and still not have recovered anything: mostly light
+// sleep, or broken up enough that a third of it was spent awake. Length alone
+// could never see that, which is why this sits beside the under-six-hours rule
+// rather than replacing it. Deliberately only reachable when the night WAS
+// long enough — a short night already costs a step, and taking two for one bad
+// night suppresses more training than one night's evidence justifies.
+const POOR_SLEEP_QUALITY = 60;
 
 /** The hardest session today's fitness and recovery allow — never exceeded. */
 function readinessCeiling(tsb: number | null, readiness: ReadinessModifiers): WorkoutCategory {
@@ -162,6 +193,7 @@ function readinessCeiling(tsb: number | null, readiness: ReadinessModifiers): Wo
   let downgradeSteps = 0;
   if (readiness.hrvRatio != null && readiness.hrvRatio < 0.8) downgradeSteps += 1;
   if (readiness.sleepHours != null && readiness.sleepHours < 6) downgradeSteps += 1;
+  else if (readiness.sleepQuality != null && readiness.sleepQuality < POOR_SLEEP_QUALITY) downgradeSteps += 1;
   if (readiness.lastRpe != null && readiness.lastRpe >= HIGH_RPE_THRESHOLD) downgradeSteps += 1;
   if (readiness.missedHardSessionYesterday) downgradeSteps += 1;
 

@@ -1,10 +1,21 @@
 // A composite 0-100 "readiness" score for the Dashboard hero ring — nothing
 // server-side computes a single number today, this blends three signals
-// that already exist (HRV vs its own 7-day baseline, last night's sleep vs
-// an 8h target, and TSB/form) into one. The weights and bands are a
-// reasonable starting heuristic, not a validated formula — easy to retune
-// once there's a sense of how it tracks against how a workout actually felt.
+// that already exist (HRV vs its own 7-day baseline, last night's sleep, and
+// TSB/form) into one. The weights and bands are a reasonable starting
+// heuristic, not a validated formula — easy to retune once there's a sense of
+// how it tracks against how a workout actually felt.
 const SLEEP_TARGET_HOURS = 8;
+
+/**
+ * How much of the sleep component is length and how much is what the night
+ * was made of. Length still leads — eight broken hours beat five good ones —
+ * but a full night spent almost entirely in light sleep is not the same
+ * recovery as a full night with a normal amount of deep sleep and REM, and
+ * before the stage breakdown was imported the score could not tell them
+ * apart. Nights with no stage detail score on length alone, exactly as
+ * before, so this changes nothing for a night an iPhone recorded.
+ */
+const SLEEP_QUALITY_WEIGHT = 0.3;
 
 function hrvScore(today: number | null, baseline: number | null): number | null {
   if (today == null || baseline == null || baseline <= 0) return null;
@@ -12,9 +23,11 @@ function hrvScore(today: number | null, baseline: number | null): number | null 
   return Math.max(0, Math.min(100, ratio * 100));
 }
 
-function sleepScore(hours: number | null): number | null {
+function sleepScore(hours: number | null, quality: number | null): number | null {
   if (hours == null) return null;
-  return Math.max(0, Math.min(100, (hours / SLEEP_TARGET_HOURS) * 100));
+  const duration = Math.max(0, Math.min(100, (hours / SLEEP_TARGET_HOURS) * 100));
+  if (quality == null) return duration;
+  return duration * (1 - SLEEP_QUALITY_WEIGHT) + quality * SLEEP_QUALITY_WEIGHT;
 }
 
 function tsbScore(tsb: number | null): number | null {
@@ -27,11 +40,13 @@ export function computeReadiness(inputs: {
   todayHrv: number | null;
   hrvBaseline: number | null;
   sleepHours: number | null;
+  /** 0-100 from the night's stage breakdown; null when it has none. */
+  sleepQuality?: number | null;
   tsb: number | null;
 }): number | null {
   const parts: { score: number; weight: number }[] = [];
   const hrv = hrvScore(inputs.todayHrv, inputs.hrvBaseline);
-  const sleep = sleepScore(inputs.sleepHours);
+  const sleep = sleepScore(inputs.sleepHours, inputs.sleepQuality ?? null);
   const tsb = tsbScore(inputs.tsb);
   if (hrv != null) parts.push({ score: hrv, weight: 0.35 });
   if (sleep != null) parts.push({ score: sleep, weight: 0.25 });

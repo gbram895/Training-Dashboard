@@ -19,11 +19,13 @@ import { useAuth } from '../context/AuthContext';
 import { useCachedState } from '../lib/pageCache';
 import { useRefreshOnResume } from '../lib/useRefreshOnResume';
 import { computeReadiness } from '../lib/readiness';
+import { toSleepNight } from '../lib/sleep';
 import { average } from '../lib/hrv';
 import { formatDateUTC } from '../lib/format';
 import PageHead from '../components/PageHead';
 import DashboardHero from '../components/dashboard/DashboardHero';
 import GradientStatRow from '../components/dashboard/GradientStatRow';
+import SleepCard from '../components/dashboard/SleepCard';
 import WeekStrip from '../components/dashboard/WeekStrip';
 import GradientActivityList from '../components/dashboard/GradientActivityList';
 import SyncHealthBanner from '../components/dashboard/SyncHealthBanner';
@@ -118,11 +120,13 @@ export default function Dashboard() {
   const loading = days === null || disciplineStats === null || hrZones === null;
 
   const hrvValues = days?.map((d) => d.avgHrv ?? null) ?? [];
+  const lastNight = days?.length ? toSleepNight(days[days.length - 1]) : null;
   const readiness = days
     ? computeReadiness({
         todayHrv: hrvValues.length ? hrvValues[hrvValues.length - 1] : null,
         hrvBaseline: average(hrvValues.slice(-8, -1)),
         sleepHours: days.length ? (days[days.length - 1].sleepHours ?? null) : null,
+        sleepQuality: lastNight?.quality ?? null,
         tsb: fitness && fitness.length ? fitness[fitness.length - 1].tsb : null,
       })
     : null;
@@ -156,6 +160,8 @@ export default function Dashboard() {
             {sessionReview && <SessionReviewCard review={sessionReview} compact />}
 
             <GradientStatRow days={days} fitness={fitness} />
+
+            <SleepCard days={days} />
 
             <div className="gd-section-head">
               <h3>This week</h3>

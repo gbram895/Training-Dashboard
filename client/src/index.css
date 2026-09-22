@@ -45,6 +45,16 @@
   --chart-z3: #6fcf8e;
   --chart-z4: #f2cb55;
   --chart-z5: #ef7b72;
+
+  /* Sleep stages. Ordered deepest to awake, and kept distinct in hue rather
+     than only in lightness so the stacked bar is still readable to someone
+     who can't separate the blues. Redefined for dark mode below — unlike the
+     other chart tokens these sit as large filled areas, and the light-mode
+     indigo goes muddy against a dark surface. */
+  --sleep-deep: #3d3a8f;
+  --sleep-core: #4a86c8;
+  --sleep-rem: #1f9c94;
+  --sleep-awake: #d79b3f;
   color-scheme: light;
 }
 
@@ -73,6 +83,10 @@
     --join-blue: #4fb6d6;
     --join-green: #2fae84;
     --join-panel: #132821;
+    --sleep-deep: #7b76d6;
+    --sleep-core: #63a8e8;
+    --sleep-rem: #3fd0c9;
+    --sleep-awake: #e0a23f;
     color-scheme: dark;
   }
 }
@@ -105,6 +119,10 @@
   --join-blue: #4fb6d6;
   --join-green: #2fae84;
   --join-panel: #132821;
+  --sleep-deep: #7b76d6;
+  --sleep-core: #63a8e8;
+  --sleep-rem: #3fd0c9;
+  --sleep-awake: #e0a23f;
   color-scheme: dark;
 }
 
@@ -3726,4 +3744,87 @@ button.gd-cal-apply {
   font-size: 11.5px;
   line-height: 1.5;
   color: var(--text-faint);
+}
+
+/* ---- Sleep card (dashboard) ---------------------------------------- */
+
+/* Deliberately compact: it sits between the stat tiles and the week strip,
+   and a tall card there pushes everything that matters below the fold. Each
+   row is a single line at phone width. */
+.gd-sleep-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 12px 14px 13px;
+  margin-bottom: 16px;
+}
+
+.gd-sleep-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.gd-sleep-total {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.gd-sleep-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--surface-sunken);
+  margin-top: 10px;
+}
+
+.gd-sleep-seg {
+  height: 100%;
+  /* A sliver of awake time still has to be visible as a slice rather than as
+     a hairline, and the flex row keeps the widths proportional regardless. */
+  min-width: 2px;
+}
+
+.gd-sleep-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  list-style: none;
+  margin: 9px 0 0;
+  padding: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.gd-sleep-legend li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.gd-sleep-legend .mono {
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--text);
+}
+
+.gd-sleep-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.gd-sleep-note {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  margin: 8px 0 0;
+}
+
+.gd-sleep-verdict {
+  font-size: 12.5px;
+  color: var(--text);
+  margin: 6px 0 0;
 }
