@@ -201,11 +201,18 @@ export interface GoalForecast {
   freshness: Freshness;
   peakCtl: number | null;
   meetsPeak: boolean | null;
+  buildWeeks: number;
+  projectedFtpWatts: number | null;
+  projectedThresholdPaceSecPerKm: number | null;
 }
 
 export interface FitnessForecast {
   currentCtl: number;
   goals: GoalForecast[];
+  currentFtpWatts: number | null;
+  currentThresholdPaceSecPerKm: number | null;
+  ftpBasis: string;
+  paceBasis: string;
 }
 
 export interface HrZoneValues {

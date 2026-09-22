@@ -50,8 +50,8 @@ const MAX_HR_WINDOW_SEC = 30;
  * inside world-record territory (a 10k world record is about 2:35/km), so
  * anything under it means the data is not someone running.
  */
-const PLAUSIBLE_FTP_WATTS = { min: 40, max: 600 };
-const PLAUSIBLE_PACE_SEC_PER_KM = { min: 150, max: 900 };
+export const PLAUSIBLE_FTP_WATTS = { min: 40, max: 600 };
+export const PLAUSIBLE_PACE_SEC_PER_KM = { min: 150, max: 900 };
 const PLAUSIBLE_MAX_HR_BPM = { min: 120, max: 220 };
 
 function withinBounds(value: number | null, bounds: { min: number; max: number }): number | null {

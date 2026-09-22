@@ -3420,3 +3420,49 @@ button.gd-cal-apply {
 .gd-forecast-short {
   color: var(--warn);
 }
+
+.gd-forecast-thresholds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  align-items: baseline;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.gd-forecast-thresholds strong {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.gd-forecast-buildweeks {
+  color: var(--text-faint);
+}
+
+.gd-forecast-basis {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.gd-forecast-basis p {
+  margin: 0 0 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.gd-forecast-basis p:last-child {
+  margin-bottom: 0;
+}
+
+.gd-forecast-basis strong {
+  color: var(--text);
+}
+
+.gd-forecast-caveat {
+  color: var(--text-faint) !important;
+}

@@ -21,6 +21,7 @@ import {
   projectSeason,
   type PeriodizationContext,
 } from '../lib/periodization.js';
+import { measureThresholdTrends } from '../lib/thresholdTrend.js';
 import { asString } from '../lib/params.js';
 import { buildFitWorkoutFile } from '../lib/garminFitWorkout.js';
 import { loadAthleteSpeedThresholds, type GarminPushSegment } from '../lib/garminWorkoutPush.js';
@@ -241,9 +242,22 @@ router.get('/season', async (req: AuthedRequest, res) => {
 // freshness (Form) the athlete is on course to bring to it. Shares the same
 // projection as /season, so the numbers here and the season chart agree.
 router.get('/forecast', async (req: AuthedRequest, res) => {
-  const loaded = await periodizationContextFor(req.userId!);
-  if (!loaded) return res.json({ currentCtl: 0, goals: [] });
-  res.json(forecastGoals(loaded.ctx, utcMidnight(new Date())));
+  const userId = req.userId!;
+  const loaded = await periodizationContextFor(userId);
+  // The threshold trends are measured from workout summaries either way, so the
+  // basis lines can still explain themselves when there are no goals yet.
+  const trends = await measureThresholdTrends(userId);
+  if (!loaded) {
+    return res.json({
+      currentCtl: 0,
+      goals: [],
+      currentFtpWatts: trends.ftp?.current ?? null,
+      currentThresholdPaceSecPerKm: trends.pace?.current ?? null,
+      ftpBasis: trends.ftpBasis,
+      paceBasis: trends.paceBasis,
+    });
+  }
+  res.json(forecastGoals(loaded.ctx, utcMidnight(new Date()), trends));
 });
 
 const targetSchema = z.object({

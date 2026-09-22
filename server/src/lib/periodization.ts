@@ -1,5 +1,6 @@
 import type { TrainingTarget, TargetPriority } from '@prisma/client';
 import { prisma } from './prisma.js';
+import { projectFtp, projectThresholdPace, type ThresholdTrends } from './thresholdTrend.js';
 import { goalKindLabel, profileFor } from './goalSpecificity.js';
 
 /**
@@ -605,19 +606,46 @@ export interface GoalForecast {
   peakCtl: number | null;
   /** Whether the projection reaches that target; null when there is no target. */
   meetsPeak: boolean | null;
+  /**
+   * Build weeks between now and the goal — taper, race and recovery days
+   * excluded, since those don't raise a threshold. What the FTP and pace
+   * projections below are carried over.
+   */
+  buildWeeks: number;
+  /** Projected FTP on the day, or null when there isn't enough to measure a trend from. */
+  projectedFtpWatts: number | null;
+  /** Projected threshold pace in seconds per km, or null for the same reason. */
+  projectedThresholdPaceSecPerKm: number | null;
 }
 
 export interface FitnessForecast {
   currentCtl: number;
   goals: GoalForecast[];
+  /** The athlete's configured thresholds, which the projections start from. */
+  currentFtpWatts: number | null;
+  currentThresholdPaceSecPerKm: number | null;
+  /** What the FTP/pace trend was measured from, or why there is no projection. */
+  ftpBasis: string;
+  paceBasis: string;
 }
 
-export function forecastGoals(ctx: PeriodizationContext, today: Date, maxWeeks = 60): FitnessForecast {
+export function forecastGoals(
+  ctx: PeriodizationContext,
+  today: Date,
+  trends?: ThresholdTrends,
+  maxWeeks = 60,
+): FitnessForecast {
   const currentCtl = Math.round(ctx.currentCtl * 10) / 10;
+  const thresholds = {
+    currentFtpWatts: trends?.ftp?.current ?? null,
+    currentThresholdPaceSecPerKm: trends?.pace?.current ?? null,
+    ftpBasis: trends?.ftpBasis ?? 'Not measured',
+    paceBasis: trends?.paceBasis ?? 'Not measured',
+  };
   const ahead = ctx.targets
     .filter((t) => daysBetween(today, t.date) >= 0)
     .sort((a, b) => a.date.getTime() - b.date.getTime());
-  if (ahead.length === 0) return { currentCtl, goals: [] };
+  if (ahead.length === 0) return { currentCtl, goals: [], ...thresholds };
 
   const days = walkProjection(ctx, today, projectionHorizon(ahead, today, maxWeeks));
   const byDate = new Map(days.map((d) => [dateKey(d.day), d]));
@@ -627,8 +655,14 @@ export function forecastGoals(ctx: PeriodizationContext, today: Date, maxWeeks =
   // before the goal stands in when the goal itself falls past the horizon.
   const lastDay = days[days.length - 1];
 
+  // Only BUILD days raise a threshold: a fortnight of tapering for an earlier
+  // race is time the athlete does not get back as fitness.
+  const buildDaysBefore = (goalDate: Date) =>
+    days.filter((d) => d.day < utcMidnight(goalDate) && d.periodization?.phase === 'BUILD').length;
+
   const goals: GoalForecast[] = ahead.map((t) => {
     const point = byDate.get(dateKey(t.date)) ?? lastDay;
+    const buildWeeks = Math.round((buildDaysBefore(t.date) / 7) * 10) / 10;
     const projectedCtl = Math.round(point.ctlStart * 10) / 10;
     const projectedTsb = Math.round((point.ctlStart - point.atlStart) * 10) / 10;
     const isAnchor = anchor?.id === t.id;
@@ -647,10 +681,13 @@ export function forecastGoals(ctx: PeriodizationContext, today: Date, maxWeeks =
       peakCtl,
       // A point or two short of a target isn't a miss worth flagging.
       meetsPeak: peakCtl != null ? projectedCtl >= peakCtl - 2 : null,
+      buildWeeks,
+      projectedFtpWatts: trends?.ftp ? projectFtp(trends.ftp, buildWeeks) : null,
+      projectedThresholdPaceSecPerKm: trends?.pace ? projectThresholdPace(trends.pace, buildWeeks) : null,
     };
   });
 
-  return { currentCtl, goals };
+  return { currentCtl, goals, ...thresholds };
 }
 
 /**
