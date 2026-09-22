@@ -1,9 +1,24 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from './prisma.js';
 import { fetchWorkoutLibrary, type ParsedWorkoutFile, type PlannedDiscipline } from './workoutLibrary.js';
-import { estimatedTssForBucket, type WorkoutCategory } from './workoutIntensity.js';
+import { CATEGORY_ORDER, estimatedTssForBucket, type WorkoutCategory } from './workoutIntensity.js';
 import { computeFitnessSeries } from './fitness.js';
-import { measureTssPerHour, periodizeDay, type DayPeriodization, type PeriodizationContext } from './periodization.js';
+import {
+  measureTssPerHour,
+  periodizeDay,
+  pickAnchor,
+  type DayPeriodization,
+  type PeriodizationContext,
+} from './periodization.js';
+import {
+  disciplineFor,
+  emphasisFor,
+  focusLine,
+  goalForDay,
+  profileFor,
+  selectCategory,
+  type GoalProfile,
+} from './goalSpecificity.js';
 
 const DAY_KEYS = [
   'sundayHours',
@@ -40,14 +55,16 @@ function utcMidnight(date: Date): Date {
 // Very fatigued -> ease off; very fresh -> can handle the hardest sessions.
 // Deliberately conservative bands so the app defaults to sustainable training
 // rather than chasing peak fitness.
+//
+// This is a CEILING, not a prescription. With a typed goal, lib/goalSpecificity.ts
+// picks which session at or below it the athlete most needs; without one, the
+// ceiling is taken as the answer, which is all this ever did before.
 function categoryFromTsb(tsb: number): WorkoutCategory {
   if (tsb < -5) return 'ENDURANCE';
   if (tsb < 10) return 'TEMPO';
   if (tsb < 25) return 'THRESHOLD';
   return 'VO2MAX';
 }
-
-const CATEGORY_ORDER: WorkoutCategory[] = ['ENDURANCE', 'TEMPO', 'THRESHOLD', 'VO2MAX'];
 
 function downgrade(category: WorkoutCategory, steps: number): WorkoutCategory {
   const idx = Math.max(0, CATEGORY_ORDER.indexOf(category) - steps);
@@ -131,7 +148,8 @@ async function getReadinessModifiers(userId: string): Promise<ReadinessModifiers
 // the very next session regardless of what the fitness curve alone says.
 const HIGH_RPE_THRESHOLD = 9;
 
-function decideCategory(tsb: number | null, readiness: ReadinessModifiers): WorkoutCategory {
+/** The hardest session today's fitness and recovery allow — never exceeded. */
+function readinessCeiling(tsb: number | null, readiness: ReadinessModifiers): WorkoutCategory {
   let category = tsb != null ? categoryFromTsb(tsb) : 'TEMPO';
 
   let downgradeSteps = 0;
@@ -144,12 +162,48 @@ function decideCategory(tsb: number | null, readiness: ReadinessModifiers): Work
   return category;
 }
 
+// Workouts this close together in length fit a given day about equally well,
+// so there is no reason to always hand back the same one. Picking strictly
+// the closest match is what made a stable weekly schedule produce a stable
+// weekly workout — the same Tuesday session, week after week.
+const DURATION_TIE_MINUTES = 15;
+
+/**
+ * Among the workouts that suit the day about equally well, take a different
+ * one on different days.
+ *
+ * The rotation is seeded from the date rather than randomised, which matters:
+ * the plan regenerates several times a day (every sync, every settings change,
+ * the nightly rebuild), and a random pick would mean today's session changed
+ * under the athlete every time. A date seed gives a day one stable answer and
+ * neighbouring days different ones.
+ */
+function rotateAmongClosest(
+  pool: ParsedWorkoutFile[],
+  targetMinutes: number,
+  seed: number,
+): ParsedWorkoutFile {
+  const distance = (w: ParsedWorkoutFile) =>
+    w.durationMin == null ? Number.POSITIVE_INFINITY : Math.abs(w.durationMin - targetMinutes);
+  const best = pool.reduce((a, w) => (distance(w) < distance(a) ? w : a), pool[0]);
+  const bestDistance = distance(best);
+  if (!Number.isFinite(bestDistance)) return best;
+
+  // Sorted by path so the rotation doesn't depend on the order Dropbox
+  // happened to list the library in.
+  const equallyGood = pool
+    .filter((w) => distance(w) <= bestDistance + DURATION_TIE_MINUTES)
+    .sort((a, b) => a.path.localeCompare(b.path));
+  return equallyGood[seed % equallyGood.length] ?? best;
+}
+
 function pickWorkout(
   library: ParsedWorkoutFile[],
   discipline: PlannedDiscipline,
   targetMinutes: number,
   category: WorkoutCategory,
   avoidPaths: string[],
+  seed: number,
 ): ParsedWorkoutFile | null {
   const byDiscipline = library.filter((w) => w.discipline === discipline);
   if (byDiscipline.length === 0) return null;
@@ -157,22 +211,18 @@ function pickWorkout(
   // Never hand back something wildly longer than what was actually scheduled
   // — a 3h ride on a day set for 1h is worse than no ride at all. A workout
   // with no parsed duration can't be checked, so it's let through but ranked
-  // last (see distanceFrom below), rather than assumed to fit.
+  // last (see distance above), rather than assumed to fit.
   const maxAllowedMinutes = Math.max(targetMinutes * 1.5, targetMinutes + 20);
   const withinTolerance = byDiscipline.filter((w) => w.durationMin == null || w.durationMin <= maxAllowedMinutes);
   if (withinTolerance.length === 0) return null;
 
-  const distanceFrom = (w: ParsedWorkoutFile) => (w.durationMin == null ? Infinity : Math.abs(w.durationMin - targetMinutes));
-  const closestIn = (pool: ParsedWorkoutFile[]) =>
-    pool.reduce((best, w) => (distanceFrom(w) < distanceFrom(best) ? w : best), pool[0]);
-
-  // Prefer a workout not used in the last couple of days, so a library with
-  // several options in the same category doesn't collapse to one repeat —
-  // but never refuse to plan a day just to avoid a repeat.
+  // Prefer a workout not used recently, so a library with several options in
+  // the same category doesn't collapse to one repeat — but never refuse to
+  // plan a day just to avoid a repeat.
   const pickFrom = (pool: ParsedWorkoutFile[]) => {
     if (pool.length === 0) return null;
     const notRecent = pool.filter((w) => !avoidPaths.includes(w.path));
-    return closestIn(notRecent.length > 0 ? notRecent : pool);
+    return rotateAmongClosest(notRecent.length > 0 ? notRecent : pool, targetMinutes, seed);
   };
 
   const inCategory = withinTolerance.filter((w) => (w.category ?? undefined) === category);
@@ -197,6 +247,8 @@ interface GeneratedDay {
   restReason?: string;
   workout?: ParsedWorkoutFile;
   category?: WorkoutCategory;
+  /** One line on why this session, when a typed goal drove the choice. */
+  focus?: string | null;
   // Where this day sits across all of the athlete's goals, and what that did to
   // its hours. Null when there are none, in which case the plan behaves exactly
   // as it did before periodisation existed.
@@ -214,7 +266,31 @@ interface ManualOverrideRow {
 
 const CTL_DECAY = 1 - Math.exp(-1 / 42);
 const ATL_DECAY = 1 - Math.exp(-1 / 7);
-const RECENT_PICKS_MEMORY = 2;
+
+/**
+ * How many recent picks to keep out of the running, scaled to the library:
+ * refusing to repeat six workouts is pointless with four in the folder, and
+ * remembering only the last two wastes a library of thirty. Never below two,
+ * so even a tiny library doesn't hand back the same session twice running.
+ */
+function recentPicksMemory(libraryCount: number): number {
+  return Math.min(6, Math.max(2, Math.floor(libraryCount / 3)));
+}
+
+/**
+ * What the athlete's goal wants of a given day, when they have one with a type.
+ * Null means no typed goal, and the day is decided on fitness and recovery
+ * alone — exactly how every day was decided before goal types existed.
+ */
+interface GoalContext {
+  profile: GoalProfile;
+  goalName: string;
+  emphasis: ReturnType<typeof emphasisFor>;
+  isLongDay: boolean;
+  /** Session types already planned, oldest first, real history then this window. */
+  recentCategories: WorkoutCategory[];
+  keySessionsSoFar: number;
+}
 
 /** Picks a rest day or a specific workout for one day, given its target hours and projected Form. */
 function decideDay(
@@ -225,6 +301,7 @@ function decideDay(
   library: ParsedWorkoutFile[],
   readiness: ReadinessModifiers,
   avoidPaths: string[],
+  goal: GoalContext | null,
 ): GeneratedDay {
   if (!targetHours || targetHours <= 0) {
     return { date, isRestDay: true, restReason: 'No training hours scheduled today' };
@@ -237,19 +314,104 @@ function decideDay(
     };
   }
 
-  const category = decideCategory(tsb, readiness);
-  const discipline: PlannedDiscipline =
-    config.includeRunning && config.runDays.includes(date.getUTCDay()) ? 'RUN' : 'BIKE';
+  // Fatigue sets the ceiling; the goal picks which session at or below it the
+  // athlete most needs. Without a typed goal the ceiling IS the pick, which is
+  // the behaviour this had all along.
+  const ceiling = readinessCeiling(tsb, readiness);
+  const scheduledAsRun = config.runDays.includes(date.getUTCDay());
+  // What the athlete's own weekly schedule says this day is, before any goal
+  // gets a say.
+  const configuredDiscipline: PlannedDiscipline = config.includeRunning && scheduledAsRun ? 'RUN' : 'BIKE';
+
+  let category = ceiling;
+  let discipline = configuredDiscipline;
+  let focus: string | null = null;
+
+  if (goal) {
+    const selection = selectCategory({
+      ceiling,
+      profile: goal.profile,
+      emphasis: goal.emphasis,
+      recent: goal.recentCategories,
+      isLongDay: goal.isLongDay,
+    });
+    category = selection.category;
+    discipline = disciplineFor({
+      profile: goal.profile,
+      category,
+      isLongDay: goal.isLongDay,
+      scheduledAsRun,
+      includeRunning: config.includeRunning,
+      keySessionsSoFar: goal.keySessionsSoFar,
+    });
+    if (selection.goalDriven) {
+      focus = focusLine(goal.profile, category, goal.emphasis, goal.goalName, goal.isLongDay);
+    }
+  }
+
   const targetMinutes = Math.round(targetHours * 60);
-  const workout = pickWorkout(library, discipline, targetMinutes, category, avoidPaths);
+  // Days apart rather than the raw timestamp, so the rotation advances by one
+  // per day rather than jumping by 86,400,000.
+  const seed = Math.floor(date.getTime() / 86_400_000);
+  let workout = pickWorkout(library, discipline, targetMinutes, category, avoidPaths, seed);
+
+  // A day the goal (rather than the athlete's own schedule) turned into a run
+  // falls back to the configured discipline when the library has no run that
+  // fits. Specificity is worth a lot, but not a blank day: an equivalent ride
+  // trains more than a rest day does. A day the athlete themselves marked as a
+  // run keeps today's behaviour and says what's missing instead.
+  if (!workout && discipline !== configuredDiscipline) {
+    workout = pickWorkout(library, configuredDiscipline, targetMinutes, category, avoidPaths, seed);
+  }
 
   return workout
-    ? { date, isRestDay: false, workout, category }
+    ? { date, isRestDay: false, workout, category, focus }
     : {
         date,
         isRestDay: true,
         restReason: `No ${discipline === 'RUN' ? 'run' : 'ride'} in your library short enough for ${targetHours}h — add a shorter one, or this stays a rest day`,
       };
+}
+
+/**
+ * The day of the week the athlete has set aside the most time for, which is
+ * the only day a genuinely long session can go. Ties go to the later day, so
+ * a Saturday/Sunday pair puts the long one on Sunday rather than Saturday.
+ */
+function longestScheduledDay(config: PlanConfigHours): { dayOfWeek: number; hours: number } {
+  let dayOfWeek = 0;
+  let hours = 0;
+  for (let d = 0; d < DAY_KEYS.length; d++) {
+    const h = config[DAY_KEYS[d]];
+    if (h >= hours) {
+      dayOfWeek = d;
+      hours = h;
+    }
+  }
+  return { dayOfWeek, hours };
+}
+
+// Below this there is no such thing as a long session, so no day is treated
+// as the week's long day and the goal's other demands get that slot instead.
+const LONG_DAY_MIN_HOURS = 1.5;
+
+/**
+ * The session types already behind the athlete, so the first day of a
+ * regenerated window continues the mix rather than starting from a blank
+ * slate. Without this the plan would re-deal the same opening sessions every
+ * time it regenerated, which is several times a day.
+ */
+async function recentPlannedCategories(userId: string, today: Date): Promise<WorkoutCategory[]> {
+  const since = new Date(today);
+  since.setUTCDate(since.getUTCDate() - 14);
+  const rows = await prisma.plannedDay.findMany({
+    where: { userId, date: { gte: since, lt: today }, isRestDay: false, category: { not: null } },
+    orderBy: { date: 'asc' },
+    select: { category: true },
+  });
+  return rows
+    .map((r) => r.category as WorkoutCategory)
+    .filter((c) => CATEGORY_ORDER.includes(c));
 }
 
 /**
@@ -296,13 +458,38 @@ async function runProjection(
 
   const today = utcMidnight(new Date());
   const recentPicks: string[] = [];
+  const pickMemory = recentPicksMemory(library.length);
   const results: GeneratedDay[] = [];
+
+  // Which goal the ramp points at, and the mix of sessions already behind the
+  // athlete — both needed before the first day so the window continues the
+  // training that came before it rather than restarting it.
+  const anchor = targets.length ? pickAnchor(targets, today) : null;
+  const recentCategories = await recentPlannedCategories(userId, today);
+  const longDay = longestScheduledDay(config);
+  let keySessionsSoFar = 0;
 
   for (let i = 0; i < dates.length; i++) {
     const date = dates[i];
     const tsb = ctl - atl;
     const override = manualOverrides?.get(date.getTime());
     const periodization = periodizationCtx ? periodizeDay(date, today, periodizationCtx) : null;
+
+    // Which goal's demands this day trains for: normally the anchor, but a day
+    // inside another goal's taper belongs to that goal instead.
+    const dayGoal = targets.length ? goalForDay(targets, periodization?.targetId ?? null, anchor) : null;
+    const profile = dayGoal ? profileFor(dayGoal.kind) : null;
+    const goalContext: GoalContext | null =
+      dayGoal && profile
+        ? {
+            profile,
+            goalName: dayGoal.name,
+            emphasis: emphasisFor(periodization?.phase ?? null, periodization?.daysToEvent ?? Number.MAX_SAFE_INTEGER),
+            isLongDay: date.getUTCDay() === longDay.dayOfWeek && longDay.hours >= LONG_DAY_MIN_HOURS,
+            recentCategories,
+            keySessionsSoFar,
+          }
+        : null;
 
     // A one-off availability override is the athlete telling us how much time
     // they actually have that day, so the periodisation multiplier is applied
@@ -326,9 +513,20 @@ async function runProjection(
         periodization,
       };
     } else {
-      generated = { ...decideDay(date, targetHours, tsb, config, library, readiness, recentPicks), periodization };
+      generated = {
+        ...decideDay(date, targetHours, tsb, config, library, readiness, recentPicks, goalContext),
+        periodization,
+      };
     }
     results.push(generated);
+
+    // Feed this day back into the mix the next one is measured against, so the
+    // window converges on the goal's target shares rather than each day being
+    // decided in isolation.
+    if (!generated.isRestDay && generated.category) {
+      recentCategories.push(generated.category);
+      if (generated.category === 'THRESHOLD' || generated.category === 'VO2MAX') keySessionsSoFar++;
+    }
 
     const dayTss = generated.isRestDay
       ? 0
@@ -339,7 +537,7 @@ async function runProjection(
     const recentPickPath = override ? (override.isRestDay ? null : override.sourcePath) : generated.workout?.path;
     if (recentPickPath) {
       recentPicks.push(recentPickPath);
-      if (recentPicks.length > RECENT_PICKS_MEMORY) recentPicks.shift();
+      if (recentPicks.length > pickMemory) recentPicks.shift();
     }
   }
 
@@ -375,6 +573,7 @@ async function upsertPlannedDay(userId: string, generated: GeneratedDay, availab
         profile: null,
         segments: Prisma.DbNull,
         category: null,
+        focus: null,
         generatedAt: new Date(),
       }
     : {
@@ -389,6 +588,7 @@ async function upsertPlannedDay(userId: string, generated: GeneratedDay, availab
         profile: generated.workout!.profile ?? null,
         segments: (generated.workout!.segments as Prisma.InputJsonValue | undefined) ?? Prisma.DbNull,
         category: generated.category,
+        focus: generated.focus ?? null,
         generatedAt: new Date(),
       };
 
@@ -473,6 +673,7 @@ export async function swapPlannedDays(userId: string, dateA: Date, dateB: Date) 
     profile: row.profile,
     segments: row.segments ?? Prisma.DbNull,
     category: row.category,
+    focus: row.focus,
   });
 
   const [updatedA, updatedB] = await Promise.all([

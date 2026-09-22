@@ -241,6 +241,36 @@ model TrainingPlanConfig {
   updatedAt      DateTime @updatedAt
 }
 
+// What kind of event a goal is, which is what makes the plan train FOR it
+// rather than merely around it. The priority tier decides how much of the
+// calendar bends for a goal; this decides what the sessions in it actually
+// are — a bunch race and a 200km gravel day are the same shape of season and
+// completely different training. See lib/goalSpecificity.ts for the demands
+// each one maps to.
+enum GoalKind {
+  // No particular event: keep me fit. The plan behaves exactly as it did
+  // before goal types existed — today's Form picks today's session.
+  GENERAL
+  // Bike, long and steady: gran fondo, century, a big day out.
+  LONG_RIDE
+  // Bike, long with a lot of climbing — sustained efforts inside a long day.
+  HILLY_RIDE
+  // Bike, bunch racing and criteriums: repeated hard surges off a high floor.
+  RACE_RIDE
+  // Bike, one sustained effort at the limit.
+  TIME_TRIAL
+  // Bike, off-road: a long day broken up by hard, uneven efforts.
+  GRAVEL_MTB
+  // Run, 5k to 10k: short, fast, and mostly about the top end.
+  RUN_SHORT
+  // Run, half marathon to marathon: sustained pace over a long way.
+  RUN_LONG
+  // Run, ultra and trail: time on feet above everything else.
+  TRAIL_ULTRA
+  // Triathlon or duathlon: both disciplines, neither neglected.
+  MULTISPORT
+}
+
 // A priority tier, the standard A/B/C race scheme. It is the answer to "what
 // happens when two goals crowd each other": only an A goal reshapes the season
 // around itself, and the taper and post-race recovery each goal earns scale
@@ -274,6 +304,11 @@ model TrainingTarget {
   name     String
   date     DateTime
   priority TargetPriority @default(A)
+
+  // What kind of event it is. Priority answers "how much does this matter";
+  // this answers "what does it actually demand of me", which is what decides
+  // the sessions the plan picks. See lib/goalSpecificity.ts.
+  kind     GoalKind       @default(GENERAL)
 
   // Fitness (CTL) to arrive at on the day. Null means "build at rampPerWeek
   // for as long as there is runway", which is what most people actually want
@@ -336,6 +371,11 @@ model PlannedDay {
   phase                  String?
   phaseWeek              Int?
   loadMultiplier         Float?
+  // Why this session, in one line — which demand of which goal it is training,
+  // e.g. "Threshold work, specific to Amstel Gold". Null when the athlete has
+  // no typed goal, in which case the pick is purely fitness-and-recovery
+  // driven and the Plan tab says so instead. See lib/goalSpecificity.ts.
+  focus                  String?
   generatedAt            DateTime           @default(now())
   // Set once a day's content is rearranged by hand (calendar drag-and-drop) —
   // the nightly/rolling regeneration in lib/trainingPlan.ts leaves a

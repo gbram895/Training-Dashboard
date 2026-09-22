@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { apiFetch } from '../../api/client';
-import type { TargetPriority, TrainingTarget, TrainingTargets } from '../../api/types';
+import type { GoalKind, TargetPriority, TrainingTarget, TrainingTargets } from '../../api/types';
 
 /**
  * What each tier actually does to the calendar, in the athlete's terms rather
@@ -15,6 +15,65 @@ const PRIORITY_INFO: Record<TargetPriority, { label: string; blurb: string }> = 
 };
 
 const PRIORITY_ORDER: TargetPriority[] = ['A', 'B', 'C'];
+
+/**
+ * What kind of event it is, which is a different question from how much it
+ * matters. Priority decides how much of the calendar moves for a goal; this
+ * decides what the sessions in the run-up actually are. Grouped by discipline
+ * and labelled with real events rather than coaching vocabulary, because "what
+ * are you doing" is easier to answer than "what energy system does it tax".
+ */
+const KIND_GROUPS: { sport: string; kinds: { value: GoalKind; label: string }[] }[] = [
+  {
+    sport: 'Bike',
+    kinds: [
+      { value: 'LONG_RIDE', label: 'Long ride — gran fondo, century, a big day out' },
+      { value: 'HILLY_RIDE', label: 'Hilly ride — a long day with serious climbing' },
+      { value: 'RACE_RIDE', label: 'Bunch race or criterium' },
+      { value: 'TIME_TRIAL', label: 'Time trial' },
+      { value: 'GRAVEL_MTB', label: 'Gravel or mountain bike race' },
+    ],
+  },
+  {
+    sport: 'Run',
+    kinds: [
+      { value: 'RUN_SHORT', label: '5k or 10k' },
+      { value: 'RUN_LONG', label: 'Half or full marathon' },
+      { value: 'TRAIL_ULTRA', label: 'Ultra or trail race' },
+    ],
+  },
+  {
+    sport: 'Both',
+    kinds: [{ value: 'MULTISPORT', label: 'Triathlon or duathlon' }],
+  },
+];
+
+const KIND_LABEL: Record<GoalKind, string> = {
+  GENERAL: 'No particular event',
+  LONG_RIDE: 'Long ride',
+  HILLY_RIDE: 'Hilly ride',
+  RACE_RIDE: 'Bunch race',
+  TIME_TRIAL: 'Time trial',
+  GRAVEL_MTB: 'Gravel / MTB',
+  RUN_SHORT: '5k / 10k',
+  RUN_LONG: 'Half / marathon',
+  TRAIL_ULTRA: 'Ultra / trail',
+  MULTISPORT: 'Triathlon',
+};
+
+/** What picking each kind changes about the plan, said before they pick it. */
+const KIND_EFFECT: Record<GoalKind, string> = {
+  GENERAL: 'Sessions are picked on your fitness and recovery alone, with no event to train for.',
+  LONG_RIDE: 'Long steady rides, with your biggest day of the week kept for going long.',
+  HILLY_RIDE: 'Sustained climbing efforts on top of a long endurance base.',
+  RACE_RIDE: 'Short, sharp intervals well above threshold — the surges a bunch race is won on.',
+  TIME_TRIAL: 'Threshold work above everything else: holding one hard effort for a long time.',
+  GRAVEL_MTB: 'Long days broken up by hard efforts, the way an off-road race actually goes.',
+  RUN_SHORT: 'Fast intervals and threshold running, with the volume kept modest.',
+  RUN_LONG: 'Long runs and sustained tempo, building toward holding one pace a long way.',
+  TRAIL_ULTRA: 'Time on your feet above everything else, with intensity kept low.',
+  MULTISPORT: 'Key sessions alternate between the bike and running, so neither goes stale.',
+};
 
 function daysUntil(iso: string): number {
   const target = new Date(`${iso.slice(0, 10)}T00:00:00Z`).getTime();
@@ -44,10 +103,11 @@ interface Draft {
   name: string;
   date: string;
   priority: TargetPriority;
+  kind: GoalKind;
   rampPerWeek: string;
 }
 
-const EMPTY_DRAFT: Draft = { id: null, name: '', date: '', priority: 'A', rampPerWeek: '4' };
+const EMPTY_DRAFT: Draft = { id: null, name: '', date: '', priority: 'A', kind: 'GENERAL', rampPerWeek: '4' };
 
 /**
  * Every event the athlete is building toward, over however long they want to
@@ -89,6 +149,7 @@ export default function GoalsCard({ onChanged }: { onChanged: () => void }) {
       name: target.name,
       date: target.date.slice(0, 10),
       priority: target.priority,
+      kind: target.kind ?? 'GENERAL',
       rampPerWeek: String(target.rampPerWeek),
     });
   }
@@ -102,6 +163,7 @@ export default function GoalsCard({ onChanged }: { onChanged: () => void }) {
       name: draft.name,
       date: draft.date,
       priority: draft.priority,
+      kind: draft.kind,
       rampPerWeek: Number(draft.rampPerWeek),
     });
     try {
@@ -161,6 +223,26 @@ export default function GoalsCard({ onChanged }: { onChanged: () => void }) {
               onChange={(e) => setDraft({ ...draft, date: e.target.value })}
               required
             />
+          </label>
+          <label className="gd-target-field">
+            <span>What kind of event?</span>
+            <select
+              className="gd-set-input"
+              value={draft.kind}
+              onChange={(e) => setDraft({ ...draft, kind: e.target.value as GoalKind })}
+            >
+              <option value="GENERAL">No particular event — just keep me fit</option>
+              {KIND_GROUPS.map((group) => (
+                <optgroup key={group.sport} label={group.sport}>
+                  {group.kinds.map((k) => (
+                    <option key={k.value} value={k.value}>
+                      {k.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <span className="gd-set-note">{KIND_EFFECT[draft.kind]}</span>
           </label>
           <div className="gd-target-field">
             <span>How much does it matter?</span>
@@ -258,6 +340,7 @@ export default function GoalsCard({ onChanged }: { onChanged: () => void }) {
                   <span className="gd-goal-name">{t.name}</span>
                   <span className="gd-goal-when">
                     {formatDate(t.date)} · {countdown(days)}
+                    {t.kind && t.kind !== 'GENERAL' ? ` · ${KIND_LABEL[t.kind]}` : ''}
                   </span>
                 </span>
                 {data?.anchorId === t.id && <span className="gd-goal-anchor">main goal</span>}

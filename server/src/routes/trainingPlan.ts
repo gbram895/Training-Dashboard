@@ -182,7 +182,9 @@ async function targetsFor(userId: string) {
   return prisma.trainingTarget.findMany({ where: { userId }, orderBy: { date: 'asc' } });
 }
 
-async function periodizationContextFor(userId: string): Promise<PeriodizationContext | null> {
+async function periodizationContextFor(
+  userId: string,
+): Promise<{ ctx: PeriodizationContext; includeRunning: boolean } | null> {
   const [targets, config] = await Promise.all([
     targetsFor(userId),
     prisma.trainingPlanConfig.findUnique({ where: { userId } }),
@@ -191,21 +193,27 @@ async function periodizationContextFor(userId: string): Promise<PeriodizationCon
 
   const series = await computeFitnessSeries(userId);
   return {
-    targets,
-    currentCtl: series.length ? series[series.length - 1].ctl : 0,
-    tssPerHour: await measureTssPerHour(userId),
-    weeklyHours: config?.weeklyHours ?? 0,
+    ctx: {
+      targets,
+      currentCtl: series.length ? series[series.length - 1].ctl : 0,
+      tssPerHour: await measureTssPerHour(userId),
+      weeklyHours: config?.weeklyHours ?? 0,
+    },
+    includeRunning: config?.includeRunning ?? false,
   };
 }
 
 router.get('/targets', async (req: AuthedRequest, res) => {
   const userId = req.userId!;
-  const targets = await targetsFor(userId);
+  const [targets, config] = await Promise.all([
+    targetsFor(userId),
+    prisma.trainingPlanConfig.findUnique({ where: { userId }, select: { includeRunning: true } }),
+  ]);
   const today = utcMidnight(new Date());
   res.json({
     targets,
     anchorId: pickAnchor(targets, today)?.id ?? null,
-    conflicts: findGoalConflicts(targets, today),
+    conflicts: findGoalConflicts(targets, today, config),
   });
 });
 
@@ -213,13 +221,14 @@ router.get('/targets', async (req: AuthedRequest, res) => {
 // fortnight, so without this there is nothing that shows the athlete their
 // goals nine months out have actually been taken into account.
 router.get('/season', async (req: AuthedRequest, res) => {
-  const ctx = await periodizationContextFor(req.userId!);
-  if (!ctx) return res.json({ weeks: [], conflicts: [] });
+  const loaded = await periodizationContextFor(req.userId!);
+  if (!loaded) return res.json({ weeks: [], conflicts: [] });
 
+  const { ctx, includeRunning } = loaded;
   const today = utcMidnight(new Date());
   res.json({
     weeks: projectSeason(ctx, today),
-    conflicts: findGoalConflicts(ctx.targets, today),
+    conflicts: findGoalConflicts(ctx.targets, today, { includeRunning }),
     currentCtl: Math.round(ctx.currentCtl * 10) / 10,
   });
 });
@@ -228,6 +237,23 @@ const targetSchema = z.object({
   name: z.string().min(1).max(80),
   date: z.string(),
   priority: z.enum(['A', 'B', 'C']).optional(),
+  // What kind of event it is, which is what makes the plan train for it rather
+  // than just around it. GENERAL is "no particular event" — see
+  // lib/goalSpecificity.ts.
+  kind: z
+    .enum([
+      'GENERAL',
+      'LONG_RIDE',
+      'HILLY_RIDE',
+      'RACE_RIDE',
+      'TIME_TRIAL',
+      'GRAVEL_MTB',
+      'RUN_SHORT',
+      'RUN_LONG',
+      'TRAIL_ULTRA',
+      'MULTISPORT',
+    ])
+    .optional(),
   peakCtl: z.number().positive().max(200).nullish(),
   // Above about 7 CTL points a week is where people get hurt rather than fit,
   // so the ceiling is enforced here rather than left to the UI.
