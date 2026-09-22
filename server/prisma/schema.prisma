@@ -27,6 +27,7 @@ model User {
   cachedLibraryWorkouts CachedLibraryWorkout[]
   pushSubscriptions     PushSubscription[]
   trainingTargets       TrainingTarget[]
+  powerBests            WorkoutPowerBest[]
 
   // Heart-rate zone thresholds (bpm) — upper bound of zones 1-4; zone 5 is everything above z4Max
   hrZone1Max Int @default(114)
@@ -78,6 +79,7 @@ model Workout {
   createdAt   DateTime        @default(now())
   exercises   ExerciseEntry[]
   samples     WorkoutSample[]
+  powerBests  WorkoutPowerBest[]
 
   // Calories are sourced from Garmin/Strava/Apple Health directly (we have no way
   // to estimate them ourselves). Kilojoules and TSS are derived by us from the
@@ -103,6 +105,13 @@ model Workout {
   // rpe feeds back into the next day's plan (lib/trainingPlan.ts).
   rpe           Int?
   feedbackNotes String?
+
+  // When this ride's maximal-mean-power efforts were last extracted from its
+  // samples into WorkoutPowerBest. Null means "not looked at yet", which is
+  // what the power curve's rebuild walks — including for rides that turned
+  // out to have no power at all, which are stamped anyway so they are never
+  // re-scanned. See lib/powerCurve.ts.
+  powerBestsAt  DateTime?
 
   @@index([userId, date])
 }
@@ -131,6 +140,32 @@ model WorkoutSample {
   powerWatts Int?
 
   @@index([workoutId, offsetSec])
+}
+
+// The athlete's best sustained power over each of a fixed set of durations,
+// for one workout — the raw material of the power curve and the critical-power
+// model on the Dashboard.
+//
+// Derived from WorkoutSample and stored rather than computed on demand: a
+// year of rides is hundreds of thousands of per-second rows, and a curve over
+// "best ever" would have to walk all of them behind a page load on a free-tier
+// Postgres. One row per (workout, duration) turns that into a single indexed
+// read of a few hundred rows. Recomputed whenever the workout's samples are
+// (re)imported. See lib/powerCurve.ts.
+model WorkoutPowerBest {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workoutId   String
+  workout     Workout  @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  // Copied off the workout so a window ("last 3 months") is one indexed read
+  // rather than a join back to Workout for every row.
+  date        DateTime
+  durationSec Int
+  watts       Int
+
+  @@unique([workoutId, durationSec])
+  @@index([userId, durationSec, date])
 }
 
 model DailyHealthSummary {
