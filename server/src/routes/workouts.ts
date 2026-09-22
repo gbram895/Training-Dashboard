@@ -9,6 +9,7 @@ import { computeFitnessSeries } from '../lib/fitness.js';
 import { latestSessionReview, reviewSessionForWorkout } from '../lib/sessionReview.js';
 import { backfillGarminCalories } from '../lib/garminSync.js';
 import { backfillStravaCalories } from '../lib/stravaSync.js';
+import { buildPowerCurve, rebuildPowerBests } from '../lib/powerCurve.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -164,6 +165,23 @@ router.get('/hr-zones-weekly', async (req: AuthedRequest, res) => {
 router.get('/fitness', async (req: AuthedRequest, res) => {
   const series = await computeFitnessSeries(req.userId!);
   res.json(series);
+});
+
+// The power curve and its critical-power fit. Declared before the `/:id`
+// routes below, which would otherwise swallow the path.
+router.get('/power-curve', async (req: AuthedRequest, res) => {
+  res.json(await buildPowerCurve(req.userId!));
+});
+
+// Extracts best efforts from rides that have never been analysed, a chunk at a
+// time. Chunked because a season of rides is hundreds of thousands of sample
+// rows and a free-tier instance will not read them all inside one request —
+// the client loops while `remaining` is above zero, so the work survives being
+// interrupted and nothing is redone.
+const REBUILD_CHUNK = 20;
+
+router.post('/power-curve/rebuild', async (req: AuthedRequest, res) => {
+  res.json(await rebuildPowerBests(req.userId!, REBUILD_CHUNK));
 });
 
 router.post('/backfill-training-load', async (req: AuthedRequest, res) => {

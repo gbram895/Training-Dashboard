@@ -3828,3 +3828,57 @@ button.gd-cal-apply {
   color: var(--text);
   margin: 6px 0 0;
 }
+
+/* --- Power curve (dashboard) ------------------------------------------- */
+
+.pc-window-tabs {
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.pc-window-tab {
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.pc-window-tab.is-active {
+  border-color: var(--accent);
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.pc-headlines {
+  margin-bottom: 0.75rem;
+}
+
+.pc-unit {
+  font-size: 0.6em;
+  margin-left: 0.1em;
+  opacity: 0.75;
+}
+
+/* The date a best was set, under its duration label. On its own line so the
+   label stays readable when four of these sit side by side on a phone. */
+.pc-when {
+  display: block;
+  font-size: 0.78em;
+  opacity: 0.7;
+}
+
+.pc-cp {
+  margin-top: 0.85rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.pc-cp-line {
+  margin: 0 0 0.3rem;
+  font-size: 0.92rem;
+}

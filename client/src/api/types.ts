@@ -479,3 +479,48 @@ export interface AuthResponse {
   token: string;
   user: AuthUser;
 }
+
+// --- Power curve ---------------------------------------------------------
+// Mirrors server/src/lib/powerCurve.ts.
+
+export interface CurveEffort {
+  durationSec: number;
+  watts: number;
+  /** The day it was set, so a number can be traced back to the ride it came from. */
+  date: string;
+  workoutId: string;
+}
+
+export interface CriticalPower {
+  /** Power the model says is indefinitely sustainable, in watts. */
+  cpWatts: number;
+  /** Work available above CP before exhaustion, in kilojoules. */
+  wPrimeKj: number;
+  durationsUsedSec: number[];
+  /** How well the efforts fit a straight line, 0-1. */
+  fit: number;
+}
+
+export interface CurveWindow {
+  key: '90d' | '365d' | 'all';
+  label: string;
+  days: number | null;
+  efforts: CurveEffort[];
+  criticalPower: CriticalPower | null;
+  rideCount: number;
+}
+
+export interface PowerCurveReport {
+  durationsSec: number[];
+  headlineDurationsSec: number[];
+  windows: CurveWindow[];
+  ftpWatts: number;
+  ridesAnalysed: number;
+  ridesPending: number;
+}
+
+export interface PowerCurveRebuildResult {
+  analysed: number;
+  withPower: number;
+  remaining: number;
+}
