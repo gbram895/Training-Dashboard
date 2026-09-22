@@ -27,6 +27,11 @@ function signed(n: number): string {
   return n > 0 ? `+${n}` : `${n}`;
 }
 
+function formatPace(secPerKm: number): string {
+  const total = Math.round(secPerKm);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
 /**
  * How fit — and how fresh — the current plan has the athlete on course to be
  * for each goal still ahead. It reads off the same forward projection as the
@@ -46,10 +51,10 @@ export default function GoalForecastCard({ reloadKey }: { reloadKey: number }) {
       .catch(() => setForecast(null));
   }, [reloadKey]);
 
-  const goals = forecast?.goals ?? [];
-  if (goals.length === 0) return null;
+  if (!forecast || forecast.goals.length === 0) return null;
+  const goals = forecast.goals;
 
-  const current = Math.round(forecast?.currentCtl ?? 0);
+  const current = Math.round(forecast.currentCtl);
 
   return (
     <div className="gd-forecast-card">
@@ -69,6 +74,43 @@ export default function GoalForecastCard({ reloadKey }: { reloadKey: number }) {
           <GoalForecastRow key={g.id} goal={g} />
         ))}
       </div>
+
+      <ThresholdBasis forecast={forecast} />
+    </div>
+  );
+}
+
+/**
+ * Where the FTP and threshold-pace projections come from — or, when there
+ * isn't enough to measure a rate of change from, why there is no number.
+ *
+ * This is shown rather than hidden on purpose. These two values are the
+ * denominator of every training-load number in the app, so a projection of them
+ * is only worth anything if you can see what it was read off.
+ */
+function ThresholdBasis({ forecast }: { forecast: FitnessForecast }) {
+  const projected = forecast.goals.some(
+    (g) => g.projectedFtpWatts != null || g.projectedThresholdPaceSecPerKm != null,
+  );
+  return (
+    <div className="gd-forecast-basis">
+      <p>
+        <strong>FTP</strong> {forecast.ftpBasis}
+        {forecast.currentFtpWatts != null && <> · now {forecast.currentFtpWatts}W</>}
+      </p>
+      <p>
+        <strong>Pace</strong> {forecast.paceBasis}
+        {forecast.currentThresholdPaceSecPerKm != null && (
+          <> · now {formatPace(forecast.currentThresholdPaceSecPerKm)}/km</>
+        )}
+      </p>
+      {projected && (
+        <p className="gd-forecast-caveat">
+          These carry your own recent rate of change forward over the build weeks before each goal, easing off the
+          further out it gets — training load doesn't translate into watts on a fixed exchange rate, so treat them as a
+          trend, not a test result. Check Settings &rarr; Calibration if the current values look wrong.
+        </p>
+      )}
     </div>
   );
 }
@@ -101,6 +143,24 @@ function GoalForecastRow({ goal }: { goal: GoalForecast }) {
           <span className="gd-forecast-lbl">Form · {fresh.label}</span>
         </div>
       </div>
+
+      {(goal.projectedFtpWatts != null || goal.projectedThresholdPaceSecPerKm != null) && (
+        <div className="gd-forecast-thresholds">
+          {goal.projectedFtpWatts != null && (
+            <span>
+              FTP <strong className="mono">{goal.projectedFtpWatts}W</strong>
+            </span>
+          )}
+          {goal.projectedThresholdPaceSecPerKm != null && (
+            <span>
+              Threshold pace <strong className="mono">{formatPace(goal.projectedThresholdPaceSecPerKm)}/km</strong>
+            </span>
+          )}
+          <span className="gd-forecast-buildweeks">
+            over {goal.buildWeeks} build week{goal.buildWeeks === 1 ? '' : 's'}
+          </span>
+        </div>
+      )}
 
       {goal.peakCtl != null && goal.meetsPeak != null && (
         <p className={`gd-forecast-target ${goal.meetsPeak ? 'gd-forecast-ok' : 'gd-forecast-short'}`}>
