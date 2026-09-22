@@ -160,6 +160,15 @@ model HealthSyncConfig {
   lastAttemptedAt     DateTime?
   lastSyncError       String?
   createdAt           DateTime  @default(now())
+
+  // Set the first time the workout library is checked for newly uploaded
+  // files. Whatever is in the folder at that moment is the collection the
+  // athlete already has, not news, so the first check announces nothing and
+  // only what shows up afterwards is notified. Deliberately not backfilled by
+  // the migration that added it: a connection whose library has never been
+  // read has no cache to tell old files from new, and would otherwise push
+  // the entire library on the first run. See lib/newWorkoutNotifications.ts.
+  libraryBaselineAt   DateTime?
 }
 
 model GarminSyncConfig {
@@ -414,6 +423,15 @@ model CachedLibraryWorkout {
   thresholdsKey  String
   parsed         Json
   updatedAt      DateTime @updatedAt
+
+  // A row existing at all is what "a new workout was uploaded" means: the
+  // upsert in lib/workoutLibrary.ts creates one the first time a path is
+  // seen and updates it in place forever after, so re-parsing an edited file
+  // leaves firstSeenAt alone. notifiedAt records that the athlete has been
+  // told about this path; null means it is still owed a notification. See
+  // lib/newWorkoutNotifications.ts.
+  firstSeenAt    DateTime  @default(now())
+  notifiedAt     DateTime?
 
   @@unique([userId, path])
 }
