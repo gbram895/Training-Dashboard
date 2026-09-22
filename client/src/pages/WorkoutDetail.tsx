@@ -141,7 +141,10 @@ export default function WorkoutDetail() {
 
         <div className="workout-card-header">
           <h1 className="workout-detail-title">
-            {workout.type === 'OTHER' && workout.notes ? workout.notes : (WORKOUT_LABELS[workout.type] ?? workout.type)}
+            {workout.title?.trim() ||
+              (workout.type === 'OTHER' && workout.notes
+                ? workout.notes
+                : (WORKOUT_LABELS[workout.type] ?? workout.type))}
           </h1>
           <Link to={`/workouts/${workout.id}/edit`}>
             <button type="button" className="secondary">
@@ -150,7 +153,12 @@ export default function WorkoutDetail() {
           </Link>
         </div>
 
-        <p className="muted">{formatDateUTC(workout.date, { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+        <p className="muted">
+          {/* The heading is the activity's own name when it has one, so the
+              discipline moves down here rather than disappearing. */}
+          {workout.title?.trim() ? `${WORKOUT_LABELS[workout.type] ?? workout.type} · ` : ''}
+          {formatDateUTC(workout.date, { month: 'long', day: 'numeric', year: 'numeric' })}
+        </p>
 
         <div className="workout-stat-tiles">
           <div className="workout-stat">

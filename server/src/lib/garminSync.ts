@@ -103,6 +103,9 @@ async function importGarminActivity(
     date,
     durationMin,
     distanceKm,
+    title: activity.activityName,
+    // Kept for OTHER as well as the title, so notes an athlete has since
+    // edited on an existing workout don't change meaning.
     notes: type === 'OTHER' ? activity.activityName : undefined,
     source: 'garmin',
     externalId,
@@ -230,6 +233,53 @@ export async function backfillGarminCalories(userId: string): Promise<number> {
       console.error(`[garmin-sync] calorie backfill failed for activity ${activityId}:`, err);
     }
     await sleep(200);
+  }
+  return updated;
+}
+
+const TITLE_BACKFILL_PAGES = 20;
+
+/**
+ * Fills in `title` for activities imported before it was stored. Unlike the
+ * calorie backfill this never fetches an activity's own detail record — the
+ * name is already on every row of the activity list — so a whole history
+ * costs a handful of list calls rather than one call per workout.
+ *
+ * Stops as soon as every untitled workout has been matched, so the usual case
+ * (a few recent imports) is one page.
+ */
+export async function backfillGarminTitles(userId: string): Promise<number> {
+  const config = await prisma.garminSyncConfig.findUnique({ where: { userId } });
+  if (!config) return 0;
+
+  const pending = new Map<string, string>();
+  const untitled = await prisma.workout.findMany({
+    where: { userId, source: 'garmin', title: null, externalId: { not: null } },
+    select: { id: true, externalId: true },
+  });
+  for (const w of untitled) pending.set(w.externalId!, w.id);
+  if (pending.size === 0) return 0;
+
+  const tokens: GarminTokens = { oauth1: JSON.parse(config.oauth1Token), oauth2: JSON.parse(config.oauth2Token) };
+  const client = garminClientFromTokens(tokens);
+
+  let updated = 0;
+  let start = 0;
+  for (let page = 0; page < TITLE_BACKFILL_PAGES && pending.size > 0; page += 1) {
+    const batch = (await client.getActivities(start, BACKFILL_PAGE_SIZE)) as GarminActivitySummary[];
+    if (batch.length === 0) break;
+
+    for (const activity of batch) {
+      const workoutId = pending.get(garminExternalId(activity.activityId));
+      if (!workoutId || !activity.activityName) continue;
+      await prisma.workout.update({ where: { id: workoutId }, data: { title: activity.activityName } });
+      pending.delete(garminExternalId(activity.activityId));
+      updated += 1;
+    }
+
+    start += batch.length;
+    if (batch.length < BACKFILL_PAGE_SIZE) break;
+    await sleep(250);
   }
   return updated;
 }

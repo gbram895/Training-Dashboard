@@ -18,6 +18,9 @@ export interface Workout {
   date: string;
   durationMin: number;
   distanceKm?: number | null;
+  /** The name the source gave the activity; null for anything imported before
+   *  titles were stored and never re-synced. */
+  title?: string | null;
   notes?: string | null;
   exercises?: ExerciseEntry[];
   hrZone1Min?: number | null;
