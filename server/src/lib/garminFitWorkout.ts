@@ -15,9 +15,12 @@ import type { GarminPushDiscipline, GarminPushSegment, AthleteSpeedThresholds } 
 // targetType is power — the same convention this app's own .fit *parser*
 // already decodes in workoutFormats.ts's normalizePower(). For a speed
 // target the same raw field is scaled x1000 (per its customTargetSpeedLow
-// subfield declaration) to store m/s as an integer.
+// subfield declaration) to store m/s as an integer, and for a heart-rate
+// target it carries bpm + 100 (the profile's workoutHr bpmOffset), which is
+// the encoding normalizeHeartRate() decodes on the way in.
 const WATTS_OFFSET = 1000;
 const SPEED_SCALE = 1000;
+const BPM_OFFSET = 100;
 
 function targetFields(
   discipline: GarminPushDiscipline,
@@ -27,6 +30,18 @@ function targetFields(
   if (segment.intensityFraction == null) return { targetType: 'open' };
   const low = segment.intensityLow ?? segment.intensityFraction;
   const high = segment.intensityHigh ?? segment.intensityFraction;
+
+  // Prescribed in heart rate, sent back out in heart rate — see the same
+  // branch in garminWorkoutPush.ts's targetFor().
+  if (segment.targetMetric === 'hr') {
+    if (thresholds.thresholdHrBpm <= 0) return { targetType: 'open' };
+    return {
+      targetType: 'heartRate',
+      targetValue: 0,
+      customTargetValueLow: BPM_OFFSET + Math.round(low * thresholds.thresholdHrBpm),
+      customTargetValueHigh: BPM_OFFSET + Math.round(high * thresholds.thresholdHrBpm),
+    };
+  }
 
   if (discipline === 'BIKE') {
     if (thresholds.ftpWatts <= 0) return { targetType: 'open' };

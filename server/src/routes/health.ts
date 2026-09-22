@@ -293,6 +293,7 @@ const garminPushSegmentSchema = z.object({
   intensityLow: z.number().optional(),
   intensityHigh: z.number().optional(),
   role: z.enum(['warmup', 'cooldown']).optional(),
+  targetMetric: z.enum(['power', 'pace', 'hr']).optional(),
 });
 
 const garminPushWorkoutSchema = z.object({

@@ -6,6 +6,7 @@ import type { ParsedWorkoutFile, PlannedDiscipline } from './workoutLibrary.js';
 export interface AthleteThresholds {
   ftpWatts: number;
   thresholdSpeedMps: number;
+  thresholdHrBpm: number;
 }
 
 function toNumber(value: unknown): number | undefined {
@@ -113,6 +114,36 @@ function normalizePower(raw: number | undefined, ftpWatts: number): number | und
   return raw / 100;
 }
 
+/**
+ * Threshold HR as a share of max HR — the usual rule of thumb, used only to
+ * resolve a target written as a percentage of max HR, since there's no stored
+ * max HR to divide by. Targets in bpm (what every file in the library actually
+ * uses) don't go anywhere near it.
+ */
+const THRESHOLD_HR_AS_FRACTION_OF_MAX = 0.92;
+
+/**
+ * FIT heart-rate targets carry the same "% or bpm" ambiguity power targets do:
+ * the FIT profile's `workoutHr` type declares 100 as a bpm offset, so a raw
+ * value above 100 is bpm + 100 and anything at or below it is a percentage of
+ * max HR.
+ *
+ * The result is a fraction of threshold HR, so an HR-prescribed segment lands
+ * on the same 1.0-is-threshold scale as a power or pace one and every consumer
+ * of a segment (the profile chart's zone colours, planned TSS, the category
+ * classifier) works on it unchanged. Threshold here is the zone 4/5 boundary,
+ * which is what this app already treats as threshold: lib/trainingLoad.ts's
+ * per-zone intensities straddle 1.0 exactly there (z4 = 0.94, z5 = 1.1), and
+ * dividing the stored zone bounds by it lands each zone in the matching band of
+ * the client's own fraction-to-zone cutoffs.
+ */
+function normalizeHeartRate(raw: number | undefined, thresholdHrBpm: number): number | undefined {
+  if (raw == null || thresholdHrBpm <= 0) return undefined;
+  const maxHrBpm = thresholdHrBpm / THRESHOLD_HR_AS_FRACTION_OF_MAX;
+  const bpm = raw > 100 ? raw - 100 : (raw / 100) * maxHrBpm;
+  return bpm / thresholdHrBpm;
+}
+
 export function parseFitWorkoutFile(
   path: string,
   buffer: Buffer,
@@ -155,6 +186,7 @@ export function parseFitWorkoutFile(
     const targetType = String(step.targetType ?? '');
     let intensityLow: number | undefined;
     let intensityHigh: number | undefined;
+    let targetMetric: WorkoutSegment['targetMetric'];
     // Garmin's own workout builder emits power-averaging variants like "power3s"/
     // "power10s"/"power30s" rather than plain "power". Those enum values aren't the
     // exact one the FIT profile maps to customTargetPower*, so the SDK decodes the
@@ -164,11 +196,25 @@ export function parseFitWorkoutFile(
       const rawHigh = toNumber(step.customTargetPowerHigh) ?? toNumber(step.customTargetValueHigh);
       intensityLow = normalizePower(rawLow, thresholds.ftpWatts);
       intensityHigh = normalizePower(rawHigh, thresholds.ftpWatts);
+      targetMetric = 'power';
     } else if (discipline === 'RUN' && targetType.startsWith('speed')) {
       const rawLow = toNumber(step.customTargetSpeedLow) ?? toNumber(step.customTargetValueLow);
       const rawHigh = toNumber(step.customTargetSpeedHigh) ?? toNumber(step.customTargetValueHigh);
       intensityLow = rawLow != null && thresholds.thresholdSpeedMps > 0 ? rawLow / thresholds.thresholdSpeedMps : undefined;
       intensityHigh = rawHigh != null && thresholds.thresholdSpeedMps > 0 ? rawHigh / thresholds.thresholdSpeedMps : undefined;
+      targetMetric = 'pace';
+    } else if (targetType.startsWith('heartRate')) {
+      // Heart rate is the one target that means the same thing on a bike as on
+      // foot, so unlike power and pace it isn't gated on the discipline. Every
+      // run workout in the library is prescribed this way ("JOIN Running -
+      // 30-30's", steps named "00:30@198bpm"); without this branch each one
+      // parsed as a bare list of durations with no target at all, which is why
+      // they showed a flat grey bar and "-" for stress and intensity.
+      const rawLow = toNumber(step.customTargetHeartRateLow) ?? toNumber(step.customTargetValueLow);
+      const rawHigh = toNumber(step.customTargetHeartRateHigh) ?? toNumber(step.customTargetValueHigh);
+      intensityLow = normalizeHeartRate(rawLow, thresholds.thresholdHrBpm);
+      intensityHigh = normalizeHeartRate(rawHigh, thresholds.thresholdHrBpm);
+      targetMetric = 'hr';
     }
     const intensityFraction =
       intensityLow != null && intensityHigh != null ? (intensityLow + intensityHigh) / 2 : (intensityLow ?? intensityHigh);
@@ -176,14 +222,23 @@ export function parseFitWorkoutFile(
     const stepIntensity = String(step.intensity ?? '');
     const role = stepIntensity === 'warmup' ? 'warmup' : stepIntensity === 'cooldown' ? 'cooldown' : undefined;
 
-    segments.push({ durationSec, intensityFraction, intensityLow, intensityHigh, role });
+    segments.push({
+      durationSec,
+      intensityFraction,
+      intensityLow,
+      intensityHigh,
+      role,
+      targetMetric: intensityFraction != null ? targetMetric : undefined,
+    });
   }
 
   const durationMin = Math.round(segments.reduce((sum, s) => sum + s.durationSec, 0) / 60);
   const { intensity, trainingStress } = estimateIntensityAndStress(segments);
 
+  const targetTypesSeen = [...new Set(steps.map((s) => String(s.targetType ?? 'none')))].join('/');
   console.log(
     `[workout-formats] ${path}: parsed "${name}" (${discipline}), ${steps.length} steps, ` +
+      `target types ${targetTypesSeen}, ` +
       `${segments.filter((s) => s.intensityFraction != null).length}/${segments.length} segments with a usable target, ` +
       `durationMin=${durationMin}, intensity=${intensity}, trainingStress=${trainingStress}`,
   );
