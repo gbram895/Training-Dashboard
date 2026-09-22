@@ -24,6 +24,7 @@ import SleepRhrCharts from './SleepRhrCharts';
 import HrZonesChart from './HrZonesChart';
 import DisciplineCharts from './DisciplineCharts';
 import FitnessChart from './FitnessChart';
+import PowerCurveChart from './PowerCurveChart';
 
 const WORKOUT_LABELS: Record<string, string> = {
   RUN: 'Run',
@@ -89,6 +90,8 @@ export default function LegacyAnalytics({
       <HrZonesChart weeks={hrZones} />
 
       {fitness !== null && <FitnessChart series={fitness} onBackfilled={onSynced} />}
+
+      <PowerCurveChart />
 
       <DisciplineCharts weekly={disciplineStats.weekly} />
 
