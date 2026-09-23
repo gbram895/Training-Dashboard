@@ -4008,6 +4008,8 @@ button.gd-ramp-why {
   font-size: 12.5px;
   line-height: 1.5;
   color: var(--text-faint);
+}
+
 /* ---- Sleep card (dashboard) ---------------------------------------- */
 
 /* Deliberately compact: it sits between the stat tiles and the week strip,
