@@ -18,6 +18,9 @@ export interface Workout {
   date: string;
   durationMin: number;
   distanceKm?: number | null;
+  /** The name the source gave the activity; null for anything imported before
+   *  titles were stored and never re-synced. */
+  title?: string | null;
   notes?: string | null;
   exercises?: ExerciseEntry[];
   hrZone1Min?: number | null;
@@ -426,6 +429,19 @@ export interface DailyHealthSummary {
   avgHeartRate?: number | null;
   restingHeartRate?: number | null;
   sleepHours?: number | null;
+  // The night's stage breakdown, as Apple Health reports it. Hours, like
+  // sleepHours, and null for a night whose source did not report stages.
+  // deep + core + rem adds up to sleepHours; awake sits outside it.
+  sleepDeepHours?: number | null;
+  sleepCoreHours?: number | null;
+  sleepRemHours?: number | null;
+  sleepAwakeHours?: number | null;
+  sleepInBedHours?: number | null;
+  sleepStart?: string | null;
+  sleepEnd?: string | null;
+  sleepSource?: string | null;
+  sleepingWristTempC?: number | null;
+  sleepRespiratoryRate?: number | null;
   exerciseMinutes?: number | null;
   flightsClimbed?: number | null;
   vo2Max?: number | null;

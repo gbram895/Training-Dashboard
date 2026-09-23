@@ -1,13 +1,16 @@
 import { WorkoutType } from '@prisma/client';
+import { resolveSleepNight, type SleepAnalysisEntry } from './sleepAnalysis.js';
 
-export interface HealthAutoExportMetricEntry {
+// Metric entries carry different fields depending on the metric: a scalar one
+// has `qty`, heart rate has Avg/Min/Max, and sleep_analysis carries a whole
+// night's stage breakdown (see sleepAnalysis.ts for that shape).
+export interface HealthAutoExportMetricEntry extends Partial<SleepAnalysisEntry> {
   date: string;
   source?: string;
   qty?: number;
   Avg?: number;
   Min?: number;
   Max?: number;
-  totalSleep?: number;
 }
 
 export interface HealthAutoExportMetric {
@@ -120,6 +123,16 @@ export interface DailyAggregate {
   avgHeartRate?: number;
   restingHeartRate?: number;
   sleepHours?: number;
+  sleepDeepHours?: number;
+  sleepCoreHours?: number;
+  sleepRemHours?: number;
+  sleepAwakeHours?: number;
+  sleepInBedHours?: number;
+  sleepStart?: Date;
+  sleepEnd?: Date;
+  sleepSource?: string;
+  sleepingWristTempC?: number;
+  sleepRespiratoryRate?: number;
   exerciseMinutes?: number;
   flightsClimbed?: number;
   vo2Max?: number;
@@ -129,6 +142,40 @@ export interface DailyAggregate {
 
 const KJ_TO_KCAL = 0.239006;
 
+/**
+ * Metrics the watch only records while asleep. They are filed with the night
+ * rather than with the calendar day their timestamp falls in — see
+ * sleepNightDateKey.
+ */
+const SLEEP_SCOPED_METRICS = new Set(['apple_sleeping_wrist_temperature', 'respiratory_rate']);
+
+/**
+ * Apple times a night by the morning it ends: the night of the 20th-21st is
+ * filed under the 21st. The measurements taken during that night are not —
+ * the wrist temperature for that night is stamped 22:50 on the 20th, and the
+ * breathing-rate readings start before midnight and carry on past it.
+ *
+ * Keyed on their own timestamps they scatter across two rows, half of them a
+ * day away from the night they describe, which is why the 21st had a stage
+ * breakdown but no temperature while the 20th had a temperature belonging to
+ * the following night. Anything recorded in the evening belongs to the night
+ * that ends the next morning.
+ */
+const EVENING_ROLLS_OVER_FROM_HOUR = 18;
+
+export function sleepNightDateKey(timestamp: string): string {
+  const day = timestamp.slice(0, 10);
+  // Local hour, straight off the "YYYY-MM-DD HH:MM:SS ±HHMM" string. Read as
+  // written on purpose: the day key is the local calendar day everywhere else
+  // in this file, so the hour has to be the local one too.
+  const hour = Number(timestamp.slice(11, 13));
+  if (!Number.isFinite(hour) || hour < EVENING_ROLLS_OVER_FROM_HOUR) return day;
+  const next = new Date(`${day}T00:00:00Z`);
+  if (Number.isNaN(next.getTime())) return day;
+  next.setUTCDate(next.getUTCDate() + 1);
+  return next.toISOString().slice(0, 10);
+}
+
 interface Accumulator {
   steps: number;
   distanceKm: number;
@@ -137,7 +184,15 @@ interface Accumulator {
   heartRateCount: number;
   restingHeartRateSum: number;
   restingHeartRateCount: number;
-  sleepHours: number;
+  // Collected rather than summed: resolving a night needs every entry for the
+  // date at once, so that two devices reporting the same night are reconciled
+  // instead of added together. See resolveSleepNight.
+  sleepEntries: SleepAnalysisEntry[];
+  sleepUnits: string;
+  sleepingWristTempSum: number;
+  sleepingWristTempCount: number;
+  sleepRespiratoryRateSum: number;
+  sleepRespiratoryRateCount: number;
   exerciseMinutes: number;
   flightsClimbed: number;
   vo2MaxSum: number;
@@ -157,7 +212,12 @@ function newAccumulator(): Accumulator {
     heartRateCount: 0,
     restingHeartRateSum: 0,
     restingHeartRateCount: 0,
-    sleepHours: 0,
+    sleepEntries: [],
+    sleepUnits: 'hr',
+    sleepingWristTempSum: 0,
+    sleepingWristTempCount: 0,
+    sleepRespiratoryRateSum: 0,
+    sleepRespiratoryRateCount: 0,
     exerciseMinutes: 0,
     flightsClimbed: 0,
     vo2MaxSum: 0,
@@ -175,7 +235,9 @@ export function aggregateHealthExports(files: HealthAutoExportFile[]): DailyAggr
   for (const file of files) {
     for (const metric of file.data.metrics ?? []) {
       for (const entry of metric.data) {
-        const dateKey = entry.date.slice(0, 10);
+        const dateKey = SLEEP_SCOPED_METRICS.has(metric.name)
+          ? sleepNightDateKey(entry.date)
+          : entry.date.slice(0, 10);
         if (!byDate.has(dateKey)) byDate.set(dateKey, newAccumulator());
         const acc = byDate.get(dateKey)!;
 
@@ -202,7 +264,22 @@ export function aggregateHealthExports(files: HealthAutoExportFile[]): DailyAggr
             }
             break;
           case 'sleep_analysis':
-            acc.sleepHours += entry.totalSleep ?? 0;
+            acc.sleepEntries.push(entry as SleepAnalysisEntry);
+            acc.sleepUnits = metric.units;
+            break;
+          case 'apple_sleeping_wrist_temperature':
+            if (entry.qty != null) {
+              acc.sleepingWristTempSum += entry.qty;
+              acc.sleepingWristTempCount += 1;
+            }
+            break;
+          // Apple measures breathing rate only during sleep, many times a
+          // night; the average across the night is the number worth keeping.
+          case 'respiratory_rate':
+            if (entry.qty != null) {
+              acc.sleepRespiratoryRateSum += entry.qty;
+              acc.sleepRespiratoryRateCount += 1;
+            }
             break;
           case 'apple_exercise_time':
             acc.exerciseMinutes += entry.qty ?? 0;
@@ -234,22 +311,39 @@ export function aggregateHealthExports(files: HealthAutoExportFile[]): DailyAggr
   }
 
   return Array.from(byDate.entries())
-    .map(([date, acc]) => ({
-      date,
-      steps: acc.steps || undefined,
-      distanceKm: acc.distanceKm || undefined,
-      activeEnergyKcal: acc.activeEnergyKj ? acc.activeEnergyKj * KJ_TO_KCAL : undefined,
-      avgHeartRate: acc.heartRateCount ? acc.heartRateSum / acc.heartRateCount : undefined,
-      restingHeartRate: acc.restingHeartRateCount
-        ? acc.restingHeartRateSum / acc.restingHeartRateCount
-        : undefined,
-      sleepHours: acc.sleepHours || undefined,
-      exerciseMinutes: acc.exerciseMinutes || undefined,
-      flightsClimbed: acc.flightsClimbed || undefined,
-      vo2Max: acc.vo2MaxCount ? acc.vo2MaxSum / acc.vo2MaxCount : undefined,
-      avgHrv: acc.hrvCount ? acc.hrvSum / acc.hrvCount : undefined,
-      avgBloodOxygen: acc.bloodOxygenCount ? acc.bloodOxygenSum / acc.bloodOxygenCount : undefined,
-    }))
+    .map(([date, acc]) => {
+      const night = resolveSleepNight(acc.sleepEntries, acc.sleepUnits);
+      return {
+        date,
+        steps: acc.steps || undefined,
+        distanceKm: acc.distanceKm || undefined,
+        activeEnergyKcal: acc.activeEnergyKj ? acc.activeEnergyKj * KJ_TO_KCAL : undefined,
+        avgHeartRate: acc.heartRateCount ? acc.heartRateSum / acc.heartRateCount : undefined,
+        restingHeartRate: acc.restingHeartRateCount
+          ? acc.restingHeartRateSum / acc.restingHeartRateCount
+          : undefined,
+        sleepHours: night?.totalHours,
+        sleepDeepHours: night?.deepHours,
+        sleepCoreHours: night?.coreHours,
+        sleepRemHours: night?.remHours,
+        sleepAwakeHours: night?.awakeHours,
+        sleepInBedHours: night?.inBedHours,
+        sleepStart: night?.start,
+        sleepEnd: night?.end,
+        sleepSource: night?.source,
+        sleepingWristTempC: acc.sleepingWristTempCount
+          ? acc.sleepingWristTempSum / acc.sleepingWristTempCount
+          : undefined,
+        sleepRespiratoryRate: acc.sleepRespiratoryRateCount
+          ? acc.sleepRespiratoryRateSum / acc.sleepRespiratoryRateCount
+          : undefined,
+        exerciseMinutes: acc.exerciseMinutes || undefined,
+        flightsClimbed: acc.flightsClimbed || undefined,
+        vo2Max: acc.vo2MaxCount ? acc.vo2MaxSum / acc.vo2MaxCount : undefined,
+        avgHrv: acc.hrvCount ? acc.hrvSum / acc.hrvCount : undefined,
+        avgBloodOxygen: acc.bloodOxygenCount ? acc.bloodOxygenSum / acc.bloodOxygenCount : undefined,
+      };
+    })
     .filter((day) =>
       Object.entries(day).some(([key, value]) => key !== 'date' && value !== undefined),
     );
