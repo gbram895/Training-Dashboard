@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from './prisma.js';
 import { fetchWorkoutLibrary, type ParsedWorkoutFile, type PlannedDiscipline } from './workoutLibrary.js';
 import { CATEGORY_ORDER, estimatedTssForBucket, type WorkoutCategory } from './workoutIntensity.js';
+import { judgeRamp, RAMP_WINDOW_DAYS, type RampBand } from './rampRate.js';
 import { computeFitnessSeries } from './fitness.js';
 import { sleepQualityScore } from './sleepAnalysis.js';
 import {
@@ -186,9 +187,29 @@ const HIGH_RPE_THRESHOLD = 9;
 // night suppresses more training than one night's evidence justifies.
 const POOR_SLEEP_QUALITY = 60;
 
-/** The hardest session today's fitness and recovery allow — never exceeded. */
-function readinessCeiling(tsb: number | null, readiness: ReadinessModifiers): WorkoutCategory {
-  let category = tsb != null ? categoryFromTsb(tsb) : 'TEMPO';
+/**
+ * The hardest session today's fitness and recovery allow — never exceeded.
+ *
+ * `ramp` is how fast load is climbing for that day (see lib/rampRate.ts), from
+ * the same judgement the dashboard's warning card shows. It earns its place
+ * next to the Form bands above rather than duplicating them because the
+ * acute:chronic ratio is normalised by fitness: `ratio = 1 - TSB / CTL`, so a
+ * Form of -20 is a ratio of 1.67 on a CTL of 30 and 1.22 on a CTL of 90.
+ * `categoryFromTsb`'s absolute bands treat those identically; this backs off in
+ * the first case and not the second, which is the whole point of asking about
+ * ramp rate. It also catches a sustained climb that the ratio alone never sees,
+ * because acute and chronic load rise together.
+ *
+ * It costs one downgrade step, not a rest day. FORCED_REST_TSB above already
+ * stops the wheels coming off, and a second independent trigger for forced rest
+ * would give a plan that bails out on any hard week.
+ */
+function readinessCeiling(
+  tsb: number | null,
+  readiness: ReadinessModifiers,
+  ramp: RampBand,
+): { category: WorkoutCategory; rampLimited: boolean } {
+  const base = tsb != null ? categoryFromTsb(tsb) : 'TEMPO';
 
   let downgradeSteps = 0;
   if (readiness.hrvRatio != null && readiness.hrvRatio < 0.8) downgradeSteps += 1;
@@ -197,8 +218,14 @@ function readinessCeiling(tsb: number | null, readiness: ReadinessModifiers): Wo
   if (readiness.lastRpe != null && readiness.lastRpe >= HIGH_RPE_THRESHOLD) downgradeSteps += 1;
   if (readiness.missedHardSessionYesterday) downgradeSteps += 1;
 
-  if (downgradeSteps > 0) category = downgrade(category, downgradeSteps);
-  return category;
+  const withoutRamp = downgradeSteps > 0 ? downgrade(base, downgradeSteps) : base;
+  const rampSpike = ramp === 'SPIKE';
+  const category = rampSpike ? downgrade(withoutRamp, 1) : withoutRamp;
+
+  // Only claim the ramp changed something when it actually did — at ENDURANCE
+  // there is nothing left to take away, and saying otherwise would put a note
+  // on a day that would have looked exactly the same anyway.
+  return { category, rampLimited: rampSpike && category !== withoutRamp };
 }
 
 // Workouts this close together in length fit a given day about equally well,
@@ -347,6 +374,7 @@ function decideDay(
   date: Date,
   targetHours: number,
   tsb: number,
+  ramp: RampBand,
   config: PlanConfigHours & { includeRunning: boolean; runDays: number[] },
   library: ParsedWorkoutFile[],
   readiness: ReadinessModifiers,
@@ -367,7 +395,7 @@ function decideDay(
   // Fatigue sets the ceiling; the goal picks which session at or below it the
   // athlete most needs. Without a typed goal the ceiling IS the pick, which is
   // the behaviour this had all along.
-  const ceiling = readinessCeiling(tsb, readiness);
+  const { category: ceiling, rampLimited } = readinessCeiling(tsb, readiness, ramp);
   const scheduledAsRun = config.runDays.includes(date.getUTCDay());
   // What the athlete's own weekly schedule says this day is, before any goal
   // gets a say.
@@ -425,6 +453,18 @@ function decideDay(
         });
       }
     }
+  }
+
+  // An easier session than the week called for, with no explanation, is how a
+  // plan gets ignored. `focus` is the existing one-line "why this session"
+  // field the Plan tab already renders under "Why this workout?", so saying it
+  // here needs no new column — and it goes first, because on a day the ramp
+  // pulled back, why it is easier matters more than which demand it trains.
+  if (rampLimited) {
+    const note =
+      `Eased off to a ${category.toLowerCase()} session: your load has climbed sharply against ` +
+      `what you have been absorbing.`;
+    focus = focus ? `${note} ${focus}` : note;
   }
 
   const targetMinutes = Math.round(targetHours * 60);
@@ -530,6 +570,10 @@ async function runProjection(
   const fitness = await computeFitnessSeries(userId);
   let ctl = fitness.length ? fitness[fitness.length - 1].ctl : 0;
   let atl = fitness.length ? fitness[fitness.length - 1].atl : 0;
+  // The real CTL curve, extended day by day as the window is projected, so the
+  // ramp rate the plan reacts to is measured over a real seven days rather than
+  // over however much of the window has been generated so far.
+  const ctlTrail: number[] = fitness.map((p) => p.ctl);
   const readiness = await getReadinessModifiers(userId);
 
   // Every goal the athlete has is periodised together, not one at a time — the
@@ -564,6 +608,16 @@ async function runProjection(
   for (let i = 0; i < dates.length; i++) {
     const date = dates[i];
     const tsb = ctl - atl;
+    // Judged afresh each day off the running projection rather than taken as a
+    // snapshot, so a plan that eases off watches the ratio come back down and
+    // lets the sessions build again — the same reason TSB is projected here.
+    // `ctlTrail` carries the real curve in behind the window, so the ramp rate
+    // is measured across the seam rather than starting from zero on day one.
+    const { band: ramp } = judgeRamp({
+      ctl,
+      atl,
+      ctlWeekAgo: ctlTrail.length > RAMP_WINDOW_DAYS ? ctlTrail[ctlTrail.length - 1 - RAMP_WINDOW_DAYS] : null,
+    });
     const override = manualOverrides?.get(date.getTime());
     const periodization = periodizationCtx ? periodizeDay(date, today, periodizationCtx) : null;
 
@@ -609,7 +663,7 @@ async function runProjection(
       };
     } else {
       generated = {
-        ...decideDay(date, targetHours, tsb, config, library, readiness, recentPicks, goalContext),
+        ...decideDay(date, targetHours, tsb, ramp, config, library, readiness, recentPicks, goalContext),
         periodization,
       };
     }
@@ -631,6 +685,7 @@ async function runProjection(
       : estimatedTssForBucket(override ? override.trainingStress : generated.workout?.trainingStress);
     ctl = ctl + (dayTss - ctl) * CTL_DECAY;
     atl = atl + (dayTss - atl) * ATL_DECAY;
+    ctlTrail.push(ctl);
 
     const recentPickPath = override ? (override.isRestDay ? null : override.sourcePath) : generated.workout?.path;
     if (recentPickPath) {

@@ -45,6 +45,22 @@ export interface FitnessPoint {
   tsb: number;
 }
 
+/** Whether load is climbing faster than it is being absorbed — see server/src/lib/rampRate.ts. */
+export type RampBand = 'UNKNOWN' | 'DETRAINING' | 'STEADY' | 'CLIMBING' | 'SPIKE';
+
+export interface RampStatus {
+  band: RampBand;
+  ratio: number | null;
+  ctl: number;
+  atl: number;
+  rampPerWeek: number | null;
+  rampPerWeekAvg: number | null;
+  headline: string;
+  detail: string;
+  historyDays: number;
+  provisional: boolean;
+}
+
 export interface WorkoutSample {
   offsetSec: number;
   heartRate?: number | null;

@@ -3876,6 +3876,138 @@ button.gd-cal-apply {
   color: var(--text-faint);
 }
 
+/* Ramp rate — is load climbing faster than it is being absorbed
+   (RampRateCard). The card is deliberately quiet at "steady": a warning only
+   ever seen in red is a warning nobody trusts, so it sits there as one line
+   for weeks and only opens up when there is something to say. The left border
+   carries the state, so it survives being skimmed past. */
+
+.gd-ramp-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 20px;
+  padding: 14px 16px 6px;
+  box-shadow: var(--shadow);
+  margin: 14px 0;
+}
+
+.gd-ramp-card.gd-ramp-good {
+  border-left-color: var(--good);
+}
+
+.gd-ramp-card.gd-ramp-warn {
+  border-left-color: var(--warn);
+}
+
+.gd-ramp-card.gd-ramp-crit {
+  border-left-color: var(--crit);
+}
+
+.gd-ramp-card.gd-ramp-neutral {
+  border-left-color: var(--border);
+}
+
+.gd-ramp-top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.gd-ramp-pill {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.gd-ramp-pill.gd-ramp-good {
+  color: var(--good);
+  background: var(--good-wash);
+}
+
+.gd-ramp-pill.gd-ramp-warn {
+  color: var(--warn);
+  background: var(--warn-wash);
+}
+
+.gd-ramp-pill.gd-ramp-crit {
+  color: var(--crit);
+  background: var(--crit-wash);
+}
+
+.gd-ramp-pill.gd-ramp-neutral {
+  color: var(--text-dim);
+  background: var(--surface-sunken);
+}
+
+.gd-ramp-headline {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* The ratio itself, shown on the quiet card too — the number is the thing
+   that makes a steady week legible as steady rather than unmeasured. */
+.gd-ramp-ratio {
+  margin-left: auto;
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+}
+
+.gd-ramp-detail {
+  margin: 8px 2px 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.gd-ramp-figures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.gd-ramp-figure {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  border-radius: 12px;
+  background: var(--surface-sunken);
+}
+
+.gd-ramp-figure-value {
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.gd-ramp-figure-label {
+  font-size: 10.5px;
+  text-align: center;
+  line-height: 1.25;
+  color: var(--text-faint);
+}
+
+button.gd-ramp-why {
+  margin-top: 4px;
+}
+
+.gd-ramp-caveat {
+  margin: 0 2px 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-faint);
 /* ---- Sleep card (dashboard) ---------------------------------------- */
 
 /* Deliberately compact: it sits between the stat tiles and the week strip,
