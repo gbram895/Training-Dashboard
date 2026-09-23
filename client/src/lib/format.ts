@@ -61,6 +61,14 @@ export function formatTimeUTC(
   return new Date(date).toLocaleTimeString(undefined, { ...options, timeZone: 'UTC' });
 }
 
+// A wall-clock time for a real instant — bedtime, wake time. Read in local
+// time on purpose, unlike formatTimeUTC above: those are stored as the moment
+// they happened rather than as a position within a calendar day, and a night
+// that began at 23:00 has to read as 23:00 and not as the UTC 21:00 behind it.
+export function formatClockTime(date: string | Date): string {
+  return new Date(date).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
 // Relative wording for an instant (not a calendar day) — sync timestamps are
 // real moments in time, so unlike formatDateUTC these are read in local time.
 export function formatTimeAgo(date: string | Date): string {

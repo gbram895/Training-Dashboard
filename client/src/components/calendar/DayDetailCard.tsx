@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import type { CalendarDay } from '../../api/types';
 import { formatDistance, formatDuration } from '../../lib/format';
-import { TYPE_ICON, TYPE_LABEL } from '../dashboard/GradientActivityList';
+import { TYPE_ICON, TYPE_LABEL } from '../../lib/workoutTypes';
 import { parseDayKey, TYPE_COLOR } from '../../lib/calendarData';
 import type { DayStatus } from '../../lib/calendarData';
 
@@ -91,7 +91,10 @@ export default function DayDetailCard({
                 {TYPE_ICON[workout.type]}
               </span>
               <span className="gd-cal-done-info">
-                <span className="gd-cal-done-title">{TYPE_LABEL[workout.type]}</span>
+                {/* The badge already says which discipline it was, so a
+                    named activity spends the line on its own name — same as
+                    the activity list. */}
+                <span className="gd-cal-done-title">{workout.title?.trim() || TYPE_LABEL[workout.type]}</span>
                 <span className="gd-cal-block-meta">
                   {formatDuration(workout.durationMin)}
                   {workout.distanceKm ? ` · ${formatDistance(workout.distanceKm)}` : ''}

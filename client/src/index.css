@@ -45,6 +45,16 @@
   --chart-z3: #6fcf8e;
   --chart-z4: #f2cb55;
   --chart-z5: #ef7b72;
+
+  /* Sleep stages. Ordered deepest to awake, and kept distinct in hue rather
+     than only in lightness so the stacked bar is still readable to someone
+     who can't separate the blues. Redefined for dark mode below — unlike the
+     other chart tokens these sit as large filled areas, and the light-mode
+     indigo goes muddy against a dark surface. */
+  --sleep-deep: #3d3a8f;
+  --sleep-core: #4a86c8;
+  --sleep-rem: #1f9c94;
+  --sleep-awake: #d79b3f;
   color-scheme: light;
 }
 
@@ -73,6 +83,10 @@
     --join-blue: #4fb6d6;
     --join-green: #2fae84;
     --join-panel: #132821;
+    --sleep-deep: #7b76d6;
+    --sleep-core: #63a8e8;
+    --sleep-rem: #3fd0c9;
+    --sleep-awake: #e0a23f;
     color-scheme: dark;
   }
 }
@@ -105,6 +119,10 @@
   --join-blue: #4fb6d6;
   --join-green: #2fae84;
   --join-panel: #132821;
+  --sleep-deep: #7b76d6;
+  --sleep-core: #63a8e8;
+  --sleep-rem: #3fd0c9;
+  --sleep-awake: #e0a23f;
   color-scheme: dark;
 }
 
@@ -2295,6 +2313,9 @@ button.gd-dashed-fab:hover {
   font-size: 14px;
   font-weight: 600;
   margin: 0 0 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .gd-activity-info .gd-a-meta {
@@ -2390,6 +2411,133 @@ button.gd-filter-chip.gd-on {
 
 .gd-week-label:first-of-type {
   margin-top: 2px;
+}
+
+/* Search + filters. The screen is a phone first, so only two rows are ever
+   spent on controls: the search box shares its row with the Filters button,
+   and everything past type lives in a panel that stays shut until asked for. */
+
+.gd-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.gd-search-field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.gd-search-icon {
+  position: absolute;
+  left: 11px;
+  font-size: 12.5px;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+input.gd-search-input {
+  width: 100%;
+  font-size: 14px;
+  padding: 8px 32px 8px 32px;
+  border-radius: 100px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+/* The type=search widget's own clear button sits where ours does. */
+input.gd-search-input::-webkit-search-cancel-button {
+  display: none;
+}
+
+button.gd-search-clear {
+  position: absolute;
+  right: 4px;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  border-radius: 100px;
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+button.gd-filter-toggle {
+  flex-shrink: 0;
+}
+
+.gd-filter-panel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 10px;
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.gd-filter-panel label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+.gd-filter-panel select {
+  width: 100%;
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: normal;
+  padding: 7px 8px;
+  color: var(--text);
+}
+
+.gd-filter-panel .gd-filter-wide {
+  grid-column: 1 / -1;
+}
+
+.gd-result-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 2px 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+button.gd-result-reset {
+  margin-left: auto;
+  border: none;
+  background: none;
+  padding: 2px 0;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.gd-no-results {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 18px 2px;
 }
 
 /* Settings screen */
@@ -3726,6 +3874,89 @@ button.gd-cal-apply {
   font-size: 11.5px;
   line-height: 1.5;
   color: var(--text-faint);
+}
+
+/* ---- Sleep card (dashboard) ---------------------------------------- */
+
+/* Deliberately compact: it sits between the stat tiles and the week strip,
+   and a tall card there pushes everything that matters below the fold. Each
+   row is a single line at phone width. */
+.gd-sleep-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 12px 14px 13px;
+  margin-bottom: 16px;
+}
+
+.gd-sleep-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.gd-sleep-total {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.gd-sleep-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--surface-sunken);
+  margin-top: 10px;
+}
+
+.gd-sleep-seg {
+  height: 100%;
+  /* A sliver of awake time still has to be visible as a slice rather than as
+     a hairline, and the flex row keeps the widths proportional regardless. */
+  min-width: 2px;
+}
+
+.gd-sleep-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  list-style: none;
+  margin: 9px 0 0;
+  padding: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.gd-sleep-legend li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.gd-sleep-legend .mono {
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--text);
+}
+
+.gd-sleep-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.gd-sleep-note {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  margin: 8px 0 0;
+}
+
+.gd-sleep-verdict {
+  font-size: 12.5px;
+  color: var(--text);
+  margin: 6px 0 0;
 }
 
 /* --- Calendar (Plan → Month / Year) --------------------------------------

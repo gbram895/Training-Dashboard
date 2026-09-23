@@ -101,6 +101,9 @@ async function importStravaActivity(
     date,
     durationMin,
     distanceKm,
+    title: activity.name,
+    // Kept for OTHER as well as the title, so notes an athlete has since
+    // edited on an existing workout don't change meaning.
     notes: type === 'OTHER' ? activity.name : undefined,
     source: 'strava',
     externalId,
@@ -210,6 +213,50 @@ export async function backfillStravaCalories(userId: string): Promise<number> {
     } catch (err) {
       console.error(`[strava-sync] calorie backfill failed for activity ${activityId}:`, err);
     }
+    await sleep(150);
+  }
+  return updated;
+}
+
+const TITLE_BACKFILL_PAGES = 20;
+
+/**
+ * Fills in `title` for activities imported before it was stored. The name is
+ * already on every row of the activity list, so this never fetches an
+ * activity's own detail record the way the calorie backfill has to — a whole
+ * history costs a handful of list calls instead of one call per workout.
+ *
+ * Stops as soon as every untitled workout has been matched.
+ */
+export async function backfillStravaTitles(userId: string): Promise<number> {
+  const config = await prisma.stravaSyncConfig.findUnique({ where: { userId } });
+  if (!config) return 0;
+
+  const pending = new Map<string, string>();
+  const untitled = await prisma.workout.findMany({
+    where: { userId, source: 'strava', title: null, externalId: { not: null } },
+    select: { id: true, externalId: true },
+  });
+  for (const w of untitled) pending.set(w.externalId!, w.id);
+  if (pending.size === 0) return 0;
+
+  const accessToken = await getValidAccessToken(userId, config);
+
+  let updated = 0;
+  for (let page = 1; page <= TITLE_BACKFILL_PAGES && pending.size > 0; page += 1) {
+    const batch = await listActivities(accessToken, page, BACKFILL_PAGE_SIZE);
+    if (batch.length === 0) break;
+
+    for (const activity of batch) {
+      const externalId = stravaExternalId(activity.id);
+      const workoutId = pending.get(externalId);
+      if (!workoutId || !activity.name) continue;
+      await prisma.workout.update({ where: { id: workoutId }, data: { title: activity.name } });
+      pending.delete(externalId);
+      updated += 1;
+    }
+
+    if (batch.length < BACKFILL_PAGE_SIZE) break;
     await sleep(150);
   }
   return updated;

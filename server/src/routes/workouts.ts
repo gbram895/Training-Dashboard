@@ -7,8 +7,8 @@ import { asString } from '../lib/params.js';
 import { recomputeTrainingLoad, recomputeAllTrainingLoad } from '../lib/trainingLoad.js';
 import { computeFitnessSeries } from '../lib/fitness.js';
 import { latestSessionReview, reviewSessionForWorkout } from '../lib/sessionReview.js';
-import { backfillGarminCalories } from '../lib/garminSync.js';
-import { backfillStravaCalories } from '../lib/stravaSync.js';
+import { backfillGarminCalories, backfillGarminTitles } from '../lib/garminSync.js';
+import { backfillStravaCalories, backfillStravaTitles } from '../lib/stravaSync.js';
 import { buildPowerCurve, rebuildPowerBests } from '../lib/powerCurve.js';
 
 const router = Router();
@@ -26,6 +26,7 @@ const workoutSchema = z.object({
   date: z.string().datetime().or(z.string().min(1)),
   durationMin: z.number().int().positive(),
   distanceKm: z.number().nonnegative().optional(),
+  title: z.string().max(200).optional(),
   notes: z.string().optional(),
   exercises: z.array(exerciseSchema).optional(),
 });
@@ -200,7 +201,22 @@ router.post('/backfill-training-load', async (req: AuthedRequest, res) => {
     console.error(`[backfill] Strava calorie backfill failed for user ${userId}:`, err);
   }
 
-  res.json({ recomputed, caloriesBackfilled });
+  // Activity names weren't stored before the workout list became searchable,
+  // so the same button that repairs training load repairs them too — it reads
+  // the activity lists only, which is a few calls rather than one per workout.
+  let titlesBackfilled = 0;
+  try {
+    titlesBackfilled += await backfillGarminTitles(userId);
+  } catch (err) {
+    console.error(`[backfill] Garmin title backfill failed for user ${userId}:`, err);
+  }
+  try {
+    titlesBackfilled += await backfillStravaTitles(userId);
+  } catch (err) {
+    console.error(`[backfill] Strava title backfill failed for user ${userId}:`, err);
+  }
+
+  res.json({ recomputed, caloriesBackfilled, titlesBackfilled });
 });
 
 // How the last session that had a plan behind it actually went. Registered
@@ -250,6 +266,8 @@ router.post('/', async (req: AuthedRequest, res) => {
   const created = await prisma.workout.create({
     data: {
       ...data,
+      // An empty box means "no name", not the empty string.
+      title: data.title?.trim() || null,
       date: new Date(data.date),
       userId: req.userId!,
       exercises: exercises
@@ -278,6 +296,9 @@ router.put('/:id', async (req: AuthedRequest, res) => {
     where: { id },
     data: {
       ...data,
+      // Sent as '' when the athlete clears the box, which has to land as null
+      // rather than being dropped as "no change".
+      title: data.title?.trim() || null,
       date: new Date(data.date),
       exercises: exercises
         ? { create: exercises.map((e, order) => ({ ...e, order })) }

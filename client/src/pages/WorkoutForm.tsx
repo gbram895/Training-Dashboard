@@ -27,6 +27,7 @@ export default function WorkoutForm() {
   const [date, setDate] = useState(toDateInputValue(new Date()));
   const [durationMin, setDurationMin] = useState('30');
   const [distanceKm, setDistanceKm] = useState('');
+  const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [exercises, setExercises] = useState<ExerciseDraft[]>([]);
   const [loading, setLoading] = useState(!isNew);
@@ -40,6 +41,7 @@ export default function WorkoutForm() {
       setDate(toDateInputValue(new Date(w.date)));
       setDurationMin(String(w.durationMin));
       setDistanceKm(w.distanceKm != null ? String(w.distanceKm) : '');
+      setTitle(w.title ?? '');
       setNotes(w.notes ?? '');
       setExercises(
         (w.exercises ?? []).map((e: ExerciseEntry) => ({
@@ -75,6 +77,7 @@ export default function WorkoutForm() {
         date: new Date(date).toISOString(),
         durationMin: Number(durationMin),
         distanceKm: distanceKm ? Number(distanceKm) : undefined,
+        title: title.trim(),
         notes: notes || undefined,
         exercises:
           type === 'STRENGTH'
@@ -119,6 +122,17 @@ export default function WorkoutForm() {
 
       <form className="card form" onSubmit={handleSubmit}>
         {error && <div className="alert">{error}</div>}
+
+        <label>
+          Name (optional)
+          <input
+            type="text"
+            maxLength={200}
+            placeholder="e.g. Ventoux repeats"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+        </label>
 
         <label>
           Type

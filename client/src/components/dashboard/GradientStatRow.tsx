@@ -1,11 +1,23 @@
 import type { DailyHealthSummary, FitnessPoint } from '../../api/types';
 import { average, classifyHrv } from '../../lib/hrv';
 import { formatDuration } from '../../lib/format';
+import { toSleepNight } from '../../lib/sleep';
 
 export default function GradientStatRow({ days, fitness }: { days: DailyHealthSummary[]; fitness: FitnessPoint[] | null }) {
   const lastNight = days.length ? days[days.length - 1].sleepHours ?? null : null;
   const sleepPct = lastNight != null ? Math.max(4, Math.min(100, (lastNight / 8) * 100)) : 0;
-  const sleepNote = lastNight == null ? 'No sleep data' : lastNight >= 7 ? 'Good recovery' : 'Below target';
+  // With a stage breakdown the tile can say something the duration can't:
+  // how much of the night was the restorative part. Falls back to the old
+  // length-only wording for a night that came in without stages.
+  const night = days.length ? toSleepNight(days[days.length - 1]) : null;
+  const sleepNote =
+    lastNight == null
+      ? 'No sleep data'
+      : night?.restorativeShare != null
+        ? `${Math.round(night.restorativeShare * 100)}% deep + REM`
+        : lastNight >= 7
+          ? 'Good recovery'
+          : 'Below target';
 
   const hrvValues = days.map((d) => d.avgHrv ?? null);
   const todayHrv = hrvValues.length ? hrvValues[hrvValues.length - 1] : null;

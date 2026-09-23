@@ -1,26 +1,7 @@
 import { Link } from 'react-router-dom';
-import type { Workout, WorkoutType } from '../../api/types';
+import type { Workout } from '../../api/types';
 import { formatDistance, formatDuration, formatRelativeDay } from '../../lib/format';
-
-export const TYPE_ICON: Record<WorkoutType, string> = {
-  RUN: '🏃',
-  RIDE: '🚴',
-  SWIM: '🏊',
-  STRENGTH: '🏋️',
-  WALK: '🚶',
-  BADMINTON: '🏸',
-  OTHER: '🏅',
-};
-
-export const TYPE_LABEL: Record<WorkoutType, string> = {
-  RUN: 'Run',
-  RIDE: 'Ride',
-  SWIM: 'Swim',
-  STRENGTH: 'Strength',
-  WALK: 'Walk',
-  BADMINTON: 'Badminton',
-  OTHER: 'Workout',
-};
+import { TYPE_ICON, TYPE_LABEL } from '../../lib/workoutTypes';
 
 export default function GradientActivityList({ workouts }: { workouts: Workout[] }) {
   if (workouts.length === 0) {
@@ -33,7 +14,9 @@ export default function GradientActivityList({ workouts }: { workouts: Workout[]
         <Link key={w.id} to={`/workouts/${w.id}`} className="gd-activity-card">
           <div className="gd-activity-icon">{TYPE_ICON[w.type]}</div>
           <div className="gd-activity-info">
-            <p className="gd-a-title">{TYPE_LABEL[w.type]}</p>
+            {/* The icon already says which discipline it was, so a named
+                activity spends the heading on its name instead. */}
+            <p className="gd-a-title">{w.title?.trim() || TYPE_LABEL[w.type]}</p>
             <p className="gd-a-meta">
               {formatRelativeDay(w.date)} · {formatDuration(w.durationMin)}
               {w.distanceKm ? ` · ${formatDistance(w.distanceKm)}` : ''}

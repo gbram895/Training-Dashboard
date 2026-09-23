@@ -46,6 +46,8 @@ export interface CalendarPlanned {
 export interface CalendarWorkout {
   id: string;
   type: string;
+  /** The name the source gave the activity, when it sent one. */
+  title: string | null;
   date: string;
   durationMin: number;
   distanceKm: number | null;
@@ -107,7 +109,7 @@ router.get('/', async (req: AuthedRequest, res) => {
     }),
     prisma.workout.findMany({
       where: { userId, date: { gte: from, lt: dayAfterTo } },
-      select: { id: true, type: true, date: true, durationMin: true, distanceKm: true, tss: true, rpe: true },
+      select: { id: true, type: true, title: true, date: true, durationMin: true, distanceKm: true, tss: true, rpe: true },
       orderBy: { date: 'asc' },
     }),
     prisma.trainingTarget.findMany({
@@ -160,6 +162,7 @@ router.get('/', async (req: AuthedRequest, res) => {
     (day.done ??= []).push({
       id: workout.id,
       type: workout.type,
+      title: workout.title,
       date: workout.date.toISOString(),
       durationMin: workout.durationMin,
       distanceKm: workout.distanceKm,
