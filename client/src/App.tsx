@@ -10,6 +10,7 @@ const Register = lazy(() => import('./pages/Register'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Plan = lazy(() => import('./pages/Plan'));
 const TodaysWorkoutDetail = lazy(() => import('./pages/TodaysWorkoutDetail'));
+const Calendar = lazy(() => import('./pages/Calendar'));
 const Workouts = lazy(() => import('./pages/Workouts'));
 const WorkoutForm = lazy(() => import('./pages/WorkoutForm'));
 const WorkoutDetail = lazy(() => import('./pages/WorkoutDetail'));
@@ -47,6 +48,7 @@ export default function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/plan" element={<Plan />} />
             <Route path="/plan/today" element={<TodaysWorkoutDetail />} />
+            <Route path="/plan/calendar" element={<Calendar />} />
             <Route path="/workouts" element={<Workouts />} />
             <Route path="/workouts/new" element={<WorkoutForm />} />
             <Route path="/workouts/:id" element={<WorkoutDetail />} />

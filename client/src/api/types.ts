@@ -499,6 +499,54 @@ export interface AuthResponse {
   user: AuthUser;
 }
 
+// --- Calendar --------------------------------------------------------------
+// One range request feeds both the month grid and the year view — see
+// server/src/routes/calendar.ts. Days with nothing on them are simply absent.
+
+export interface CalendarPlanned {
+  isRestDay: boolean;
+  restReason?: string | null;
+  name?: string | null;
+  discipline?: PlannedDiscipline | null;
+  durationMin?: number | null;
+  intensity?: number | null;
+  trainingStress?: number | null;
+  category?: WorkoutCategory | null;
+  focus?: string | null;
+  phase?: TrainingPhase | null;
+  manualOverride: boolean;
+}
+
+export interface CalendarWorkout {
+  id: string;
+  type: WorkoutType;
+  title?: string | null;
+  date: string;
+  durationMin: number;
+  distanceKm?: number | null;
+  tss?: number | null;
+  rpe?: number | null;
+}
+
+export interface CalendarDay {
+  /** YYYY-MM-DD */
+  date: string;
+  planned?: CalendarPlanned;
+  done?: CalendarWorkout[];
+  goals?: { id: string; name: string; priority: TargetPriority; kind: GoalKind }[];
+}
+
+export interface CalendarRange {
+  from: string;
+  to: string;
+  today: string;
+  /** Last day the plan is really generated for; beyond it only the rhythm is known. */
+  planHorizon: string;
+  days: CalendarDay[];
+  /** Standing hours per weekday, Sunday-first. Null when no plan is set up. */
+  weeklyHours: number[] | null;
+}
+
 // --- Power curve ---------------------------------------------------------
 // Mirrors server/src/lib/powerCurve.ts.
 

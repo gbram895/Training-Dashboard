@@ -19,6 +19,7 @@ import NewPlanModal from '../components/NewPlanModal';
 import RearrangePlanModal from '../components/RearrangePlanModal';
 import WeeklyAvailabilityModal from '../components/WeeklyAvailabilityModal';
 import PageHead from '../components/PageHead';
+import PlanViewSwitch from '../components/calendar/PlanViewSwitch';
 import WeeklyReviewCard from '../components/plan/WeeklyReviewCard';
 import { useCachedState } from '../lib/pageCache';
 import { useRefreshOnResume } from '../lib/useRefreshOnResume';
@@ -242,6 +243,7 @@ export default function Plan() {
     <div className="page">
       <div className="gd-plan-top">
         <PageHead title="Plan" />
+        <PlanViewSwitch active="week" />
 
         {planConfig !== undefined &&
           (!planConfig ? (
