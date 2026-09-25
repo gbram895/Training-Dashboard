@@ -25,6 +25,9 @@ app on desktop.
   steps, distance, heart rate, sleep, active energy, VO2 max, etc. into a
   Health panel on the dashboard. It also imports real workout sessions if
   that export includes a `workouts` array.
+- Background syncs, daily plan regeneration and push reminders run on schedules
+  stored in the database, so a run missed while the service was down is caught
+  up rather than skipped (see [the sync heartbeat](#background-jobs-and-the-sync-heartbeat))
 
 ## Getting started (local dev)
 
@@ -93,6 +96,48 @@ its own schedule anyway.
    client from the Express server — one service, one URL.
 5. Open the deployed URL, register your account, and install it on your
    phone via "Add to Home Screen".
+6. Set up the sync heartbeat (below). Without it, the background syncs only
+   run while the service happens to be awake.
+
+### Background jobs and the sync heartbeat
+
+Syncing Apple Health, Garmin and Strava, regenerating the daily plan and
+sending push reminders are all scheduled jobs. Each one's due date is kept in
+the database (`ScheduledJob`), not in a timer inside the web process, so a job
+that came due while the service was asleep, deploying or crashed is still owed
+and gets run the next time anything ticks. A run only skipped if catching up
+would be pointless — a missed "today's session is ready" push is dropped rather
+than delivered six hours late.
+
+Two things tick the scheduler:
+
+- the running service itself, once a minute, which covers everything while it
+  is awake;
+- `POST /api/cron/tick`, which is what covers the gaps. The free instance
+  sleeps after fifteen idle minutes, and nothing inside it runs while it is
+  down.
+
+`.github/workflows/sync-heartbeat.yml` makes that call every ten minutes. The
+request both wakes the instance and asks it to catch up. To turn it on, add two
+repository secrets under **Settings → Secrets and variables → Actions**:
+
+| Secret | Value |
+| --- | --- |
+| `APP_URL` | the deployed origin, e.g. `https://training-dashboard.onrender.com` |
+| `SYNC_API_KEY` | the value Render generated for the service's `SYNC_API_KEY` (Environment tab) |
+
+Then run the workflow once by hand from the Actions tab to confirm it works.
+Note that GitHub disables scheduled workflows in a repository with no activity
+for 60 days, so if syncing quietly stops months from now, check there first.
+
+Render's own cron jobs would be the tidier home for this, but they are a
+separate paid service (minimum $1/month each) and this app runs on the free
+tier, so the heartbeat lives in GitHub Actions instead. Anything that can make
+an authenticated POST on a schedule works equally well as a replacement.
+
+`GET /api/cron/status`, with the same `x-sync-key` header, shows every job's
+next due date, last run, and last error — the quickest way to tell whether a
+sync is failing or simply never being asked to run.
 
 ### Apple Health sync
 

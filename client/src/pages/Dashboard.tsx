@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../api/client';
 import type {
@@ -6,22 +6,32 @@ import type {
   DisciplineStats,
   DropboxSyncStatus,
   FitnessPoint,
+  GarminSyncStatus,
   Goal,
   HrZoneWeek,
   PlannedDay,
+  RampStatus,
   SelectedWorkout,
+  SessionReview,
+  StravaSyncStatus,
   Workout,
 } from '../api/types';
 import { useAuth } from '../context/AuthContext';
 import { useCachedState } from '../lib/pageCache';
+import { useRefreshOnResume } from '../lib/useRefreshOnResume';
 import { computeReadiness } from '../lib/readiness';
+import { toSleepNight } from '../lib/sleep';
 import { average } from '../lib/hrv';
 import { formatDateUTC } from '../lib/format';
 import PageHead from '../components/PageHead';
 import DashboardHero from '../components/dashboard/DashboardHero';
 import GradientStatRow from '../components/dashboard/GradientStatRow';
+import SleepCard from '../components/dashboard/SleepCard';
 import WeekStrip from '../components/dashboard/WeekStrip';
 import GradientActivityList from '../components/dashboard/GradientActivityList';
+import SyncHealthBanner from '../components/dashboard/SyncHealthBanner';
+import SessionReviewCard from '../components/SessionReviewCard';
+import RampRateCard from '../components/dashboard/RampRateCard';
 
 // Everything below the "More" divider (the pre-Gradient recharts analytics)
 // in its own chunk — see LegacyAnalytics.tsx for why.
@@ -42,10 +52,16 @@ export default function Dashboard() {
   const [goals, setGoals] = useCachedState<Goal[]>('dash.goals', []);
   const [recent, setRecent] = useCachedState<Workout[]>('dash.recent', []);
   const [syncStatus, setSyncStatus] = useCachedState<DropboxSyncStatus | null>('dash.syncStatus', null);
+  const [stravaStatus, setStravaStatus] = useCachedState<StravaSyncStatus | null>('dash.stravaStatus', null);
+  const [garminStatus, setGarminStatus] = useCachedState<GarminSyncStatus | null>('dash.garminStatus', null);
+  const [syncUnavailable, setSyncUnavailable] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [todaysWorkout, setTodaysWorkout] = useCachedState<SelectedWorkout | null>('dash.todaysWorkout', null);
   const [plannedToday, setPlannedToday] = useCachedState<PlannedDay | null>('dash.plannedToday', null);
   const [planWeek, setPlanWeek] = useCachedState<PlannedDay[]>('dash.planWeek', []);
   const [fitness, setFitness] = useCachedState<FitnessPoint[] | null>('dash.fitness', null);
+  const [sessionReview, setSessionReview] = useCachedState<SessionReview | null>('dash.sessionReview', null);
+  const [rampStatus, setRampStatus] = useCachedState<RampStatus | null>('dash.rampStatus', null);
 
   // Stable identity (empty deps) — several memoized chart components take this
   // as a prop, and a new function reference on every render would defeat the
@@ -57,11 +73,33 @@ export default function Dashboard() {
     apiFetch<HrZoneWeek[]>('/workouts/hr-zones-weekly').then(setHrZones);
     apiFetch<Goal[]>('/goals').then(setGoals);
     apiFetch<Workout[]>('/workouts?limit=10').then(setRecent);
-    apiFetch<DropboxSyncStatus>('/health/dropbox/status').then(setSyncStatus);
+    // A status request that fails leaves the sync UI with nothing to show, so
+    // it is tracked rather than swallowed — "cannot tell" is itself worth saying.
+    setSyncUnavailable(false);
+    apiFetch<DropboxSyncStatus>('/health/dropbox/status')
+      .then(setSyncStatus)
+      .catch(() => setSyncUnavailable(true));
+    apiFetch<StravaSyncStatus>('/health/strava/status')
+      .then(setStravaStatus)
+      .catch(() => setSyncUnavailable(true));
+    apiFetch<GarminSyncStatus>('/health/garmin/status')
+      .then(setGarminStatus)
+      .catch(() => setSyncUnavailable(true));
     apiFetch<SelectedWorkout | null>('/workout-library/selected').then(setTodaysWorkout);
     apiFetch<PlannedDay | null>('/training-plan/today').then(setPlannedToday);
     apiFetch<PlannedDay[]>('/training-plan/week').then(setPlanWeek);
     apiFetch<FitnessPoint[]>('/workouts/fitness').then(setFitness);
+    // Whether load is climbing faster than it is being absorbed. Its own
+    // request rather than derived from the series above, so the plan generator
+    // and the dashboard cannot drift apart on what counts as a spike.
+    apiFetch<RampStatus | null>('/workouts/ramp-status')
+      .then(setRampStatus)
+      .catch(() => setRampStatus(null));
+    // The last day that had both a plan and something logged against it — the
+    // answer to "did I do a good job yesterday", where he is already looking.
+    apiFetch<SessionReview | null>('/workouts/plan-review/latest')
+      .then(setSessionReview)
+      .catch(() => setSessionReview(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -69,14 +107,35 @@ export default function Dashboard() {
     load();
   }, [load]);
 
+  useRefreshOnResume(load);
+
+  const retrySyncs = useCallback(
+    async (keys: string[]) => {
+      setRetrying(true);
+      try {
+        // Sequential: these hit third-party APIs that rate-limit, and firing
+        // every failing source at once is what gets this server blocked.
+        for (const key of keys) {
+          await apiFetch(`/health/${key}/sync-now`, { method: 'POST' }).catch(() => undefined);
+        }
+      } finally {
+        setRetrying(false);
+        load();
+      }
+    },
+    [load],
+  );
+
   const loading = days === null || disciplineStats === null || hrZones === null;
 
   const hrvValues = days?.map((d) => d.avgHrv ?? null) ?? [];
+  const lastNight = days?.length ? toSleepNight(days[days.length - 1]) : null;
   const readiness = days
     ? computeReadiness({
         todayHrv: hrvValues.length ? hrvValues[hrvValues.length - 1] : null,
         hrvBaseline: average(hrvValues.slice(-8, -1)),
         sleepHours: days.length ? (days[days.length - 1].sleepHours ?? null) : null,
+        sleepQuality: lastNight?.quality ?? null,
         tsb: fitness && fitness.length ? fitness[fitness.length - 1].tsb : null,
       })
     : null;
@@ -94,9 +153,26 @@ export default function Dashboard() {
               name={user?.name}
             />
 
+            <SyncHealthBanner
+              sources={[
+                { key: 'dropbox', name: 'Apple Health', status: syncStatus },
+                { key: 'strava', name: 'Strava', status: stravaStatus },
+                { key: 'garmin', name: 'Garmin', status: garminStatus },
+              ]}
+              unavailable={syncUnavailable}
+              retrying={retrying}
+              onRetry={retrySyncs}
+            />
+
             <DashboardHero workout={todaysWorkout} plannedToday={plannedToday} readiness={readiness} onCleared={load} />
 
+            {sessionReview && <SessionReviewCard review={sessionReview} compact />}
+
+            <RampRateCard status={rampStatus} />
+
             <GradientStatRow days={days} fitness={fitness} />
+
+            <SleepCard days={days} />
 
             <div className="gd-section-head">
               <h3>This week</h3>
@@ -125,6 +201,8 @@ export default function Dashboard() {
               goals={goals}
               recent={recent}
               syncStatus={syncStatus}
+              stravaStatus={stravaStatus}
+              garminStatus={garminStatus}
               fitness={fitness}
               onSynced={load}
             />

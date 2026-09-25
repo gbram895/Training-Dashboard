@@ -38,6 +38,7 @@ export interface IncomingWorkout {
   date: Date;
   durationMin: number;
   distanceKm?: number;
+  title?: string;
   notes?: string;
   source: string;
   externalId: string;
@@ -81,6 +82,7 @@ export async function createDedupedWorkout(incoming: IncomingWorkout): Promise<D
       date: incoming.date,
       durationMin: incoming.durationMin,
       distanceKm: incoming.distanceKm,
+      title: incoming.title,
       notes: incoming.notes,
       source: incoming.source,
       externalId: incoming.externalId,

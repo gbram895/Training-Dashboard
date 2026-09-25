@@ -30,6 +30,15 @@ export interface WorkoutSegment {
   intensityLow?: number;
   intensityHigh?: number;
   role?: 'warmup' | 'cooldown';
+  /**
+   * Which metric the segment was actually prescribed in. Everything downstream
+   * reasons in fractions of threshold regardless, but pushing a session back to
+   * a watch has to turn the fraction into a real target again — and a rep the
+   * source file prescribed as "198bpm" should go back out as 198bpm, not as the
+   * pace that fraction happens to correspond to. Absent on sources that carry no
+   * metric of their own (a hand-typed workout note), where the discipline decides.
+   */
+  targetMetric?: 'power' | 'pace' | 'hr';
 }
 
 export interface EstimatedIntensity {
@@ -92,6 +101,33 @@ function stressBucket(tss: number): number {
 }
 
 /**
+ * The rough inverse of stressBucket: a representative TSS for each 1-5 bucket.
+ *
+ * `trainingStress` on a library workout and on a PlannedDay is one of those
+ * buckets, NOT a training-stress score — so anywhere a planned session has to
+ * be compared against real, logged load (projecting fitness forward in
+ * lib/trainingPlan.ts, the planned-vs-actual totals in lib/weeklyReview.ts) it
+ * has to come back through here first. It's an estimate: precise TSS only
+ * exists once a workout has actually been done.
+ */
+export function estimatedTssForBucket(bucket: number | null | undefined): number {
+  switch (bucket) {
+    case 1:
+      return 25;
+    case 2:
+      return 55;
+    case 3:
+      return 85;
+    case 4:
+      return 120;
+    case 5:
+      return 160;
+    default:
+      return 50;
+  }
+}
+
+/**
  * Labels a workout by the hardest zone its main effort actually reaches -
  * the same way a coach would ("this is a VO2max session"), not by its
  * whole-session average, which a brief peak wouldn't move much.
@@ -106,7 +142,30 @@ function stressBucket(tss: number): number {
  */
 export type WorkoutCategory = 'ENDURANCE' | 'TEMPO' | 'THRESHOLD' | 'VO2MAX';
 
+/**
+ * Easiest to hardest. Several places need to reason about "one step easier" or
+ * "everything at or below this", so the order lives with the type rather than
+ * being re-declared wherever it's needed.
+ */
+export const CATEGORY_ORDER: WorkoutCategory[] = ['ENDURANCE', 'TEMPO', 'THRESHOLD', 'VO2MAX'];
+
 const SUSTAINED_EFFORT_MIN_SEC = 20;
+
+/**
+ * Which band of effort a single intensity fraction (of threshold) falls in.
+ *
+ * These are the boundaries classifyWorkoutCategory has always used, pulled out
+ * on their own because lib/sessionReview.ts has to bucket a stream of real,
+ * ridden efforts the same way the plan buckets the ones it prescribed - if the
+ * two ever disagreed, "you did 28 of the 36 minutes asked at threshold" would
+ * be comparing two different definitions of threshold.
+ */
+export function bandForIntensity(fraction: number): WorkoutCategory {
+  if (fraction > 1.05) return 'VO2MAX';
+  if (fraction > 0.9) return 'THRESHOLD';
+  if (fraction > 0.75) return 'TEMPO';
+  return 'ENDURANCE';
+}
 
 export function classifyWorkoutCategory(
   segments: WorkoutSegment[],
@@ -118,11 +177,7 @@ export function classifyWorkoutCategory(
   const sustained = withTarget.filter((s) => s.durationSec >= SUSTAINED_EFFORT_MIN_SEC);
   const targets = (sustained.length > 0 ? sustained : withTarget).map((s) => s.intensityFraction);
   if (targets.length > 0) {
-    const peak = Math.max(...targets);
-    if (peak > 1.05) return 'VO2MAX';
-    if (peak > 0.9) return 'THRESHOLD';
-    if (peak > 0.75) return 'TEMPO';
-    return 'ENDURANCE';
+    return bandForIntensity(Math.max(...targets));
   }
   if (fallbackIntensity != null) {
     if (fallbackIntensity >= 5) return 'VO2MAX';

@@ -26,6 +26,8 @@ model User {
   plannedDays           PlannedDay[]
   cachedLibraryWorkouts CachedLibraryWorkout[]
   pushSubscriptions     PushSubscription[]
+  trainingTargets       TrainingTarget[]
+  powerBests            WorkoutPowerBest[]
 
   // Heart-rate zone thresholds (bpm) — upper bound of zones 1-4; zone 5 is everything above z4Max
   hrZone1Max Int @default(114)
@@ -36,6 +38,17 @@ model User {
   // Used to estimate intensity/training-stress for .fit and .zwo workout library files
   ftpWatts              Int @default(200)
   thresholdPaceSecPerKm Int @default(300)
+}
+
+// How a workout's `tss` was arrived at, so the UI can be honest about
+// precision: POWER (per-second power vs FTP) is the most accurate, PACE
+// (average pace vs threshold pace) next, and HR (time-in-zone vs the user's
+// zone thresholds) is the catch-all that lets badminton, hikes, swims and
+// strength sessions count toward training load at all. See lib/trainingLoad.ts.
+enum TssSource {
+  POWER
+  PACE
+  HR
 }
 
 enum WorkoutType {
@@ -49,19 +62,24 @@ enum WorkoutType {
 }
 
 model Workout {
-  id          String          @id @default(uuid())
+  id          String             @id @default(uuid())
   userId      String
-  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   type        WorkoutType
   date        DateTime
   durationMin Int
   distanceKm  Float?
+  // The name the source gave the activity ("Ventoux repeats"). Distinct from
+  // `notes`, which is the athlete's own text. NULL for anything imported
+  // before this existed until the backfill on /backfill-training-load runs.
+  title       String?
   notes       String?
-  source      String          @default("manual")
-  externalId  String?         @unique
-  createdAt   DateTime        @default(now())
+  source      String             @default("manual")
+  externalId  String?            @unique
+  createdAt   DateTime           @default(now())
   exercises   ExerciseEntry[]
   samples     WorkoutSample[]
+  powerBests  WorkoutPowerBest[]
 
   // Calories are sourced from Garmin/Strava/Apple Health directly (we have no way
   // to estimate them ourselves). Kilojoules and TSS are derived by us from the
@@ -70,6 +88,7 @@ model Workout {
   calorieKcal          Float?
   kilojoules           Float?
   tss                  Float?
+  tssSource            TssSource?
   avgPowerWatts        Float?
   normalizedPowerWatts Float?
 
@@ -86,6 +105,13 @@ model Workout {
   // rpe feeds back into the next day's plan (lib/trainingPlan.ts).
   rpe           Int?
   feedbackNotes String?
+
+  // When this ride's maximal-mean-power efforts were last extracted from its
+  // samples into WorkoutPowerBest. Null means "not looked at yet", which is
+  // what the power curve's rebuild walks — including for rides that turned
+  // out to have no power at all, which are stamped anyway so they are never
+  // re-scanned. See lib/powerCurve.ts.
+  powerBestsAt DateTime?
 
   @@index([userId, date])
 }
@@ -116,23 +142,76 @@ model WorkoutSample {
   @@index([workoutId, offsetSec])
 }
 
+// The athlete's best sustained power over each of a fixed set of durations,
+// for one workout — the raw material of the power curve and the critical-power
+// model on the Dashboard.
+//
+// Derived from WorkoutSample and stored rather than computed on demand: a
+// year of rides is hundreds of thousands of per-second rows, and a curve over
+// "best ever" would have to walk all of them behind a page load on a free-tier
+// Postgres. One row per (workout, duration) turns that into a single indexed
+// read of a few hundred rows. Recomputed whenever the workout's samples are
+// (re)imported. See lib/powerCurve.ts.
+model WorkoutPowerBest {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workoutId   String
+  workout     Workout  @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  // Copied off the workout so a window ("last 3 months") is one indexed read
+  // rather than a join back to Workout for every row.
+  date        DateTime
+  durationSec Int
+  watts       Int
+
+  @@unique([workoutId, durationSec])
+  @@index([userId, durationSec, date])
+}
+
 model DailyHealthSummary {
-  id               String   @id @default(uuid())
-  userId           String
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  date             DateTime
-  steps            Int?
-  distanceKm       Float?
-  activeEnergyKcal Float?
-  avgHeartRate     Float?
-  restingHeartRate Float?
-  sleepHours       Float?
-  exerciseMinutes  Float?
-  flightsClimbed   Int?
-  vo2Max           Float?
-  avgHrv           Float?
-  avgBloodOxygen   Float?
-  updatedAt        DateTime @updatedAt
+  id                   String    @id @default(uuid())
+  userId               String
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date                 DateTime
+  steps                Int?
+  distanceKm           Float?
+  activeEnergyKcal     Float?
+  avgHeartRate         Float?
+  restingHeartRate     Float?
+  // Total time actually asleep, and what that sleep was made of. Hours
+  // throughout. sleepHours stays the one number the rest of the app reads, so
+  // nothing that already uses it has to change; the stage fields sit beside
+  // it and are null for a night whose source didn't report stages — an Apple
+  // Watch does, a phone on the nightstand does not.
+  //
+  // sleepDeep + sleepCore + sleepRem adds up to sleepHours. sleepAwakeHours
+  // is time awake *within* the night and sits outside that total.
+  sleepHours           Float?
+  sleepDeepHours       Float?
+  sleepCoreHours       Float?
+  sleepRemHours        Float?
+  sleepAwakeHours      Float?
+  // Lights-out to getting up. sleepHours / sleepInBedHours is sleep
+  // efficiency, and the gap between them is the time spent awake in bed.
+  sleepInBedHours      Float?
+  // When the night began and ended. Stored so the app can show a bedtime and
+  // a wake time rather than only a duration.
+  sleepStart           DateTime?
+  sleepEnd             DateTime?
+  // Which device reported the night, e.g. "Apple Watch van Bram". Two sources
+  // covering one night disagree, so this records which one was believed.
+  sleepSource          String?
+  // Apple only records wrist temperature while asleep; a night warmer than
+  // usual is one of the earlier signs of being run down.
+  sleepingWristTempC   Float?
+  // Breathing rate averaged across the night. Apple only measures it asleep.
+  sleepRespiratoryRate Float?
+  exerciseMinutes      Float?
+  flightsClimbed       Int?
+  vo2Max               Float?
+  avgHrv               Float?
+  avgBloodOxygen       Float?
+  updatedAt            DateTime  @updatedAt
 
   @@unique([userId, date])
 }
@@ -144,31 +223,43 @@ model HealthSyncConfig {
   dropboxRefreshToken String
   folderPaths         String[]  @default(["/Apps/Health Auto Export/Health Auto Export/Apple health", "/Apps/Health Auto Export/Health Auto Export/Apple Health Wourkouts"])
   lastSyncedAt        DateTime?
+  lastAttemptedAt     DateTime?
   lastSyncError       String?
   createdAt           DateTime  @default(now())
+
+  // Set the first time the workout library is checked for newly uploaded
+  // files. Whatever is in the folder at that moment is the collection the
+  // athlete already has, not news, so the first check announces nothing and
+  // only what shows up afterwards is notified. Deliberately not backfilled by
+  // the migration that added it: a connection whose library has never been
+  // read has no cache to tell old files from new, and would otherwise push
+  // the entire library on the first run. See lib/newWorkoutNotifications.ts.
+  libraryBaselineAt DateTime?
 }
 
 model GarminSyncConfig {
-  id            String    @id @default(uuid())
-  userId        String    @unique
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  oauth1Token   String
-  oauth2Token   String
-  lastSyncedAt  DateTime?
-  lastSyncError String?
-  createdAt     DateTime  @default(now())
+  id              String    @id @default(uuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  oauth1Token     String
+  oauth2Token     String
+  lastSyncedAt    DateTime?
+  lastAttemptedAt DateTime?
+  lastSyncError   String?
+  createdAt       DateTime  @default(now())
 }
 
 model StravaSyncConfig {
-  id            String    @id @default(uuid())
-  userId        String    @unique
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  accessToken   String
-  refreshToken  String
-  expiresAt     DateTime
-  lastSyncedAt  DateTime?
-  lastSyncError String?
-  createdAt     DateTime  @default(now())
+  id              String    @id @default(uuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken     String
+  refreshToken    String
+  expiresAt       DateTime
+  lastSyncedAt    DateTime?
+  lastAttemptedAt DateTime?
+  lastSyncError   String?
+  createdAt       DateTime  @default(now())
 }
 
 model SyncedDropboxFile {
@@ -225,6 +316,114 @@ model TrainingPlanConfig {
   updatedAt      DateTime @updatedAt
 }
 
+// What kind of event a goal is, which is what makes the plan train FOR it
+// rather than merely around it. The priority tier decides how much of the
+// calendar bends for a goal; this decides what the sessions in it actually
+// are — a bunch race and a 200km gravel day are the same shape of season and
+// completely different training. See lib/goalSpecificity.ts for the demands
+// each one maps to.
+enum GoalKind {
+  // No particular event: keep me fit. The plan behaves exactly as it did
+  // before goal types existed — today's Form picks today's session.
+  GENERAL
+  // Bike, long and steady: gran fondo, century, a big day out.
+  LONG_RIDE
+  // Bike, long with a lot of climbing — sustained efforts inside a long day.
+  HILLY_RIDE
+  // Bike, bunch racing and criteriums: repeated hard surges off a high floor.
+  RACE_RIDE
+  // Bike, one sustained effort at the limit.
+  TIME_TRIAL
+  // Bike, off-road: a long day broken up by hard, uneven efforts.
+  GRAVEL_MTB
+  // Run, 5k to 10k: short, fast, and mostly about the top end.
+  RUN_SHORT
+  // Run, half marathon to marathon: sustained pace over a long way.
+  RUN_LONG
+  // Run, ultra and trail: time on feet above everything else.
+  TRAIL_ULTRA
+  // Triathlon or duathlon: both disciplines, neither neglected.
+  MULTISPORT
+}
+
+// A priority tier, the standard A/B/C race scheme. It is the answer to "what
+// happens when two goals crowd each other": only an A goal reshapes the season
+// around itself, and the taper and post-race recovery each goal earns scale
+// with its tier. See lib/periodization.ts.
+enum TargetPriority {
+  // Peak for it: the full ramp is aimed here, the full taper runs into it, and
+  // the days after it are recovery.
+  A
+  // Matters, but not the one the season is built around: a short sharpening
+  // taper and a day or two off afterwards, on top of a build that carries on.
+  B
+  // Train through it: it goes on the calendar and the day itself is the event,
+  // but nothing around it moves.
+  C
+}
+
+// An event or date the athlete is building toward. There can be several, which
+// is the normal shape of a season: two or three things that matter over a year
+// plus a handful of smaller ones along the way. With none, the plan stays
+// purely reactive (today's Form picks today's session, which is all it ever did
+// before periodisation existed).
+//
+// The whole set is periodised together rather than one at a time — the ramp is
+// aimed at the season's A goal, while every goal in the list can pull a given
+// day down for its own taper, its own race day, or its own recovery afterwards.
+// See lib/periodization.ts.
+model TrainingTarget {
+  id       String         @id @default(uuid())
+  userId   String
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name     String
+  date     DateTime
+  priority TargetPriority @default(A)
+
+  // What kind of event it is. Priority answers "how much does this matter";
+  // this answers "what does it actually demand of me", which is what decides
+  // the sessions the plan picks. See lib/goalSpecificity.ts.
+  kind GoalKind @default(GENERAL)
+
+  // For a MULTISPORT goal only: what each leg of it actually is. A sprint
+  // duathlon and a long-course triathlon are both "multisport" and share
+  // almost no training — the bike leg of one is a 20km blast and of the other
+  // a five-hour ride. Each leg carries its own GoalKind (bikeKind must be a
+  // bike kind, runKind a run kind) and trains to its own demands, so the plan
+  // is composed from two profiles rather than one averaged one. Null on every
+  // other kind of goal, and cleared when a goal stops being MULTISPORT.
+  bikeKind GoalKind?
+  runKind  GoalKind?
+
+  // Fitness (CTL) to arrive at on the day. Null means "build at rampPerWeek
+  // for as long as there is runway", which is what most people actually want
+  // — see lib/periodization.ts's resolveCeiling. Only read off the season's
+  // anchor goal; a B or C goal's ceiling never reshapes the build.
+  peakCtl Float?
+
+  // CTL points per build week. 3-5 is the usual safe range; above ~7 is how
+  // people get injured, so the API caps it.
+  rampPerWeek         Float @default(4)
+  // Every Nth week is a recovery week at `recoveryMultiplier` of normal load.
+  recoveryEveryNWeeks Int   @default(4)
+  recoveryMultiplier  Float @default(0.6)
+  // Days before the event over which load tapers down to taperFloor. The
+  // stored value is what an A goal gets; lib/periodization.ts shortens it for
+  // a B goal and skips the taper entirely for a C goal.
+  taperDays           Int   @default(10)
+  taperFloor          Float @default(0.5)
+
+  // Anchors the build/recovery cycle, so week 1 is the week the first goal was
+  // set rather than some arbitrary epoch. Shared across a user's goals — see
+  // lib/periodization.ts's seasonStart — so adding a goal in August doesn't
+  // restart the week count for one already being built toward.
+  startedOn DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, date])
+}
+
 // One row per calendar day: either a rest day, or a specific workout picked
 // from the Dropbox workout library for that day. Regenerated daily on a
 // rolling basis from the TrainingPlanConfig plus the user's current fitness.
@@ -254,6 +453,18 @@ model PlannedDay {
   // which specific workout, just constrained to this discipline. See
   // lib/trainingPlan.ts's setDayDiscipline.
   disciplineOverride     PlannedDiscipline?
+  // What the periodisation asked of this day, recorded so the Plan tab and the
+  // weekly review can explain why a day is bigger or smaller than the standing
+  // weekly hours. Null when the user has no TrainingTarget. See
+  // lib/periodization.ts.
+  phase                  String?
+  phaseWeek              Int?
+  loadMultiplier         Float?
+  // Why this session, in one line — which demand of which goal it is training,
+  // e.g. "Threshold work, specific to Amstel Gold". Null when the athlete has
+  // no typed goal, in which case the pick is purely fitness-and-recovery
+  // driven and the Plan tab says so instead. See lib/goalSpecificity.ts.
+  focus                  String?
   generatedAt            DateTime           @default(now())
   // Set once a day's content is rearranged by hand (calendar drag-and-drop) —
   // the nightly/rolling regeneration in lib/trainingPlan.ts leaves a
@@ -283,6 +494,15 @@ model CachedLibraryWorkout {
   parsed         Json
   updatedAt      DateTime @updatedAt
 
+  // A row existing at all is what "a new workout was uploaded" means: the
+  // upsert in lib/workoutLibrary.ts creates one the first time a path is
+  // seen and updates it in place forever after, so re-parsing an edited file
+  // leaves firstSeenAt alone. notifiedAt records that the athlete has been
+  // told about this path; null means it is still owed a notification. See
+  // lib/newWorkoutNotifications.ts.
+  firstSeenAt DateTime  @default(now())
+  notifiedAt  DateTime?
+
   @@unique([userId, path])
 }
 
@@ -311,4 +531,29 @@ model PushSubscription {
   p256dh    String
   auth      String
   createdAt DateTime @default(now())
+}
+
+// When each background job is next due, kept in the database rather than in a
+// timer inside the web process. A free-tier service that is asleep, restarting
+// or deploying has no timers running, so an in-process schedule silently skips
+// every slot it is not awake for; a due date that outlives the process means a
+// missed run is still owed and gets made up on the next tick. See
+// lib/scheduler.ts, and .github/workflows/sync-heartbeat.yml for what ticks it
+// while the service is down.
+model ScheduledJob {
+  name          String    @id
+  // The cron expression and zone this row's nextRunAt was computed from, so a
+  // changed schedule can be noticed and the due date recomputed.
+  schedule      String
+  timezone      String
+  nextRunAt     DateTime
+  lastRunAt     DateTime?
+  lastSuccessAt DateTime?
+  lastError     String?
+  // Held for the duration of a run so two ticks (or two instances) cannot
+  // start the same job at once. Cleared when the run finishes.
+  lockedAt      DateTime?
+  updatedAt     DateTime  @updatedAt
+
+  @@index([nextRunAt])
 }

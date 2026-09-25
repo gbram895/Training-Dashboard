@@ -56,6 +56,7 @@ async function importStravaActivity(
   accessToken: string,
   activity: StravaActivity,
   thresholds: HrZoneThresholds,
+  failures: string[],
 ): Promise<'created' | 'replaced-duplicate' | 'skipped-duplicate' | 'skipped-existing'> {
   const externalId = stravaExternalId(activity.id);
   const existing = await prisma.workout.findUnique({ where: { externalId } });
@@ -82,6 +83,9 @@ async function importStravaActivity(
     }
   } catch (err) {
     console.error(`[strava-sync] failed to fetch streams for activity ${activity.id}:`, err);
+    // The workout still imports, but without HR zones or samples — say so
+    // rather than leaving a silently degraded activity on the dashboard.
+    failures.push(`${activity.name}: no heart-rate detail (${err instanceof Error ? err.message : String(err)})`);
   }
 
   let calorieKcal: number | undefined;
@@ -97,6 +101,9 @@ async function importStravaActivity(
     date,
     durationMin,
     distanceKm,
+    title: activity.name,
+    // Kept for OTHER as well as the title, so notes an athlete has since
+    // edited on an existing workout don't change meaning.
     notes: type === 'OTHER' ? activity.name : undefined,
     source: 'strava',
     externalId,
@@ -112,11 +119,22 @@ async function importStravaActivity(
 
 type StravaSampleWithZone = { offsetSec: number; heartRate?: number; speedMps?: number; powerWatts?: number };
 
+const MAX_REPORTED_FAILURES = 3;
+
+/** Null when every activity came through whole, otherwise a message short enough for the sync bar. */
+function summariseFailures(failures: string[]): string | null {
+  if (failures.length === 0) return null;
+  const shown = failures.slice(0, MAX_REPORTED_FAILURES).join('; ');
+  const rest = failures.length - MAX_REPORTED_FAILURES;
+  return `${failures.length} activity/activities imported incomplete — ${shown}${rest > 0 ? ` (+${rest} more)` : ''}`;
+}
+
 export async function runStravaSyncForUser(userId: string, options: { force?: boolean } = {}) {
   const config = await prisma.stravaSyncConfig.findUnique({ where: { userId } });
   if (!config) throw new Error('Strava is not connected for this account');
 
-  const totals = { activitiesSeen: 0, workoutsImported: 0 };
+  const totals = { activitiesSeen: 0, workoutsImported: 0, activitiesDegraded: 0 };
+  const failures: string[] = [];
 
   try {
     const accessToken = await getValidAccessToken(userId, config);
@@ -140,7 +158,7 @@ export async function runStravaSyncForUser(userId: string, options: { force?: bo
       totals.activitiesSeen += batch.length;
 
       for (const activity of batch) {
-        const result = await importStravaActivity(userId, accessToken, activity, thresholds);
+        const result = await importStravaActivity(userId, accessToken, activity, thresholds, failures);
         if (result === 'created' || result === 'replaced-duplicate') {
           totals.workoutsImported += 1;
           await sleep(150);
@@ -151,15 +169,20 @@ export async function runStravaSyncForUser(userId: string, options: { force?: bo
       page += 1;
     }
 
+    const now = new Date();
     await prisma.stravaSyncConfig.update({
       where: { userId },
-      data: { lastSyncedAt: new Date(), lastSyncError: null },
+      data: { lastSyncedAt: now, lastAttemptedAt: now, lastSyncError: summariseFailures(failures) },
     });
 
+    totals.activitiesDegraded = failures.length;
     return totals;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    await prisma.stravaSyncConfig.update({ where: { userId }, data: { lastSyncError: message } });
+    await prisma.stravaSyncConfig.update({
+      where: { userId },
+      data: { lastAttemptedAt: new Date(), lastSyncError: message },
+    });
     throw err;
   }
 }
@@ -190,6 +213,50 @@ export async function backfillStravaCalories(userId: string): Promise<number> {
     } catch (err) {
       console.error(`[strava-sync] calorie backfill failed for activity ${activityId}:`, err);
     }
+    await sleep(150);
+  }
+  return updated;
+}
+
+const TITLE_BACKFILL_PAGES = 20;
+
+/**
+ * Fills in `title` for activities imported before it was stored. The name is
+ * already on every row of the activity list, so this never fetches an
+ * activity's own detail record the way the calorie backfill has to — a whole
+ * history costs a handful of list calls instead of one call per workout.
+ *
+ * Stops as soon as every untitled workout has been matched.
+ */
+export async function backfillStravaTitles(userId: string): Promise<number> {
+  const config = await prisma.stravaSyncConfig.findUnique({ where: { userId } });
+  if (!config) return 0;
+
+  const pending = new Map<string, string>();
+  const untitled = await prisma.workout.findMany({
+    where: { userId, source: 'strava', title: null, externalId: { not: null } },
+    select: { id: true, externalId: true },
+  });
+  for (const w of untitled) pending.set(w.externalId!, w.id);
+  if (pending.size === 0) return 0;
+
+  const accessToken = await getValidAccessToken(userId, config);
+
+  let updated = 0;
+  for (let page = 1; page <= TITLE_BACKFILL_PAGES && pending.size > 0; page += 1) {
+    const batch = await listActivities(accessToken, page, BACKFILL_PAGE_SIZE);
+    if (batch.length === 0) break;
+
+    for (const activity of batch) {
+      const externalId = stravaExternalId(activity.id);
+      const workoutId = pending.get(externalId);
+      if (!workoutId || !activity.name) continue;
+      await prisma.workout.update({ where: { id: workoutId }, data: { title: activity.name } });
+      pending.delete(externalId);
+      updated += 1;
+    }
+
+    if (batch.length < BACKFILL_PAGE_SIZE) break;
     await sleep(150);
   }
   return updated;

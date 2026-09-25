@@ -1,9 +1,19 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiFetch, ApiError } from '../api/client';
-import type { Workout, WorkoutSample } from '../api/types';
+import type { SessionReview, TssSource, Workout, WorkoutSample } from '../api/types';
 import { formatDateUTC, formatDistance, formatDuration, formatPace, formatSpeed } from '../lib/format';
 import WorkoutSampleChart from '../components/WorkoutSampleChart';
+import SessionReviewCard from '../components/SessionReviewCard';
+
+// Training load is measured from power where it exists, pace where it doesn't,
+// and time-in-zone for everything else — worth saying, since the three are not
+// equally precise and the last one is what makes badminton and hikes count.
+const TSS_SOURCE_LABEL: Record<TssSource, string> = {
+  POWER: ' from power',
+  PACE: ' from pace',
+  HR: ' from heart rate',
+};
 
 const WORKOUT_LABELS: Record<string, string> = {
   RUN: 'Run',
@@ -34,6 +44,7 @@ export default function WorkoutDetail() {
   const navigate = useNavigate();
   const [workout, setWorkout] = useState<Workout | null>(null);
   const [samples, setSamples] = useState<WorkoutSample[]>([]);
+  const [review, setReview] = useState<SessionReview | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [rpe, setRpe] = useState<number | null>(null);
@@ -52,6 +63,16 @@ export default function WorkoutDetail() {
         setLoading(false);
       },
     );
+  }, [id]);
+
+  // Its own request rather than part of the load above: judging a session
+  // means walking its whole sample stream, and the page should not wait on
+  // that to draw. A workout on a day the plan had no session for simply has
+  // no review, and the card renders nothing.
+  useEffect(() => {
+    apiFetch<SessionReview | null>(`/workouts/${id}/plan-review`)
+      .then(setReview)
+      .catch(() => setReview(null));
   }, [id]);
 
   async function saveFeedback() {
@@ -120,7 +141,10 @@ export default function WorkoutDetail() {
 
         <div className="workout-card-header">
           <h1 className="workout-detail-title">
-            {workout.type === 'OTHER' && workout.notes ? workout.notes : (WORKOUT_LABELS[workout.type] ?? workout.type)}
+            {workout.title?.trim() ||
+              (workout.type === 'OTHER' && workout.notes
+                ? workout.notes
+                : (WORKOUT_LABELS[workout.type] ?? workout.type))}
           </h1>
           <Link to={`/workouts/${workout.id}/edit`}>
             <button type="button" className="secondary">
@@ -129,7 +153,12 @@ export default function WorkoutDetail() {
           </Link>
         </div>
 
-        <p className="muted">{formatDateUTC(workout.date, { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+        <p className="muted">
+          {/* The heading is the activity's own name when it has one, so the
+              discipline moves down here rather than disappearing. */}
+          {workout.title?.trim() ? `${WORKOUT_LABELS[workout.type] ?? workout.type} · ` : ''}
+          {formatDateUTC(workout.date, { month: 'long', day: 'numeric', year: 'numeric' })}
+        </p>
 
         <div className="workout-stat-tiles">
           <div className="workout-stat">
@@ -157,7 +186,7 @@ export default function WorkoutDetail() {
           {workout.tss != null && (
             <div className="workout-stat">
               <span className="workout-stat-value">{Math.round(workout.tss)}</span>
-              <span className="workout-stat-label">TSS</span>
+              <span className="workout-stat-label">TSS{TSS_SOURCE_LABEL[workout.tssSource ?? 'POWER']}</span>
             </div>
           )}
           {workout.kilojoules != null && (
@@ -181,6 +210,8 @@ export default function WorkoutDetail() {
         </div>
 
         {workout.notes && workout.type !== 'OTHER' && <p className="muted">{workout.notes}</p>}
+
+        {review && <SessionReviewCard review={review} />}
 
         <div className="gd-set-group">
           <p className="gd-set-group-label">How did it feel?</p>

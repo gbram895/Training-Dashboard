@@ -1,5 +1,15 @@
 import { Link } from 'react-router-dom';
-import type { DailyHealthSummary, DisciplineStats, DropboxSyncStatus, FitnessPoint, Goal, HrZoneWeek, Workout } from '../../api/types';
+import type {
+  DailyHealthSummary,
+  DisciplineStats,
+  DropboxSyncStatus,
+  FitnessPoint,
+  GarminSyncStatus,
+  Goal,
+  HrZoneWeek,
+  StravaSyncStatus,
+  Workout,
+} from '../../api/types';
 import WorkoutList from '../WorkoutList';
 import DashboardHeader from './DashboardHeader';
 import HeaderSyncButtons from './HeaderSyncButtons';
@@ -14,6 +24,7 @@ import SleepRhrCharts from './SleepRhrCharts';
 import HrZonesChart from './HrZonesChart';
 import DisciplineCharts from './DisciplineCharts';
 import FitnessChart from './FitnessChart';
+import PowerCurveChart from './PowerCurveChart';
 
 const WORKOUT_LABELS: Record<string, string> = {
   RUN: 'Run',
@@ -38,6 +49,8 @@ export default function LegacyAnalytics({
   goals,
   recent,
   syncStatus,
+  stravaStatus,
+  garminStatus,
   fitness,
   onSynced,
 }: {
@@ -47,6 +60,8 @@ export default function LegacyAnalytics({
   goals: Goal[];
   recent: Workout[];
   syncStatus: DropboxSyncStatus | null;
+  stravaStatus: StravaSyncStatus | null;
+  garminStatus: GarminSyncStatus | null;
   fitness: FitnessPoint[] | null;
   onSynced: () => void;
 }) {
@@ -61,7 +76,7 @@ export default function LegacyAnalytics({
 
       <SummaryBar stats={disciplineStats} />
 
-      <DropboxSyncBar status={syncStatus} />
+      <DropboxSyncBar status={syncStatus} onChanged={onSynced} />
 
       <StatTilesRow days={days} disciplineStats={disciplineStats} />
 
@@ -75,6 +90,8 @@ export default function LegacyAnalytics({
       <HrZonesChart weeks={hrZones} />
 
       {fitness !== null && <FitnessChart series={fitness} onBackfilled={onSynced} />}
+
+      <PowerCurveChart />
 
       <DisciplineCharts weekly={disciplineStats.weekly} />
 
@@ -92,9 +109,9 @@ export default function LegacyAnalytics({
         )}
       </section>
 
-      <StravaSyncBar onSynced={onSynced} />
+      <StravaSyncBar status={stravaStatus} onChanged={onSynced} />
 
-      <GarminSyncBar onSynced={onSynced} />
+      <GarminSyncBar status={garminStatus} onChanged={onSynced} />
     </>
   );
 }

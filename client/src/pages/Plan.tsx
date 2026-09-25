@@ -7,6 +7,7 @@ import type {
   PlannedDiscipline,
   SelectedWorkout,
   ThresholdSettings,
+  TrainingPhase,
   TrainingPlanConfig,
   WorkoutCategory,
 } from '../api/types';
@@ -18,8 +19,20 @@ import NewPlanModal from '../components/NewPlanModal';
 import RearrangePlanModal from '../components/RearrangePlanModal';
 import WeeklyAvailabilityModal from '../components/WeeklyAvailabilityModal';
 import PageHead from '../components/PageHead';
+import WeeklyReviewCard from '../components/plan/WeeklyReviewCard';
 import { useCachedState } from '../lib/pageCache';
+import { useRefreshOnResume } from '../lib/useRefreshOnResume';
 import { configDisciplineForDate, weekdayLabel } from '../lib/planDates';
+
+// What the periodisation made of the selected day. The goals themselves live
+// on the Goals tab; this is only the reason today's session is the size it is.
+const PHASE_LABEL: Record<TrainingPhase, string> = {
+  BUILD: 'Build week',
+  RECOVERY: 'Recovery week',
+  TAPER: 'Taper',
+  EVENT: 'Race day',
+  POST_RACE: 'Easy after a race',
+};
 
 const CATEGORY_INFO: { key: WorkoutCategory | 'OTHER'; label: string; icon: string; description: string }[] = [
   { key: 'VO2MAX', label: 'VO2Max', icon: '💨', description: 'Short, maximal efforts that push your aerobic ceiling.' },
@@ -129,6 +142,7 @@ export default function Plan() {
   }
 
   useEffect(load, []);
+  useRefreshOnResume(load);
 
   // Deep link from the Sunday-evening push notification.
   useEffect(() => {
@@ -288,45 +302,6 @@ export default function Plan() {
                 })}
               </div>
 
-              <button type="button" className="gd-why-btn" onClick={() => setShowRearrangeModal(true)}>
-                Rearrange days
-              </button>
-              <button type="button" className="gd-why-btn" onClick={() => setShowAvailabilityModal(true)}>
-                Set next week's availability
-              </button>
-
-              <div className="gd-availability-card">
-                <div className="gd-availability-row">
-                  <span className="gd-availability-label">Today's availability</span>
-                  <span className="gd-availability-value mono">{formatHours(availability)}</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={4}
-                  step={0.25}
-                  value={availability}
-                  disabled={!todayPlanned || savingAvailability}
-                  onChange={(e) => setAvailability(Number(e.target.value))}
-                  onMouseUp={(e) => commitAvailability(Number((e.target as HTMLInputElement).value))}
-                  onTouchEnd={(e) => commitAvailability(Number((e.target as HTMLInputElement).value))}
-                  aria-label="Today's availability in hours"
-                />
-                {availability > 0 && (
-                  <button
-                    type="button"
-                    className="gd-no-time-btn"
-                    disabled={!todayPlanned || savingAvailability}
-                    onClick={() => {
-                      setAvailability(0);
-                      commitAvailability(0);
-                    }}
-                  >
-                    I don't have time today
-                  </button>
-                )}
-              </div>
-
               <div className="gd-sec-title">
                 <span className="gd-flag" />
                 <h4>Suggested training</h4>
@@ -435,14 +410,74 @@ export default function Plan() {
                     </div>
                     {showWhy && (
                       <p className="gd-plan-why-text">
-                        {selectedDay.category
-                          ? `Picked as a ${selectedDay.category.toLowerCase()} session based on your current fitness and recovery. `
-                          : ''}
+                        {/* With a typed goal the plan can say which of that
+                            event's demands today is training; without one the
+                            only honest answer is fitness and recovery. */}
+                        {selectedDay.focus
+                          ? `${selectedDay.focus} `
+                          : selectedDay.category
+                            ? `Picked as a ${selectedDay.category.toLowerCase()} session based on your current fitness and recovery. `
+                            : ''}
                         {selectedDay.profile ?? ''}
                       </p>
                     )}
                   </div>
                 ))}
+
+              <button type="button" className="gd-why-btn" onClick={() => setShowRearrangeModal(true)}>
+                Rearrange days
+              </button>
+              <button type="button" className="gd-why-btn" onClick={() => setShowAvailabilityModal(true)}>
+                Set next week's availability
+              </button>
+
+              {selectedDay?.phase && (
+                <p className="gd-plan-phase">
+                  <span className={`gd-phase-pill gd-phase-${selectedDay.phase.toLowerCase().replace('_', '-')}`}>
+                    {PHASE_LABEL[selectedDay.phase]}
+                    {selectedDay.phase === 'BUILD' && selectedDay.phaseWeek ? ` ${selectedDay.phaseWeek}` : ''}
+                  </span>
+                  {/* The day tabs above mean this can be any day in the window,
+                      not just today — say which day it is talking about. */}
+                  <span>is why {selectedDayIndex === 0 ? 'today' : 'that day'} is the size it is</span>
+                </p>
+              )}
+
+              {/* Kept to two tight lines: the hours and the "no time" shortcut
+                  share the label's row rather than each taking one of their own. */}
+              <div className="gd-availability-card">
+                <div className="gd-availability-row">
+                  <span className="gd-availability-label">Today's availability</span>
+                  <span className="gd-availability-value mono">{formatHours(availability)}</span>
+                  {availability > 0 && (
+                    <button
+                      type="button"
+                      className="gd-no-time-btn"
+                      disabled={!todayPlanned || savingAvailability}
+                      title="I don't have time today"
+                      aria-label="I don't have time today"
+                      onClick={() => {
+                        setAvailability(0);
+                        commitAvailability(0);
+                      }}
+                    >
+                      No time
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={4}
+                  step={0.25}
+                  value={availability}
+                  disabled={!todayPlanned || savingAvailability}
+                  onChange={(e) => setAvailability(Number(e.target.value))}
+                  onMouseUp={(e) => commitAvailability(Number((e.target as HTMLInputElement).value))}
+                  onTouchEnd={(e) => commitAvailability(Number((e.target as HTMLInputElement).value))}
+                  aria-label="Today's availability in hours"
+                />
+              </div>
 
               <p className="gd-plan-note">
                 Want a different rhythm? Adjust your weekly hours or discipline mix and Gradient will regenerate your
@@ -634,6 +669,8 @@ export default function Plan() {
           )}
         </>
       )}
+
+      {planConfig && <WeeklyReviewCard />}
     </div>
   );
 }

@@ -7,6 +7,7 @@ export interface GarminPushSegment {
   intensityLow?: number;
   intensityHigh?: number;
   role?: 'warmup' | 'cooldown';
+  targetMetric?: 'power' | 'pace' | 'hr';
 }
 
 export type GarminPushDiscipline = 'BIKE' | 'RUN';
@@ -16,7 +17,7 @@ export type GarminPushDiscipline = 'BIKE' | 'RUN';
 // values used by every community tool that builds structured workouts (the
 // garmin-connect package's own bundled RunningTemplate, mkuthan/garmin-workouts):
 // sportType 1/2 = running/cycling, stepType 1/2/3/5 = warmup/cooldown/interval/rest,
-// endCondition 2 = time, targetType 1/2/6 = no.target/power.zone/pace.zone.
+// endCondition 2 = time, targetType 1/2/4/6 = no.target/power.zone/heart.rate.zone/pace.zone.
 const SPORT_TYPE = {
   BIKE: { sportTypeId: 2, sportTypeKey: 'cycling' },
   RUN: { sportTypeId: 1, sportTypeKey: 'running' },
@@ -33,6 +34,7 @@ const TIME_END_CONDITION = { conditionTypeId: 2, conditionTypeKey: 'time' };
 const NO_TARGET = { workoutTargetTypeId: 1, workoutTargetTypeKey: 'no.target' };
 const POWER_ZONE_TARGET = { workoutTargetTypeId: 2, workoutTargetTypeKey: 'power.zone' };
 const PACE_ZONE_TARGET = { workoutTargetTypeId: 6, workoutTargetTypeKey: 'pace.zone' };
+const HEART_RATE_ZONE_TARGET = { workoutTargetTypeId: 4, workoutTargetTypeKey: 'heart.rate.zone' };
 
 interface GarminZoneRef {
   workoutTargetTypeId: number;
@@ -76,6 +78,7 @@ export interface GarminWorkoutPayload {
 export interface AthleteSpeedThresholds {
   ftpWatts: number;
   thresholdSpeedMps: number;
+  thresholdHrBpm: number;
 }
 
 function stepTypeFor(segment: GarminPushSegment): { stepTypeId: number; stepTypeKey: string } {
@@ -93,6 +96,20 @@ function targetFor(
   if (segment.intensityFraction == null) return { targetType: NO_TARGET, targetValueOne: null, targetValueTwo: null };
   const low = segment.intensityLow ?? segment.intensityFraction;
   const high = segment.intensityHigh ?? segment.intensityFraction;
+
+  // A segment the source file prescribed in heart rate goes back out in heart
+  // rate, whatever the discipline — sending "run at 1.16x threshold pace" for a
+  // rep written as "198bpm" would be a different session. Everything else falls
+  // back to the discipline's own metric, which is all a source without a metric
+  // of its own (a hand-typed workout note) can offer.
+  if (segment.targetMetric === 'hr') {
+    if (thresholds.thresholdHrBpm <= 0) return { targetType: NO_TARGET, targetValueOne: null, targetValueTwo: null };
+    return {
+      targetType: HEART_RATE_ZONE_TARGET,
+      targetValueOne: Math.round(low * thresholds.thresholdHrBpm),
+      targetValueTwo: Math.round(high * thresholds.thresholdHrBpm),
+    };
+  }
 
   if (discipline === 'BIKE') {
     if (thresholds.ftpWatts <= 0) return { targetType: NO_TARGET, targetValueOne: null, targetValueTwo: null };
@@ -145,11 +162,12 @@ export function buildGarminWorkoutPayload(
 export async function loadAthleteSpeedThresholds(userId: string): Promise<AthleteSpeedThresholds> {
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: userId },
-    select: { ftpWatts: true, thresholdPaceSecPerKm: true },
+    select: { ftpWatts: true, thresholdPaceSecPerKm: true, hrZone4Max: true },
   });
   return {
     ftpWatts: user.ftpWatts,
     thresholdSpeedMps: user.thresholdPaceSecPerKm > 0 ? 1000 / user.thresholdPaceSecPerKm : 0,
+    thresholdHrBpm: user.hrZone4Max,
   };
 }
 

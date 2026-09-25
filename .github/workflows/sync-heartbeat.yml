@@ -1,0 +1,61 @@
+# Something outside the app has to tell it to run its background jobs.
+#
+# The schedules themselves live in the database (server/src/lib/scheduler.ts).
+# While the service is awake its own timer ticks them, but the free instance
+# sleeps after fifteen idle minutes and is gone entirely during a deploy or a
+# restart — exactly when a sync is most likely to be owed. This workflow is the
+# outside knock: the request wakes the instance, and the tick it triggers runs
+# whatever fell due in the meantime.
+#
+# Two repository secrets are needed, both under Settings → Secrets and
+# variables → Actions:
+#   APP_URL       the deployed origin, e.g. https://training-dashboard.onrender.com
+#   SYNC_API_KEY  the value Render generated for the service's SYNC_API_KEY
+#
+# Note that GitHub disables scheduled workflows in a repository that has seen no
+# activity for 60 days, and emails the owner when it does. If syncing quietly
+# stops a couple of months from now, check here first.
+
+name: Sync heartbeat
+
+on:
+  schedule:
+    # Every ten minutes, inside Render's fifteen-minute idle window so this
+    # doubles as the thing keeping the service awake. GitHub runs scheduled
+    # jobs late when it is busy and occasionally drops one; the scheduler is
+    # written to absorb that, since a job stays due until something runs it.
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+# A late run must never overlap the next one into a pile-up.
+concurrency:
+  group: sync-heartbeat
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Run anything that has fallen due
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          SYNC_API_KEY: ${{ secrets.SYNC_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${APP_URL:-}" ] || [ -z "${SYNC_API_KEY:-}" ]; then
+            echo "APP_URL or SYNC_API_KEY is not set on this repository." >&2
+            echo "See the comment at the top of this workflow for how to set them." >&2
+            exit 1
+          fi
+
+          # A sleeping instance takes the best part of a minute to answer its
+          # first request, so this waits for the cold start rather than calling
+          # it an outage. --retry-all-errors covers the connection being closed
+          # outright while the container is still coming up.
+          curl --silent --show-error --fail-with-body \
+               --retry 3 --retry-delay 20 --retry-all-errors \
+               --connect-timeout 30 --max-time 240 \
+               -X POST "${APP_URL%/}/api/cron/tick" \
+               -H "x-sync-key: $SYNC_API_KEY"

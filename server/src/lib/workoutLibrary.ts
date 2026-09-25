@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from './prisma.js';
 import { downloadFile, downloadFileBinary, listFolder, refreshAccessToken, type DropboxFileEntry } from './dropbox.js';
-import { parseFitWorkoutFile, parseZwoFile } from './workoutFormats.js';
+import { parseFitWorkoutFile, parseZwoFile, type AthleteThresholds } from './workoutFormats.js';
 import { classifyWorkoutCategory, type WorkoutCategory, type WorkoutSegment } from './workoutIntensity.js';
 
 // Bounds how many files are downloaded+parsed concurrently on a cold cache
@@ -143,7 +143,7 @@ export function parseWorkoutFile(path: string, content: string): ParsedWorkoutFi
 async function parseEntry(
   accessToken: string,
   entry: DropboxFileEntry,
-  thresholds: { ftpWatts: number; thresholdSpeedMps: number },
+  thresholds: AthleteThresholds,
 ): Promise<ParsedWorkoutFile | null> {
   let parsed: ParsedWorkoutFile | null = null;
   if (/\.fit$/i.test(entry.name)) {
@@ -167,16 +167,20 @@ export async function fetchWorkoutLibrary(userId: string): Promise<ParsedWorkout
 
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: userId },
-    select: { ftpWatts: true, thresholdPaceSecPerKm: true },
+    select: { ftpWatts: true, thresholdPaceSecPerKm: true, hrZone4Max: true },
   });
-  const thresholds = {
+  const thresholds: AthleteThresholds = {
     ftpWatts: user.ftpWatts,
     thresholdSpeedMps: user.thresholdPaceSecPerKm > 0 ? 1000 / user.thresholdPaceSecPerKm : 0,
+    // The zone 4/5 boundary is this app's threshold heart rate — see
+    // normalizeHeartRate in workoutFormats.ts.
+    thresholdHrBpm: user.hrZone4Max,
   };
-  // .fit/.zwo parsing bakes FTP/threshold pace into each segment's intensity
-  // fraction, so a cached parse is only valid while these haven't changed —
-  // otherwise it's stale in exactly the way an edited source file would be.
-  const thresholdsKey = `${user.ftpWatts}:${user.thresholdPaceSecPerKm}`;
+  // .fit/.zwo parsing bakes FTP, threshold pace and threshold HR into each
+  // segment's intensity fraction, so a cached parse is only valid while these
+  // haven't changed — otherwise it's stale in exactly the way an edited source
+  // file would be.
+  const thresholdsKey = `${user.ftpWatts}:${user.thresholdPaceSecPerKm}:${user.hrZone4Max}`;
 
   const accessToken = await refreshAccessToken(config.dropboxRefreshToken);
 

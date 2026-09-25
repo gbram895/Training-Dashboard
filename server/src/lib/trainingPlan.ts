@@ -1,8 +1,27 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from './prisma.js';
 import { fetchWorkoutLibrary, type ParsedWorkoutFile, type PlannedDiscipline } from './workoutLibrary.js';
-import type { WorkoutCategory } from './workoutIntensity.js';
+import { CATEGORY_ORDER, estimatedTssForBucket, type WorkoutCategory } from './workoutIntensity.js';
+import { judgeRamp, RAMP_WINDOW_DAYS, type RampBand } from './rampRate.js';
 import { computeFitnessSeries } from './fitness.js';
+import { sleepQualityScore } from './sleepAnalysis.js';
+import {
+  measureTssPerHour,
+  periodizeDay,
+  pickAnchor,
+  type DayPeriodization,
+  type PeriodizationContext,
+} from './periodization.js';
+import {
+  disciplineFor,
+  emphasisFor,
+  focusLine,
+  goalForDay,
+  legForDay,
+  legsFor,
+  selectCategory,
+  type GoalLegs,
+} from './goalSpecificity.js';
 
 const DAY_KEYS = [
   'sundayHours',
@@ -39,14 +58,16 @@ function utcMidnight(date: Date): Date {
 // Very fatigued -> ease off; very fresh -> can handle the hardest sessions.
 // Deliberately conservative bands so the app defaults to sustainable training
 // rather than chasing peak fitness.
+//
+// This is a CEILING, not a prescription. With a typed goal, lib/goalSpecificity.ts
+// picks which session at or below it the athlete most needs; without one, the
+// ceiling is taken as the answer, which is all this ever did before.
 function categoryFromTsb(tsb: number): WorkoutCategory {
   if (tsb < -5) return 'ENDURANCE';
   if (tsb < 10) return 'TEMPO';
   if (tsb < 25) return 'THRESHOLD';
   return 'VO2MAX';
 }
-
-const CATEGORY_ORDER: WorkoutCategory[] = ['ENDURANCE', 'TEMPO', 'THRESHOLD', 'VO2MAX'];
 
 function downgrade(category: WorkoutCategory, steps: number): WorkoutCategory {
   const idx = Math.max(0, CATEGORY_ORDER.indexOf(category) - steps);
@@ -61,8 +82,9 @@ function downgrade(category: WorkoutCategory, steps: number): WorkoutCategory {
 const FORCED_REST_TSB = -30;
 
 interface ReadinessModifiers {
-  hrvRatio: number | null; // most recent HRV vs its own 7-day rolling average
+  hrvRatio: number | null; // most recent HRV vs the 7 days before it (null until there is a baseline)
   sleepHours: number | null; // most recent night's sleep
+  sleepQuality: number | null; // 0-100 from that night's stage breakdown (null without one)
   lastRpe: number | null; // RPE (1-10) logged against the most recent workout, if any
   missedHardSessionYesterday: boolean; // yesterday was planned THRESHOLD/VO2MAX but never logged
 }
@@ -77,15 +99,36 @@ async function getReadinessModifiers(userId: string): Promise<ReadinessModifiers
   const days = await prisma.dailyHealthSummary.findMany({
     where: { userId, date: { gte: since } },
     orderBy: { date: 'asc' },
-    select: { avgHrv: true, sleepHours: true },
+    select: {
+      avgHrv: true,
+      sleepHours: true,
+      sleepDeepHours: true,
+      sleepRemHours: true,
+      sleepInBedHours: true,
+    },
   });
 
   const hrvValues = days.map((d) => d.avgHrv).filter((v): v is number => v != null);
   const lastHrv = hrvValues[hrvValues.length - 1] ?? null;
-  const baselineHrv = hrvValues.length ? hrvValues.reduce((a, b) => a + b, 0) / hrvValues.length : null;
+  // The baseline deliberately excludes the most recent reading. Averaging it
+  // into its own baseline drags the ratio towards 1.0 — and with a single
+  // reading in the window the ratio is exactly 1.0, so the low-HRV downgrade
+  // below could never fire no matter how far HRV had dropped. Same rule the
+  // dashboard's readiness ring uses (client/src/lib/readiness.ts).
+  const priorHrv = hrvValues.slice(0, -1);
+  const baselineHrv = priorHrv.length ? priorHrv.reduce((a, b) => a + b, 0) / priorHrv.length : null;
   const hrvRatio = lastHrv != null && baselineHrv ? lastHrv / baselineHrv : null;
 
-  const lastSleep = days.length ? (days[days.length - 1].sleepHours ?? null) : null;
+  const lastNight = days.length ? days[days.length - 1] : null;
+  const lastSleep = lastNight?.sleepHours ?? null;
+  const lastSleepQuality = lastNight
+    ? sleepQualityScore({
+        totalHours: lastNight.sleepHours,
+        deepHours: lastNight.sleepDeepHours,
+        remHours: lastNight.sleepRemHours,
+        inBedHours: lastNight.sleepInBedHours,
+      })
+    : null;
 
   // Bounded to the last 2 days — a brutal session should ease off tomorrow,
   // not silently suppress intensity for a week until another RPE is logged.
@@ -122,7 +165,13 @@ async function getReadinessModifiers(userId: string): Promise<ReadinessModifiers
     missedHardSessionYesterday = !logged;
   }
 
-  return { hrvRatio, sleepHours: lastSleep, lastRpe: lastLoggedWorkout?.rpe ?? null, missedHardSessionYesterday };
+  return {
+    hrvRatio,
+    sleepHours: lastSleep,
+    sleepQuality: lastSleepQuality,
+    lastRpe: lastLoggedWorkout?.rpe ?? null,
+    missedHardSessionYesterday,
+  };
 }
 
 // A brutally hard session (self-reported RPE 9-10) is a stronger, more
@@ -130,39 +179,88 @@ async function getReadinessModifiers(userId: string): Promise<ReadinessModifiers
 // the very next session regardless of what the fitness curve alone says.
 const HIGH_RPE_THRESHOLD = 9;
 
-function decideCategory(tsb: number | null, readiness: ReadinessModifiers): WorkoutCategory {
-  let category = tsb != null ? categoryFromTsb(tsb) : 'TEMPO';
+// A night can be long and still not have recovered anything: mostly light
+// sleep, or broken up enough that a third of it was spent awake. Length alone
+// could never see that, which is why this sits beside the under-six-hours rule
+// rather than replacing it. Deliberately only reachable when the night WAS
+// long enough — a short night already costs a step, and taking two for one bad
+// night suppresses more training than one night's evidence justifies.
+const POOR_SLEEP_QUALITY = 60;
+
+/**
+ * The hardest session today's fitness and recovery allow — never exceeded.
+ *
+ * `ramp` is how fast load is climbing for that day (see lib/rampRate.ts), from
+ * the same judgement the dashboard's warning card shows. It earns its place
+ * next to the Form bands above rather than duplicating them because the
+ * acute:chronic ratio is normalised by fitness: `ratio = 1 - TSB / CTL`, so a
+ * Form of -20 is a ratio of 1.67 on a CTL of 30 and 1.22 on a CTL of 90.
+ * `categoryFromTsb`'s absolute bands treat those identically; this backs off in
+ * the first case and not the second, which is the whole point of asking about
+ * ramp rate. It also catches a sustained climb that the ratio alone never sees,
+ * because acute and chronic load rise together.
+ *
+ * It costs one downgrade step, not a rest day. FORCED_REST_TSB above already
+ * stops the wheels coming off, and a second independent trigger for forced rest
+ * would give a plan that bails out on any hard week.
+ */
+function readinessCeiling(
+  tsb: number | null,
+  readiness: ReadinessModifiers,
+  ramp: RampBand,
+): { category: WorkoutCategory; rampLimited: boolean } {
+  const base = tsb != null ? categoryFromTsb(tsb) : 'TEMPO';
 
   let downgradeSteps = 0;
   if (readiness.hrvRatio != null && readiness.hrvRatio < 0.8) downgradeSteps += 1;
   if (readiness.sleepHours != null && readiness.sleepHours < 6) downgradeSteps += 1;
+  else if (readiness.sleepQuality != null && readiness.sleepQuality < POOR_SLEEP_QUALITY) downgradeSteps += 1;
   if (readiness.lastRpe != null && readiness.lastRpe >= HIGH_RPE_THRESHOLD) downgradeSteps += 1;
   if (readiness.missedHardSessionYesterday) downgradeSteps += 1;
 
-  if (downgradeSteps > 0) category = downgrade(category, downgradeSteps);
-  return category;
+  const withoutRamp = downgradeSteps > 0 ? downgrade(base, downgradeSteps) : base;
+  const rampSpike = ramp === 'SPIKE';
+  const category = rampSpike ? downgrade(withoutRamp, 1) : withoutRamp;
+
+  // Only claim the ramp changed something when it actually did — at ENDURANCE
+  // there is nothing left to take away, and saying otherwise would put a note
+  // on a day that would have looked exactly the same anyway.
+  return { category, rampLimited: rampSpike && category !== withoutRamp };
 }
 
-// Rough numeric TSS per 1-5 stress bucket (see workoutIntensity.ts's own
-// stressBucket thresholds — this just inverts them to a representative
-// midpoint), used only to project CTL/ATL forward for days that haven't
-// happened yet. The real, precise TSS from actual samples takes over once a
-// workout is logged (see trainingLoad.ts) — this is just a planning estimate.
-function estimatedTssForBucket(bucket: number | null | undefined): number {
-  switch (bucket) {
-    case 1:
-      return 25;
-    case 2:
-      return 55;
-    case 3:
-      return 85;
-    case 4:
-      return 120;
-    case 5:
-      return 160;
-    default:
-      return 50;
-  }
+// Workouts this close together in length fit a given day about equally well,
+// so there is no reason to always hand back the same one. Picking strictly
+// the closest match is what made a stable weekly schedule produce a stable
+// weekly workout — the same Tuesday session, week after week.
+const DURATION_TIE_MINUTES = 15;
+
+/**
+ * Among the workouts that suit the day about equally well, take a different
+ * one on different days.
+ *
+ * The rotation is seeded from the date rather than randomised, which matters:
+ * the plan regenerates several times a day (every sync, every settings change,
+ * the nightly rebuild), and a random pick would mean today's session changed
+ * under the athlete every time. A date seed gives a day one stable answer and
+ * neighbouring days different ones.
+ */
+function rotateAmongClosest(
+  pool: ParsedWorkoutFile[],
+  targetMinutes: number,
+  seed: number,
+): ParsedWorkoutFile {
+  const distance = (w: ParsedWorkoutFile) =>
+    w.durationMin == null ? Number.POSITIVE_INFINITY : Math.abs(w.durationMin - targetMinutes);
+  const best = pool.reduce((a, w) => (distance(w) < distance(a) ? w : a), pool[0]);
+  const bestDistance = distance(best);
+  if (!Number.isFinite(bestDistance)) return best;
+
+  // Sorted by path so the rotation doesn't depend on the order Dropbox
+  // happened to list the library in.
+  const equallyGood = pool
+    .filter((w) => distance(w) <= bestDistance + DURATION_TIE_MINUTES)
+    .sort((a, b) => a.path.localeCompare(b.path));
+  return equallyGood[seed % equallyGood.length] ?? best;
 }
 
 function pickWorkout(
@@ -171,6 +269,7 @@ function pickWorkout(
   targetMinutes: number,
   category: WorkoutCategory,
   avoidPaths: string[],
+  seed: number,
 ): ParsedWorkoutFile | null {
   const byDiscipline = library.filter((w) => w.discipline === discipline);
   if (byDiscipline.length === 0) return null;
@@ -178,22 +277,18 @@ function pickWorkout(
   // Never hand back something wildly longer than what was actually scheduled
   // — a 3h ride on a day set for 1h is worse than no ride at all. A workout
   // with no parsed duration can't be checked, so it's let through but ranked
-  // last (see distanceFrom below), rather than assumed to fit.
+  // last (see distance above), rather than assumed to fit.
   const maxAllowedMinutes = Math.max(targetMinutes * 1.5, targetMinutes + 20);
   const withinTolerance = byDiscipline.filter((w) => w.durationMin == null || w.durationMin <= maxAllowedMinutes);
   if (withinTolerance.length === 0) return null;
 
-  const distanceFrom = (w: ParsedWorkoutFile) => (w.durationMin == null ? Infinity : Math.abs(w.durationMin - targetMinutes));
-  const closestIn = (pool: ParsedWorkoutFile[]) =>
-    pool.reduce((best, w) => (distanceFrom(w) < distanceFrom(best) ? w : best), pool[0]);
-
-  // Prefer a workout not used in the last couple of days, so a library with
-  // several options in the same category doesn't collapse to one repeat —
-  // but never refuse to plan a day just to avoid a repeat.
+  // Prefer a workout not used recently, so a library with several options in
+  // the same category doesn't collapse to one repeat — but never refuse to
+  // plan a day just to avoid a repeat.
   const pickFrom = (pool: ParsedWorkoutFile[]) => {
     if (pool.length === 0) return null;
     const notRecent = pool.filter((w) => !avoidPaths.includes(w.path));
-    return closestIn(notRecent.length > 0 ? notRecent : pool);
+    return rotateAmongClosest(notRecent.length > 0 ? notRecent : pool, targetMinutes, seed);
   };
 
   const inCategory = withinTolerance.filter((w) => (w.category ?? undefined) === category);
@@ -218,6 +313,12 @@ interface GeneratedDay {
   restReason?: string;
   workout?: ParsedWorkoutFile;
   category?: WorkoutCategory;
+  /** One line on why this session, when a typed goal drove the choice. */
+  focus?: string | null;
+  // Where this day sits across all of the athlete's goals, and what that did to
+  // its hours. Null when there are none, in which case the plan behaves exactly
+  // as it did before periodisation existed.
+  periodization?: DayPeriodization | null;
   // Set for a day the athlete has manually rearranged (calendar drag-and-drop)
   // — its content is left alone rather than upserted, see generatePlanWindow.
   skipUpsert?: boolean;
@@ -231,17 +332,54 @@ interface ManualOverrideRow {
 
 const CTL_DECAY = 1 - Math.exp(-1 / 42);
 const ATL_DECAY = 1 - Math.exp(-1 / 7);
-const RECENT_PICKS_MEMORY = 2;
+
+/**
+ * How many recent picks to keep out of the running, scaled to the library:
+ * refusing to repeat six workouts is pointless with four in the folder, and
+ * remembering only the last two wastes a library of thirty. Never below two,
+ * so even a tiny library doesn't hand back the same session twice running.
+ */
+function recentPicksMemory(libraryCount: number): number {
+  return Math.min(6, Math.max(2, Math.floor(libraryCount / 3)));
+}
+
+/**
+ * What the athlete's goal wants of a given day, when they have one with a type.
+ * Null means no typed goal, and the day is decided on fitness and recovery
+ * alone — exactly how every day was decided before goal types existed.
+ */
+interface GoalContext {
+  legs: GoalLegs;
+  goalName: string;
+  emphasis: ReturnType<typeof emphasisFor>;
+  isLongDay: boolean;
+  /**
+   * Session types already planned, oldest first, real history then this
+   * window. A single-sport goal measures its mix across the whole week, since
+   * its target shares are a whole-week budget; a composed multisport goal
+   * measures each leg against its own history, because a triathlete's bike and
+   * run budgets are genuinely separate.
+   */
+  recentCategories: WorkoutCategory[];
+  recentByDiscipline: Record<PlannedDiscipline, WorkoutCategory[]>;
+  keySessionsSoFar: number;
+  /** Training days already given to this goal, so a composed goal alternates legs. */
+  disciplineTurns: number;
+  /** Week of the plan window, so a long ride and a long run take turns. */
+  weekIndex: number;
+}
 
 /** Picks a rest day or a specific workout for one day, given its target hours and projected Form. */
 function decideDay(
   date: Date,
   targetHours: number,
   tsb: number,
+  ramp: RampBand,
   config: PlanConfigHours & { includeRunning: boolean; runDays: number[] },
   library: ParsedWorkoutFile[],
   readiness: ReadinessModifiers,
   avoidPaths: string[],
+  goal: GoalContext | null,
   disciplineOverride?: PlannedDiscipline,
 ): GeneratedDay {
   if (!targetHours || targetHours <= 0) {
@@ -255,19 +393,164 @@ function decideDay(
     };
   }
 
-  const category = decideCategory(tsb, readiness);
-  const discipline: PlannedDiscipline =
-    disciplineOverride ?? (config.includeRunning && config.runDays.includes(date.getUTCDay()) ? 'RUN' : 'BIKE');
+  // Fatigue sets the ceiling; the goal picks which session at or below it the
+  // athlete most needs. Without a typed goal the ceiling IS the pick, which is
+  // the behaviour this had all along.
+  const { category: ceiling, rampLimited } = readinessCeiling(tsb, readiness, ramp);
+  const scheduledAsRun = config.runDays.includes(date.getUTCDay());
+  // What the athlete's own weekly schedule says this day is, before any goal
+  // gets a say.
+  const configuredDiscipline: PlannedDiscipline = config.includeRunning && scheduledAsRun ? 'RUN' : 'BIKE';
+
+  let category = ceiling;
+  let discipline = configuredDiscipline;
+  let focus: string | null = null;
+
+  if (goal) {
+    // A composed multisport goal picks its leg first, because which leg the
+    // day belongs to is what decides the mix. A single-sport goal goes the
+    // other way round: one mix covers the week, and the discipline follows
+    // from how hard the session turned out to be.
+    const leg: PlannedDiscipline | null = goal.legs.composed
+      ? legForDay({
+          legs: goal.legs,
+          scheduledAsRun,
+          includeRunning: config.includeRunning,
+          isLongDay: goal.isLongDay,
+          disciplineTurns: goal.disciplineTurns,
+          weekIndex: goal.weekIndex,
+        })
+      : null;
+
+    const profile = leg ? (leg === 'RUN' ? goal.legs.run : goal.legs.bike) : (goal.legs.bike ?? goal.legs.run);
+
+    if (profile) {
+      const selection = selectCategory({
+        ceiling,
+        profile,
+        emphasis: goal.emphasis,
+        recent: leg ? goal.recentByDiscipline[leg] : goal.recentCategories,
+        isLongDay: goal.isLongDay,
+      });
+      category = selection.category;
+      discipline =
+        leg ??
+        disciplineFor({
+          profile,
+          category,
+          isLongDay: goal.isLongDay,
+          scheduledAsRun,
+          includeRunning: config.includeRunning,
+          keySessionsSoFar: goal.keySessionsSoFar,
+        });
+      if (selection.goalDriven) {
+        focus = focusLine({
+          profile,
+          category,
+          emphasis: goal.emphasis,
+          goalName: goal.goalName,
+          isLongDay: goal.isLongDay,
+          leg: goal.legs.composed ? discipline : null,
+        });
+      }
+    }
+  }
+
+  // An easier session than the week called for, with no explanation, is how a
+  // plan gets ignored. `focus` is the existing one-line "why this session"
+  // field the Plan tab already renders under "Why this workout?", so saying it
+  // here needs no new column — and it goes first, because on a day the ramp
+  // pulled back, why it is easier matters more than which demand it trains.
+  if (rampLimited) {
+    const note =
+      `Eased off to a ${category.toLowerCase()} session: your load has climbed sharply against ` +
+      `what you have been absorbing.`;
+    focus = focus ? `${note} ${focus}` : note;
+  }
+
+  // The athlete's own explicit "make this a run instead" (or vice versa) —
+  // from the Suggested Training card, not the algorithm — wins over whatever
+  // the schedule or a goal would otherwise have picked.
+  if (disciplineOverride) discipline = disciplineOverride;
+
   const targetMinutes = Math.round(targetHours * 60);
-  const workout = pickWorkout(library, discipline, targetMinutes, category, avoidPaths);
+  // Days apart rather than the raw timestamp, so the rotation advances by one
+  // per day rather than jumping by 86,400,000.
+  const seed = Math.floor(date.getTime() / 86_400_000);
+  let workout = pickWorkout(library, discipline, targetMinutes, category, avoidPaths, seed);
+
+  // A day the goal (rather than the athlete's own schedule) turned into a run
+  // falls back to the configured discipline when the library has no run that
+  // fits. Specificity is worth a lot, but not a blank day: an equivalent ride
+  // trains more than a rest day does. A day the athlete themselves marked as a
+  // run keeps today's behaviour and says what's missing instead. Same logic
+  // for an explicit disciplineOverride: falling back would silently ignore
+  // what the athlete just asked for, so it stays put and says what's missing.
+  if (!workout && discipline !== configuredDiscipline && !disciplineOverride) {
+    workout = pickWorkout(library, configuredDiscipline, targetMinutes, category, avoidPaths, seed);
+  }
 
   return workout
-    ? { date, isRestDay: false, workout, category }
+    ? { date, isRestDay: false, workout, category, focus }
     : {
         date,
         isRestDay: true,
         restReason: `No ${discipline === 'RUN' ? 'run' : 'ride'} in your library short enough for ${targetHours}h — add a shorter one, or this stays a rest day`,
       };
+}
+
+/**
+ * The day of the week the athlete has set aside the most time for, which is
+ * the only day a genuinely long session can go. Ties go to the later day, so
+ * a Saturday/Sunday pair puts the long one on Sunday rather than Saturday.
+ */
+function longestScheduledDay(config: PlanConfigHours): { dayOfWeek: number; hours: number } {
+  let dayOfWeek = 0;
+  let hours = 0;
+  for (let d = 0; d < DAY_KEYS.length; d++) {
+    const h = config[DAY_KEYS[d]];
+    if (h >= hours) {
+      dayOfWeek = d;
+      hours = h;
+    }
+  }
+  return { dayOfWeek, hours };
+}
+
+// Below this there is no such thing as a long session, so no day is treated
+// as the week's long day and the goal's other demands get that slot instead.
+const LONG_DAY_MIN_HOURS = 1.5;
+
+/**
+ * The session types already behind the athlete, so the first day of a
+ * regenerated window continues the mix rather than starting from a blank
+ * slate. Without this the plan would re-deal the same opening sessions every
+ * time it regenerated, which is several times a day.
+ */
+interface RecentCategories {
+  /** Every training day, for a single-sport goal's whole-week mix. */
+  all: WorkoutCategory[];
+  /** Split by discipline, for a composed multisport goal's per-leg mixes. */
+  byDiscipline: Record<PlannedDiscipline, WorkoutCategory[]>;
+}
+
+async function recentPlannedCategories(userId: string, today: Date): Promise<RecentCategories> {
+  const since = new Date(today);
+  since.setUTCDate(since.getUTCDate() - 14);
+  const rows = await prisma.plannedDay.findMany({
+    where: { userId, date: { gte: since, lt: today }, isRestDay: false, category: { not: null } },
+    orderBy: { date: 'asc' },
+    select: { category: true, discipline: true },
+  });
+
+  const recent: RecentCategories = { all: [], byDiscipline: { BIKE: [], RUN: [] } };
+  for (const row of rows) {
+    const category = row.category as WorkoutCategory;
+    if (!CATEGORY_ORDER.includes(category)) continue;
+    recent.all.push(category);
+    if (row.discipline) recent.byDiscipline[row.discipline].push(category);
+  }
+  return recent;
 }
 
 /**
@@ -282,13 +565,13 @@ function decideDay(
  * `hourOverrides`, keyed by date, replaces that date's config hours — see
  * setDayAvailability, the only source of these values (the Plan tab's
  * availability slider for today, or the weekly check-in for any day in the
- * window). `disciplineOverrides` likewise forces that date's discipline
- * (run vs. bike) — see setDayDiscipline.
+ * window). `disciplineOverrides` likewise forces that date's discipline (run
+ * vs. bike) — see setDayDiscipline.
  */
 async function runProjection(
   userId: string,
   dates: Date[],
-  config: PlanConfigHours & { includeRunning: boolean; runDays: number[] },
+  config: PlanConfigHours & { includeRunning: boolean; runDays: number[]; weeklyHours: number },
   library: ParsedWorkoutFile[],
   hourOverrides?: Map<number, number>,
   manualOverrides?: Map<number, ManualOverrideRow>,
@@ -297,36 +580,138 @@ async function runProjection(
   const fitness = await computeFitnessSeries(userId);
   let ctl = fitness.length ? fitness[fitness.length - 1].ctl : 0;
   let atl = fitness.length ? fitness[fitness.length - 1].atl : 0;
+  // The real CTL curve, extended day by day as the window is projected, so the
+  // ramp rate the plan reacts to is measured over a real seven days rather than
+  // over however much of the window has been generated so far.
+  const ctlTrail: number[] = fitness.map((p) => p.ctl);
   const readiness = await getReadinessModifiers(userId);
 
+  // Every goal the athlete has is periodised together, not one at a time — the
+  // ramp aims at the season's anchor while any of them can claim a given day
+  // for its taper, its race or its recovery. The ramp is re-anchored to the
+  // athlete's real, current fitness on every regeneration — see
+  // lib/periodization.ts on why both of those matter.
+  const targets = await prisma.trainingTarget.findMany({ where: { userId }, orderBy: { date: 'asc' } });
+  const periodizationCtx: PeriodizationContext | null = targets.length
+    ? {
+        targets,
+        currentCtl: ctl,
+        tssPerHour: await measureTssPerHour(userId),
+        weeklyHours: config.weeklyHours,
+      }
+    : null;
+
+  const today = utcMidnight(new Date());
   const recentPicks: string[] = [];
+  const pickMemory = recentPicksMemory(library.length);
   const results: GeneratedDay[] = [];
+
+  // Which goal the ramp points at, and the mix of sessions already behind the
+  // athlete — both needed before the first day so the window continues the
+  // training that came before it rather than restarting it.
+  const anchor = targets.length ? pickAnchor(targets, today) : null;
+  const recent = await recentPlannedCategories(userId, today);
+  const longDay = longestScheduledDay(config);
+  let keySessionsSoFar = 0;
+  let disciplineTurns = 0;
 
   for (let i = 0; i < dates.length; i++) {
     const date = dates[i];
     const tsb = ctl - atl;
+    // Judged afresh each day off the running projection rather than taken as a
+    // snapshot, so a plan that eases off watches the ratio come back down and
+    // lets the sessions build again — the same reason TSB is projected here.
+    // `ctlTrail` carries the real curve in behind the window, so the ramp rate
+    // is measured across the seam rather than starting from zero on day one.
+    const { band: ramp } = judgeRamp({
+      ctl,
+      atl,
+      ctlWeekAgo: ctlTrail.length > RAMP_WINDOW_DAYS ? ctlTrail[ctlTrail.length - 1 - RAMP_WINDOW_DAYS] : null,
+    });
     const override = manualOverrides?.get(date.getTime());
-    const targetHours = hourOverrides?.get(date.getTime()) ?? config[dayKeyFor(date)];
-    const disciplineOverride = disciplineOverrides?.get(date.getTime());
+    const periodization = periodizationCtx ? periodizeDay(date, today, periodizationCtx) : null;
+
+    // Which goal's demands this day trains for: normally the anchor, but a day
+    // inside another goal's taper belongs to that goal instead.
+    const dayGoal = targets.length ? goalForDay(targets, periodization?.targetId ?? null, anchor) : null;
+    const legs = dayGoal ? legsFor(dayGoal) : null;
+    const goalContext: GoalContext | null =
+      dayGoal && legs && (legs.bike || legs.run)
+        ? {
+            legs,
+            goalName: dayGoal.name,
+            emphasis: emphasisFor(periodization?.phase ?? null, periodization?.daysToEvent ?? Number.MAX_SAFE_INTEGER),
+            isLongDay: date.getUTCDay() === longDay.dayOfWeek && longDay.hours >= LONG_DAY_MIN_HOURS,
+            recentCategories: recent.all,
+            recentByDiscipline: recent.byDiscipline,
+            keySessionsSoFar,
+            disciplineTurns,
+            weekIndex: Math.floor(i / 7),
+          }
+        : null;
+
+    // A one-off availability override is the athlete telling us how much time
+    // they actually have that day, so the periodisation multiplier is applied
+    // to the standing weekly hours only — never to an answer they gave us.
+    const explicitHours = hourOverrides?.get(date.getTime());
+    const targetHours =
+      explicitHours != null ? explicitHours : config[dayKeyFor(date)] * (periodization?.loadMultiplier ?? 1);
 
     // A manually rearranged day (calendar drag-and-drop) keeps its own
     // content — still fed into the fitness projection below, exactly like a
     // regular planned day, just never regenerated.
-    const generated: GeneratedDay = override
-      ? { date, isRestDay: override.isRestDay, skipUpsert: true }
-      : decideDay(date, targetHours, tsb, config, library, readiness, recentPicks, disciplineOverride);
+    let generated: GeneratedDay;
+    if (override) {
+      generated = { date, isRestDay: override.isRestDay, skipUpsert: true, periodization };
+    } else if (periodization?.phase === 'EVENT') {
+      // Race day isn't the plan's to fill in.
+      generated = {
+        date,
+        isRestDay: true,
+        restReason: `${periodization.targetName} — today's the day. Nothing else is planned.`,
+        periodization,
+      };
+    } else {
+      generated = {
+        ...decideDay(
+          date,
+          targetHours,
+          tsb,
+          ramp,
+          config,
+          library,
+          readiness,
+          recentPicks,
+          goalContext,
+          disciplineOverrides?.get(date.getTime()),
+        ),
+        periodization,
+      };
+    }
     results.push(generated);
+
+    // Feed this day back into the mix the next one is measured against, so the
+    // window converges on the goal's target shares rather than each day being
+    // decided in isolation.
+    if (!generated.isRestDay && generated.category) {
+      recent.all.push(generated.category);
+      const placedDiscipline = generated.workout?.discipline;
+      if (placedDiscipline) recent.byDiscipline[placedDiscipline].push(generated.category);
+      if (generated.category === 'THRESHOLD' || generated.category === 'VO2MAX') keySessionsSoFar++;
+      if (goalContext) disciplineTurns++;
+    }
 
     const dayTss = generated.isRestDay
       ? 0
       : estimatedTssForBucket(override ? override.trainingStress : generated.workout?.trainingStress);
     ctl = ctl + (dayTss - ctl) * CTL_DECAY;
     atl = atl + (dayTss - atl) * ATL_DECAY;
+    ctlTrail.push(ctl);
 
     const recentPickPath = override ? (override.isRestDay ? null : override.sourcePath) : generated.workout?.path;
     if (recentPickPath) {
       recentPicks.push(recentPickPath);
-      if (recentPicks.length > RECENT_PICKS_MEMORY) recentPicks.shift();
+      if (recentPicks.length > pickMemory) recentPicks.shift();
     }
   }
 
@@ -346,6 +731,14 @@ async function upsertPlannedDay(
   availableHoursOverride?: number,
   disciplineOverride?: PlannedDiscipline,
 ) {
+  const phaseFields = {
+    phase: generated.periodization?.phase ?? null,
+    phaseWeek: generated.periodization?.phaseWeek ?? null,
+    loadMultiplier: generated.periodization
+      ? Math.round(generated.periodization.loadMultiplier * 100) / 100
+      : null,
+  };
+
   const base = generated.isRestDay
     ? {
         isRestDay: true,
@@ -359,6 +752,7 @@ async function upsertPlannedDay(
         profile: null,
         segments: Prisma.DbNull,
         category: null,
+        focus: null,
         generatedAt: new Date(),
       }
     : {
@@ -373,11 +767,13 @@ async function upsertPlannedDay(
         profile: generated.workout!.profile ?? null,
         segments: (generated.workout!.segments as Prisma.InputJsonValue | undefined) ?? Prisma.DbNull,
         category: generated.category,
+        focus: generated.focus ?? null,
         generatedAt: new Date(),
       };
 
+  const withPhase = { ...base, ...phaseFields };
   const data = {
-    ...base,
+    ...withPhase,
     ...(availableHoursOverride !== undefined ? { availableHoursOverride } : {}),
     ...(disciplineOverride !== undefined ? { disciplineOverride } : {}),
   };
@@ -476,6 +872,7 @@ export async function swapPlannedDays(userId: string, dateA: Date, dateB: Date) 
     profile: row.profile,
     segments: row.segments ?? Prisma.DbNull,
     category: row.category,
+    focus: row.focus,
   });
 
   const [updatedA, updatedB] = await Promise.all([
@@ -537,9 +934,9 @@ export async function setDayAvailability(userId: string, date: Date, hours: numb
  * A one-off "make this a run instead" (or back to bike) override for any day
  * already in the rolling window — the "Switch to run" action on the
  * Suggested Training card. The algorithm still picks which specific workout
- * (respecting current fitness/readiness), just constrained to this
- * discipline. Pass `discipline: null` to clear the override and hand the
- * day's discipline back to the recurring includeRunning/runDays split.
+ * (respecting current fitness/readiness and any typed goal), just
+ * constrained to this discipline. Pass `discipline: null` to clear the
+ * override and hand the day's discipline back to the goal/schedule.
  */
 export async function setDayDiscipline(userId: string, date: Date, discipline: PlannedDiscipline | null) {
   const config = await prisma.trainingPlanConfig.findUnique({ where: { userId } });

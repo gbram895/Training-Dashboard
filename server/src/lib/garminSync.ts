@@ -63,6 +63,7 @@ async function importGarminActivity(
   client: GarminConnect,
   activity: GarminActivitySummary,
   thresholds: HrZoneThresholds,
+  failures: string[],
 ): Promise<boolean> {
   const externalId = garminExternalId(activity.activityId);
   const existing = await prisma.workout.findUnique({ where: { externalId } });
@@ -91,6 +92,9 @@ async function importGarminActivity(
     activitySamples = extractGarminActivitySamples(details);
   } catch (err) {
     console.error(`[garmin-sync] failed to fetch activity details for activity ${activity.activityId}:`, err);
+    // The workout still imports, but without HR zones or samples — say so
+    // rather than leaving a silently degraded activity on the dashboard.
+    failures.push(`${activity.activityName}: no heart-rate detail (${err instanceof Error ? err.message : String(err)})`);
   }
 
   const result = await createDedupedWorkout({
@@ -99,6 +103,9 @@ async function importGarminActivity(
     date,
     durationMin,
     distanceKm,
+    title: activity.activityName,
+    // Kept for OTHER as well as the title, so notes an athlete has since
+    // edited on an existing workout don't change meaning.
     notes: type === 'OTHER' ? activity.activityName : undefined,
     source: 'garmin',
     externalId,
@@ -112,11 +119,22 @@ async function importGarminActivity(
   return result.outcome === 'created' || result.outcome === 'replaced-duplicate';
 }
 
+const MAX_REPORTED_FAILURES = 3;
+
+/** Null when every activity came through whole, otherwise a message short enough for the sync bar. */
+function summariseFailures(failures: string[]): string | null {
+  if (failures.length === 0) return null;
+  const shown = failures.slice(0, MAX_REPORTED_FAILURES).join('; ');
+  const rest = failures.length - MAX_REPORTED_FAILURES;
+  return `${failures.length} activity/activities imported incomplete — ${shown}${rest > 0 ? ` (+${rest} more)` : ''}`;
+}
+
 export async function runGarminSyncForUser(userId: string, options: { force?: boolean } = {}) {
   const config = await prisma.garminSyncConfig.findUnique({ where: { userId } });
   if (!config) throw new Error('Garmin is not connected for this account');
 
-  const totals = { activitiesSeen: 0, workoutsImported: 0 };
+  const totals = { activitiesSeen: 0, workoutsImported: 0, activitiesDegraded: 0 };
+  const failures: string[] = [];
 
   try {
     const tokens: GarminTokens = {
@@ -143,7 +161,7 @@ export async function runGarminSyncForUser(userId: string, options: { force?: bo
         if (batch.length === 0) break;
         totals.activitiesSeen += batch.length;
         for (const activity of batch) {
-          const created = await importGarminActivity(userId, client, activity, thresholds);
+          const created = await importGarminActivity(userId, client, activity, thresholds, failures);
           if (created) {
             totals.workoutsImported += 1;
             await sleep(250);
@@ -156,26 +174,32 @@ export async function runGarminSyncForUser(userId: string, options: { force?: bo
       const activities = (await client.getActivities(0, RECENT_BATCH)) as GarminActivitySummary[];
       totals.activitiesSeen = activities.length;
       for (const activity of activities) {
-        const created = await importGarminActivity(userId, client, activity, thresholds);
+        const created = await importGarminActivity(userId, client, activity, thresholds, failures);
         if (created) totals.workoutsImported += 1;
       }
     }
 
     const refreshed = client.exportToken();
+    const now = new Date();
     await prisma.garminSyncConfig.update({
       where: { userId },
       data: {
         oauth1Token: JSON.stringify(refreshed.oauth1),
         oauth2Token: JSON.stringify(refreshed.oauth2),
-        lastSyncedAt: new Date(),
-        lastSyncError: null,
+        lastSyncedAt: now,
+        lastAttemptedAt: now,
+        lastSyncError: summariseFailures(failures),
       },
     });
 
+    totals.activitiesDegraded = failures.length;
     return totals;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    await prisma.garminSyncConfig.update({ where: { userId }, data: { lastSyncError: message } });
+    await prisma.garminSyncConfig.update({
+      where: { userId },
+      data: { lastAttemptedAt: new Date(), lastSyncError: message },
+    });
     throw err;
   }
 }
@@ -209,6 +233,53 @@ export async function backfillGarminCalories(userId: string): Promise<number> {
       console.error(`[garmin-sync] calorie backfill failed for activity ${activityId}:`, err);
     }
     await sleep(200);
+  }
+  return updated;
+}
+
+const TITLE_BACKFILL_PAGES = 20;
+
+/**
+ * Fills in `title` for activities imported before it was stored. Unlike the
+ * calorie backfill this never fetches an activity's own detail record — the
+ * name is already on every row of the activity list — so a whole history
+ * costs a handful of list calls rather than one call per workout.
+ *
+ * Stops as soon as every untitled workout has been matched, so the usual case
+ * (a few recent imports) is one page.
+ */
+export async function backfillGarminTitles(userId: string): Promise<number> {
+  const config = await prisma.garminSyncConfig.findUnique({ where: { userId } });
+  if (!config) return 0;
+
+  const pending = new Map<string, string>();
+  const untitled = await prisma.workout.findMany({
+    where: { userId, source: 'garmin', title: null, externalId: { not: null } },
+    select: { id: true, externalId: true },
+  });
+  for (const w of untitled) pending.set(w.externalId!, w.id);
+  if (pending.size === 0) return 0;
+
+  const tokens: GarminTokens = { oauth1: JSON.parse(config.oauth1Token), oauth2: JSON.parse(config.oauth2Token) };
+  const client = garminClientFromTokens(tokens);
+
+  let updated = 0;
+  let start = 0;
+  for (let page = 0; page < TITLE_BACKFILL_PAGES && pending.size > 0; page += 1) {
+    const batch = (await client.getActivities(start, BACKFILL_PAGE_SIZE)) as GarminActivitySummary[];
+    if (batch.length === 0) break;
+
+    for (const activity of batch) {
+      const workoutId = pending.get(garminExternalId(activity.activityId));
+      if (!workoutId || !activity.activityName) continue;
+      await prisma.workout.update({ where: { id: workoutId }, data: { title: activity.activityName } });
+      pending.delete(garminExternalId(activity.activityId));
+      updated += 1;
+    }
+
+    start += batch.length;
+    if (batch.length < BACKFILL_PAGE_SIZE) break;
+    await sleep(250);
   }
   return updated;
 }

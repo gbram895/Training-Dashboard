@@ -4,6 +4,9 @@ import type { Goal } from '../api/types';
 import { useCachedState } from '../lib/pageCache';
 import PageHead from '../components/PageHead';
 import ProgressRing from '../components/ProgressRing';
+import GoalsCard from '../components/plan/GoalsCard';
+import SeasonOutlookCard from '../components/plan/SeasonOutlookCard';
+import GoalForecastCard from '../components/plan/GoalForecastCard';
 
 export default function Goals() {
   const [goals, setGoals] = useCachedState<Goal[] | null>('goals.list', null);
@@ -16,6 +19,9 @@ export default function Goals() {
   const [submitting, setSubmitting] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
+  // Bumped when a race goal changes, so the season outlook under it re-projects
+  // against the new set rather than showing the shape of the old one.
+  const [seasonKey, setSeasonKey] = useState(0);
 
   function reload() {
     return apiFetch<Goal[]>('/goals').then(setGoals);
@@ -84,6 +90,10 @@ export default function Goals() {
       <div className="gd-goals-top">
         <PageHead title="Goals" />
 
+        <GoalsCard onChanged={() => setSeasonKey((k) => k + 1)} />
+        <GoalForecastCard reloadKey={seasonKey} />
+        <SeasonOutlookCard reloadKey={seasonKey} />
+
         <form className="gd-set-card goal-search-form" onSubmit={openWebSearch}>
           <label>
             Search the web for an event
@@ -98,13 +108,22 @@ export default function Goals() {
               🔍 Search
             </button>
           </div>
-          <p className="muted">Opens a web search in a new tab — bring back what you find and add it below.</p>
+          <p className="muted">Opens a web search in a new tab — bring back what you find and add it above.</p>
         </form>
+
+        <div className="gd-sec-title">
+          <span className="gd-flag" />
+          <h4>Numbers you're chasing</h4>
+        </div>
+        <p className="gd-set-note">
+          Totals you want to hit — distance, hours, a weight. These are yours to track; they don't change what the
+          plan asks of you.
+        </p>
 
         {loading ? (
           <p className="muted">Loading…</p>
         ) : list.length === 0 && !showForm ? (
-          <p className="muted">No goals yet.</p>
+          <p className="muted">Nothing tracked yet.</p>
         ) : (
           <div className="goal-grid">
             {list.map((g) => {

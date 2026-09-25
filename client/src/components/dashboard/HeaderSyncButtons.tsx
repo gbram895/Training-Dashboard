@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { apiFetch } from '../../api/client';
-import type { DropboxSyncStatus } from '../../api/types';
+import type { DropboxSyncStatus, SyncNowResult } from '../../api/types';
 
 export default function HeaderSyncButtons({
   status,
@@ -16,10 +16,17 @@ export default function HeaderSyncButtons({
   async function syncNow(force: boolean) {
     setSyncing(force ? 'all' : 'now');
     try {
-      await apiFetch(`/health/dropbox/sync-now${force ? '?force=true' : ''}`, { method: 'POST' });
-      onSynced();
+      // A plain sync is awaited server-side, so by the time this resolves the
+      // new data is in the database and refetching actually shows it. A force
+      // backfill still runs on in the background — refetching then just picks
+      // up whatever has landed so far.
+      await apiFetch<SyncNowResult>(`/health/dropbox/sync-now${force ? '?force=true' : ''}`, { method: 'POST' });
+    } catch {
+      // Swallowed on purpose: the sync run records why it failed, and the
+      // refetch below pulls that back as the sync bar's lastSyncError.
     } finally {
       setSyncing(null);
+      onSynced();
     }
   }
 

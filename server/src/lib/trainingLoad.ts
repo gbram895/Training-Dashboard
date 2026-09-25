@@ -1,4 +1,6 @@
 import { prisma } from './prisma.js';
+import { computeHrZoneMinutesFromOffsets, type HrZoneMinutes, type HrZoneThresholds } from './appleHealth.js';
+import { storePowerBests } from './powerCurve.js';
 
 interface PowerSample {
   offsetSec: number;
@@ -81,45 +83,229 @@ export function computeRunTss(durationMin: number, distanceKm: number, threshold
   return ((durationSec * intensityFactor ** 2) / 3600) * 100;
 }
 
-/** Recomputes and persists kilojoules + TSS for a workout from its current samples and the user's current FTP/threshold pace. */
+// Representative intensity factor for each heart-rate zone — the midpoint of
+// what that zone means as a fraction of threshold. Used to turn time-in-zone
+// into a training-stress number for everything power and pace can't measure:
+// badminton, hikes, swims, strength, and any ride or run whose stream came
+// through without power or distance.
+export const ZONE_INTENSITY: Record<keyof HrZoneMinutes, number> = {
+  z1: 0.55,
+  z2: 0.7,
+  z3: 0.83,
+  z4: 0.94,
+  z5: 1.1,
+};
+
+// An HR trace that only covers a fraction of the session (a watch that dropped
+// out, a strap put on late) would otherwise report a session as far easier than
+// it was. Below this share of the session's own duration, we'd rather have no
+// number than a misleading one.
+const MIN_HR_COVERAGE = 0.6;
+
+/**
+ * Time-in-zone training stress — the same duration x intensity^2 integral the
+ * power and pace formulas use, evaluated per zone rather than per sample. Less
+ * precise than either (a zone is a band, not a number), which is why it's the
+ * last resort in the chain and why the source is recorded alongside the value.
+ */
+export function computeHrTss(zones: HrZoneMinutes | null, durationMin: number): number | null {
+  if (!zones) return null;
+  const totalMin = zones.z1 + zones.z2 + zones.z3 + zones.z4 + zones.z5;
+  if (totalMin <= 0) return null;
+  if (durationMin > 0 && totalMin < durationMin * MIN_HR_COVERAGE) return null;
+
+  let weightedMinutes = 0;
+  for (const key of Object.keys(ZONE_INTENSITY) as (keyof HrZoneMinutes)[]) {
+    weightedMinutes += zones[key] * ZONE_INTENSITY[key] ** 2;
+  }
+  return (weightedMinutes / 60) * 100;
+}
+
+type StoredZones = {
+  hrZone1Min: number | null;
+  hrZone2Min: number | null;
+  hrZone3Min: number | null;
+  hrZone4Min: number | null;
+  hrZone5Min: number | null;
+};
+
+function storedZoneMinutes(workout: StoredZones): HrZoneMinutes | null {
+  const values = [workout.hrZone1Min, workout.hrZone2Min, workout.hrZone3Min, workout.hrZone4Min, workout.hrZone5Min];
+  if (values.every((v) => v == null)) return null;
+  return {
+    z1: workout.hrZone1Min ?? 0,
+    z2: workout.hrZone2Min ?? 0,
+    z3: workout.hrZone3Min ?? 0,
+    z4: workout.hrZone4Min ?? 0,
+    z5: workout.hrZone5Min ?? 0,
+  };
+}
+
+interface AthleteThresholds {
+  ftpWatts: number;
+  thresholdPaceSecPerKm: number;
+  hrZone1Max: number;
+  hrZone2Max: number;
+  hrZone3Max: number;
+  hrZone4Max: number;
+}
+
+const THRESHOLD_SELECT = {
+  ftpWatts: true,
+  thresholdPaceSecPerKm: true,
+  hrZone1Max: true,
+  hrZone2Max: true,
+  hrZone3Max: true,
+  hrZone4Max: true,
+} as const;
+
+/** Recomputes and persists kilojoules, TSS and its source for a workout from its current samples and the user's current thresholds. */
 export async function recomputeTrainingLoad(workoutId: string): Promise<void> {
   const workout = await prisma.workout.findUnique({ where: { id: workoutId }, include: { samples: true } });
   if (!workout) return;
 
-  const user = await prisma.user.findUnique({
-    where: { id: workout.userId },
-    select: { ftpWatts: true, thresholdPaceSecPerKm: true },
-  });
+  const user = await prisma.user.findUnique({ where: { id: workout.userId }, select: THRESHOLD_SELECT });
   if (!user) return;
 
+  await recomputeOne(workout, workout.samples, user);
+
+  // A single workout gets here after its samples were (re)imported, so its
+  // power-curve efforts are recomputed unconditionally — re-syncing a ride
+  // whose stream changed has to move its bests with it. The bulk path below
+  // deliberately doesn't: see recomputeAllTrainingLoad.
+  if (workout.type === 'RIDE') {
+    await storePowerBests(workout, workout.samples).catch((err) =>
+      console.error(`[trainingLoad] power bests failed for workout ${workout.id}:`, err),
+    );
+  }
+}
+
+type LoadInputs = {
+  id: string;
+  userId: string;
+  type: string;
+  date: Date;
+  durationMin: number;
+  distanceKm: number | null;
+  powerBestsAt: Date | null;
+} & StoredZones;
+
+type LoadSample = { offsetSec: number; heartRate: number | null; powerWatts: number | null };
+
+async function recomputeOne(workout: LoadInputs, samples: LoadSample[], user: AthleteThresholds): Promise<void> {
   let kilojoules: number | null = null;
-  let tss: number | null = null;
   let avgPowerWatts: number | null = null;
   let normalizedPowerWatts: number | null = null;
 
   if (workout.type === 'RIDE') {
-    kilojoules = computeKilojoules(workout.samples);
-    avgPowerWatts = computeAvgPower(workout.samples);
-    normalizedPowerWatts = computeNormalizedPower(workout.samples);
-    tss = computeRideTss(workout.samples, user.ftpWatts);
-  } else if (workout.type === 'RUN') {
+    kilojoules = computeKilojoules(samples);
+    avgPowerWatts = computeAvgPower(samples);
+    normalizedPowerWatts = computeNormalizedPower(samples);
+  }
+
+  // Zone minutes are recomputed from the raw samples whenever we still have
+  // them, rather than trusted as stored — the stored values were bucketed with
+  // whatever thresholds were set at import time, so a zone recalibration would
+  // otherwise leave every older workout filed under the old boundaries.
+  const thresholds: HrZoneThresholds = {
+    z1Max: user.hrZone1Max,
+    z2Max: user.hrZone2Max,
+    z3Max: user.hrZone3Max,
+    z4Max: user.hrZone4Max,
+  };
+  const fromSamples = computeHrZoneMinutesFromOffsets(samples, workout.durationMin * 60, thresholds);
+  const zones = fromSamples ?? storedZoneMinutes(workout);
+
+  // Most precise source wins: per-second power, then average pace, then
+  // time-in-zone. Each step only runs if the one above it had nothing to
+  // work with, so a ride without a power meter still gets a load number.
+  let tss: number | null = null;
+  let tssSource: 'POWER' | 'PACE' | 'HR' | null = null;
+
+  if (workout.type === 'RIDE') {
+    tss = computeRideTss(samples, user.ftpWatts);
+    if (tss != null) tssSource = 'POWER';
+  }
+  if (tss == null && workout.type === 'RUN') {
     tss = computeRunTss(workout.durationMin, workout.distanceKm ?? 0, user.thresholdPaceSecPerKm);
+    if (tss != null) tssSource = 'PACE';
+  }
+  if (tss == null) {
+    tss = computeHrTss(zones, workout.durationMin);
+    if (tss != null) tssSource = 'HR';
   }
 
   await prisma.workout.update({
-    where: { id: workoutId },
-    data: { kilojoules, tss, avgPowerWatts, normalizedPowerWatts },
+    where: { id: workout.id },
+    data: {
+      kilojoules,
+      tss,
+      tssSource,
+      avgPowerWatts,
+      normalizedPowerWatts,
+      ...(fromSamples
+        ? {
+            hrZone1Min: fromSamples.z1,
+            hrZone2Min: fromSamples.z2,
+            hrZone3Min: fromSamples.z3,
+            hrZone4Min: fromSamples.z4,
+            hrZone5Min: fromSamples.z5,
+          }
+        : {}),
+    },
   });
 }
 
-/** Backfills kilojoules/TSS/power for every Ride/Run a user already has — for data synced before this feature existed. */
+/**
+ * Backfills training load for every workout a user has. Runs over all types,
+ * not just Ride/Run — the HR fallback means a badminton session or a hike now
+ * carries load too, and a threshold or zone recalibration changes every
+ * number in the athlete's history, not just the recent ones.
+ *
+ * Reads the athlete's thresholds once rather than per workout, and pulls each
+ * workout's samples in its own query rather than joining them all at once:
+ * a season of per-second data is hundreds of thousands of rows, and this runs
+ * against a free-tier Postgres.
+ */
 export async function recomputeAllTrainingLoad(userId: string): Promise<number> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: THRESHOLD_SELECT });
+  if (!user) return 0;
+
   const workouts = await prisma.workout.findMany({
-    where: { userId, type: { in: ['RIDE', 'RUN'] } },
-    select: { id: true },
+    where: { userId },
+    select: {
+      id: true,
+      userId: true,
+      type: true,
+      date: true,
+      durationMin: true,
+      distanceKm: true,
+      powerBestsAt: true,
+      hrZone1Min: true,
+      hrZone2Min: true,
+      hrZone3Min: true,
+      hrZone4Min: true,
+      hrZone5Min: true,
+    },
   });
-  for (const w of workouts) {
-    await recomputeTrainingLoad(w.id);
+
+  for (const workout of workouts) {
+    const samples = await prisma.workoutSample.findMany({
+      where: { workoutId: workout.id },
+      select: { offsetSec: true, heartRate: true, powerWatts: true },
+      orderBy: { offsetSec: 'asc' },
+    });
+    await recomputeOne(workout, samples, user);
+
+    // Power bests don't depend on any threshold, so a recalibration doesn't
+    // invalidate them — only a ride that has never been analysed is done here.
+    // That makes this the backfill for the power curve as well, without
+    // rewriting a few thousand rows every time an FTP changes.
+    if (workout.type === 'RIDE' && workout.powerBestsAt == null) {
+      await storePowerBests(workout, samples).catch((err) =>
+        console.error(`[trainingLoad] power bests failed for workout ${workout.id}:`, err),
+      );
+    }
   }
   return workouts.length;
 }
