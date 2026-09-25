@@ -19,7 +19,7 @@ import RearrangePlanModal from '../components/RearrangePlanModal';
 import WeeklyAvailabilityModal from '../components/WeeklyAvailabilityModal';
 import PageHead from '../components/PageHead';
 import { useCachedState } from '../lib/pageCache';
-import { weekdayLabel } from '../lib/planDates';
+import { configDisciplineForDate, weekdayLabel } from '../lib/planDates';
 
 const CATEGORY_INFO: { key: WorkoutCategory | 'OTHER'; label: string; icon: string; description: string }[] = [
   { key: 'VO2MAX', label: 'VO2Max', icon: '💨', description: 'Short, maximal efforts that push your aerobic ceiling.' },
@@ -100,6 +100,7 @@ export default function Plan() {
   const [savingAvailability, setSavingAvailability] = useState(false);
   const [showRearrangeModal, setShowRearrangeModal] = useState(false);
   const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
+  const [switchingDiscipline, setSwitchingDiscipline] = useState(false);
 
   function load() {
     apiFetch<LibraryWorkout[]>('/workout-library')
@@ -156,6 +157,21 @@ export default function Plan() {
       setPlanWeek(planWeek.map((d) => (weekdayLabel(d.date).isToday ? updated : d)));
     } finally {
       setSavingAvailability(false);
+    }
+  }
+
+  async function switchDiscipline(day: PlannedDay, discipline: PlannedDiscipline) {
+    setSwitchingDiscipline(true);
+    try {
+      const updated = await apiFetch<PlannedDay>('/training-plan/day-discipline', {
+        method: 'PUT',
+        body: JSON.stringify({ date: day.date, discipline }),
+      });
+      setPlanWeek(planWeek.map((d) => (d.id === day.id ? updated : d)));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to switch discipline');
+    } finally {
+      setSwitchingDiscipline(false);
     }
   }
 
@@ -326,6 +342,23 @@ export default function Plan() {
                       <p className="muted" style={{ margin: 0 }}>
                         {selectedDay.restReason ?? 'No training scheduled today.'}
                       </p>
+                      <div className="gd-segmented gd-discipline-switch">
+                        {(['BIKE', 'RUN'] as const).map((d) => (
+                          <button
+                            key={d}
+                            type="button"
+                            className={`gd-segmented-option${
+                              (selectedDay.discipline ?? configDisciplineForDate(planConfig, selectedDay.date)) === d
+                                ? ' gd-on'
+                                : ''
+                            }`}
+                            disabled={switchingDiscipline}
+                            onClick={() => switchDiscipline(selectedDay, d)}
+                          >
+                            {d === 'BIKE' ? '🚴 Bike' : '🏃 Run'}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 ) : (
@@ -377,6 +410,20 @@ export default function Plan() {
                             </span>
                           )}
                         </div>
+                      </div>
+
+                      <div className="gd-segmented gd-discipline-switch">
+                        {(['BIKE', 'RUN'] as const).map((d) => (
+                          <button
+                            key={d}
+                            type="button"
+                            className={`gd-segmented-option${selectedDay.discipline === d ? ' gd-on' : ''}`}
+                            disabled={switchingDiscipline}
+                            onClick={() => switchDiscipline(selectedDay, d)}
+                          >
+                            {d === 'BIKE' ? '🚴 Bike' : '🏃 Run'}
+                          </button>
+                        ))}
                       </div>
 
                       <button type="button" className="gd-feedback-cta" onClick={() => openPlanDay(selectedDay)}>

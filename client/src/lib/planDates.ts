@@ -1,4 +1,4 @@
-import type { TrainingPlanConfig } from '../api/types';
+import type { PlannedDiscipline, TrainingPlanConfig } from '../api/types';
 
 export function todayKey(): string {
   return new Date().toISOString().slice(0, 10);
@@ -19,6 +19,13 @@ export function configHoursForDate(config: TrainingPlanConfig | null | undefined
   if (!config) return 0;
   const day = new Date(`${dateStr.slice(0, 10)}T00:00:00Z`);
   return config[CONFIG_HOUR_KEYS[day.getUTCDay()]];
+}
+
+/** The discipline a day would get from the recurring includeRunning/runDays split, absent any override. */
+export function configDisciplineForDate(config: TrainingPlanConfig | null | undefined, dateStr: string): PlannedDiscipline {
+  if (!config) return 'BIKE';
+  const day = new Date(`${dateStr.slice(0, 10)}T00:00:00Z`);
+  return config.includeRunning && config.runDays.includes(day.getUTCDay()) ? 'RUN' : 'BIKE';
 }
 
 export function weekdayLabel(dateStr: string): { name: string; date: string; isToday: boolean } {

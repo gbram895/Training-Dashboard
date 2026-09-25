@@ -242,6 +242,7 @@ function decideDay(
   library: ParsedWorkoutFile[],
   readiness: ReadinessModifiers,
   avoidPaths: string[],
+  disciplineOverride?: PlannedDiscipline,
 ): GeneratedDay {
   if (!targetHours || targetHours <= 0) {
     return { date, isRestDay: true, restReason: 'No training hours scheduled today' };
@@ -256,7 +257,7 @@ function decideDay(
 
   const category = decideCategory(tsb, readiness);
   const discipline: PlannedDiscipline =
-    config.includeRunning && config.runDays.includes(date.getUTCDay()) ? 'RUN' : 'BIKE';
+    disciplineOverride ?? (config.includeRunning && config.runDays.includes(date.getUTCDay()) ? 'RUN' : 'BIKE');
   const targetMinutes = Math.round(targetHours * 60);
   const workout = pickWorkout(library, discipline, targetMinutes, category, avoidPaths);
 
@@ -281,7 +282,8 @@ function decideDay(
  * `hourOverrides`, keyed by date, replaces that date's config hours — see
  * setDayAvailability, the only source of these values (the Plan tab's
  * availability slider for today, or the weekly check-in for any day in the
- * window).
+ * window). `disciplineOverrides` likewise forces that date's discipline
+ * (run vs. bike) — see setDayDiscipline.
  */
 async function runProjection(
   userId: string,
@@ -290,6 +292,7 @@ async function runProjection(
   library: ParsedWorkoutFile[],
   hourOverrides?: Map<number, number>,
   manualOverrides?: Map<number, ManualOverrideRow>,
+  disciplineOverrides?: Map<number, PlannedDiscipline>,
 ): Promise<GeneratedDay[]> {
   const fitness = await computeFitnessSeries(userId);
   let ctl = fitness.length ? fitness[fitness.length - 1].ctl : 0;
@@ -304,13 +307,14 @@ async function runProjection(
     const tsb = ctl - atl;
     const override = manualOverrides?.get(date.getTime());
     const targetHours = hourOverrides?.get(date.getTime()) ?? config[dayKeyFor(date)];
+    const disciplineOverride = disciplineOverrides?.get(date.getTime());
 
     // A manually rearranged day (calendar drag-and-drop) keeps its own
     // content — still fed into the fitness projection below, exactly like a
     // regular planned day, just never regenerated.
     const generated: GeneratedDay = override
       ? { date, isRestDay: override.isRestDay, skipUpsert: true }
-      : decideDay(date, targetHours, tsb, config, library, readiness, recentPicks);
+      : decideDay(date, targetHours, tsb, config, library, readiness, recentPicks, disciplineOverride);
     results.push(generated);
 
     const dayTss = generated.isRestDay
@@ -330,13 +334,18 @@ async function runProjection(
 }
 
 /**
- * `availableHoursOverride`: pass a number to record it on the row (the
- * one-off availability slider), or omit it entirely to leave the column
- * untouched — the normal rolling-window regeneration path never sets it, so
- * an existing override on today's row survives a regeneration it wasn't part
- * of (e.g. the user editing next week's hours later the same day).
+ * `availableHoursOverride`/`disciplineOverride`: pass a value to record it on
+ * the row, or omit it entirely to leave the column untouched — the normal
+ * rolling-window regeneration path never sets these itself, so an existing
+ * override survives a regeneration it wasn't the direct cause of (e.g. the
+ * user editing next week's hours later the same day).
  */
-async function upsertPlannedDay(userId: string, generated: GeneratedDay, availableHoursOverride?: number) {
+async function upsertPlannedDay(
+  userId: string,
+  generated: GeneratedDay,
+  availableHoursOverride?: number,
+  disciplineOverride?: PlannedDiscipline,
+) {
   const base = generated.isRestDay
     ? {
         isRestDay: true,
@@ -367,7 +376,11 @@ async function upsertPlannedDay(userId: string, generated: GeneratedDay, availab
         generatedAt: new Date(),
       };
 
-  const data = availableHoursOverride !== undefined ? { ...base, availableHoursOverride } : base;
+  const data = {
+    ...base,
+    ...(availableHoursOverride !== undefined ? { availableHoursOverride } : {}),
+    ...(disciplineOverride !== undefined ? { disciplineOverride } : {}),
+  };
 
   await prisma.plannedDay.upsert({
     where: { userId_date: { userId, date: generated.date } },
@@ -393,15 +406,25 @@ export async function generatePlanWindow(userId: string, days = ROLLING_WINDOW_D
     dates.push(date);
   }
 
-  // A day's own one-off availableHoursOverride (see setDayAvailability) or
-  // manualOverride flag (see swapPlannedDays) survives regeneration — read
-  // whatever's already on each row before rebuilding the window around it.
+  // A day's own one-off availableHoursOverride/disciplineOverride (see
+  // setDayAvailability/setDayDiscipline) or manualOverride flag (see
+  // swapPlannedDays) survives regeneration — read whatever's already on each
+  // row before rebuilding the window around it.
   const existingRows = await prisma.plannedDay.findMany({
     where: { userId, date: { in: dates } },
-    select: { date: true, isRestDay: true, trainingStress: true, sourcePath: true, manualOverride: true, availableHoursOverride: true },
+    select: {
+      date: true,
+      isRestDay: true,
+      trainingStress: true,
+      sourcePath: true,
+      manualOverride: true,
+      availableHoursOverride: true,
+      disciplineOverride: true,
+    },
   });
   const manualOverrides = new Map<number, ManualOverrideRow>();
   const hourOverrides = new Map<number, number>();
+  const disciplineOverrides = new Map<number, PlannedDiscipline>();
   for (const row of existingRows) {
     if (row.manualOverride) {
       manualOverrides.set(row.date.getTime(), {
@@ -411,12 +434,18 @@ export async function generatePlanWindow(userId: string, days = ROLLING_WINDOW_D
       });
     }
     if (row.availableHoursOverride != null) hourOverrides.set(row.date.getTime(), row.availableHoursOverride);
+    if (row.disciplineOverride != null) disciplineOverrides.set(row.date.getTime(), row.disciplineOverride);
   }
 
-  const generatedDays = await runProjection(userId, dates, config, library, hourOverrides, manualOverrides);
+  const generatedDays = await runProjection(userId, dates, config, library, hourOverrides, manualOverrides, disciplineOverrides);
   for (const generated of generatedDays) {
     if (generated.skipUpsert) continue;
-    await upsertPlannedDay(userId, generated, hourOverrides.get(generated.date.getTime()));
+    await upsertPlannedDay(
+      userId,
+      generated,
+      hourOverrides.get(generated.date.getTime()),
+      disciplineOverrides.get(generated.date.getTime()),
+    );
   }
 }
 
@@ -499,6 +528,33 @@ export async function setDayAvailability(userId: string, date: Date, hours: numb
   if (!existing) return null;
 
   await prisma.plannedDay.update({ where: { id: existing.id }, data: { availableHoursOverride: hours } });
+  await generatePlanWindow(userId);
+
+  return prisma.plannedDay.findUnique({ where: { userId_date: { userId, date: day } } });
+}
+
+/**
+ * A one-off "make this a run instead" (or back to bike) override for any day
+ * already in the rolling window — the "Switch to run" action on the
+ * Suggested Training card. The algorithm still picks which specific workout
+ * (respecting current fitness/readiness), just constrained to this
+ * discipline. Pass `discipline: null` to clear the override and hand the
+ * day's discipline back to the recurring includeRunning/runDays split.
+ */
+export async function setDayDiscipline(userId: string, date: Date, discipline: PlannedDiscipline | null) {
+  const config = await prisma.trainingPlanConfig.findUnique({ where: { userId } });
+  if (!config) return null;
+
+  await ensureWindowGenerated(userId);
+
+  const day = utcMidnight(date);
+  const today = utcMidnight(new Date());
+  if (day < today) return null;
+
+  const existing = await prisma.plannedDay.findUnique({ where: { userId_date: { userId, date: day } } });
+  if (!existing) return null;
+
+  await prisma.plannedDay.update({ where: { id: existing.id }, data: { disciplineOverride: discipline } });
   await generatePlanWindow(userId);
 
   return prisma.plannedDay.findUnique({ where: { userId_date: { userId, date: day } } });

@@ -9,6 +9,7 @@ import {
   revertManualOverrides,
   ROLLING_WINDOW_DAYS,
   setDayAvailability,
+  setDayDiscipline,
   swapPlannedDays,
 } from '../lib/trainingPlan.js';
 import { buildFitWorkoutFile } from '../lib/garminFitWorkout.js';
@@ -104,6 +105,33 @@ router.put('/day-availability', async (req: AuthedRequest, res) => {
   }
 
   const updated = await setDayAvailability(req.userId!, date, parsed.data.hours);
+  if (!updated) return res.status(400).json({ error: 'Set up a training plan first' });
+  res.json(updated);
+});
+
+const dayDisciplineSchema = z.object({
+  date: z.string().min(1),
+  discipline: z.enum(['BIKE', 'RUN']).nullable(),
+});
+
+// "Switch to run" / "Switch to bike" on the Suggested Training card, or the
+// weekly check-in — forces a day's discipline; the algorithm still picks
+// which specific workout. discipline: null clears the override.
+router.put('/day-discipline', async (req: AuthedRequest, res) => {
+  const parsed = dayDisciplineSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const date = utcMidnight(new Date(parsed.data.date));
+  if (Number.isNaN(date.getTime())) return res.status(400).json({ error: 'Invalid date' });
+
+  const today = utcMidnight(new Date());
+  const maxDate = new Date(today);
+  maxDate.setUTCDate(maxDate.getUTCDate() + ROLLING_WINDOW_DAYS - 1);
+  if (date < today || date > maxDate) {
+    return res.status(400).json({ error: 'Date must be within the plan window' });
+  }
+
+  const updated = await setDayDiscipline(req.userId!, date, parsed.data.discipline);
   if (!updated) return res.status(400).json({ error: 'Set up a training plan first' });
   res.json(updated);
 });

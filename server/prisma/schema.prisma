@@ -244,12 +244,16 @@ model PlannedDay {
   profile                String?
   segments               Json?
   category               String?
-  // A one-off "today I actually have X hours" adjustment from the Plan tab's
-  // availability slider, distinct from the recurring weekly hours in
-  // TrainingPlanConfig. Only ever set on today's own row; a future day rolling
-  // into "today" always starts unset. See lib/trainingPlan.ts's
-  // setTodayAvailability.
+  // A one-off "I actually have X hours this day" adjustment from the Plan
+  // tab's availability slider (today) or the weekly check-in (any day in the
+  // rolling window), distinct from the recurring weekly hours in
+  // TrainingPlanConfig. See lib/trainingPlan.ts's setDayAvailability.
   availableHoursOverride Float?
+  // A one-off "make this a run instead" (or vice versa) override, independent
+  // of the recurring includeRunning/runDays split — the algorithm still picks
+  // which specific workout, just constrained to this discipline. See
+  // lib/trainingPlan.ts's setDayDiscipline.
+  disciplineOverride     PlannedDiscipline?
   generatedAt            DateTime           @default(now())
   // Set once a day's content is rearranged by hand (calendar drag-and-drop) —
   // the nightly/rolling regeneration in lib/trainingPlan.ts leaves a

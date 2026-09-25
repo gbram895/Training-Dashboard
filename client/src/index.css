@@ -2223,6 +2223,10 @@ button.gd-filter-chip.gd-on {
   padding: 3px;
 }
 
+.gd-discipline-switch {
+  margin: 12px 0;
+}
+
 button.gd-segmented-option {
   flex: 1;
   text-align: center;
