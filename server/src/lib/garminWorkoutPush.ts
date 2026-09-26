@@ -1,5 +1,6 @@
 import { prisma } from './prisma.js';
 import { garminClientFromTokens, type GarminTokens } from './garmin.js';
+import { THRESHOLD_HR_AS_FRACTION_OF_MAX, VO2MAX_FRACTION_AT_MAX_HR } from './workoutFormats.js';
 
 export interface GarminPushSegment {
   durationSec: number;
@@ -88,6 +89,21 @@ function stepTypeFor(segment: GarminPushSegment): { stepTypeId: number; stepType
   return STEP_TYPE.interval;
 }
 
+/**
+ * Inverse of workoutFormats.ts's normalizeHeartRate — reconstructs the bpm a
+ * fraction above 1.0 (threshold) was derived from, using the same estimated
+ * max HR and VO2max-at-max-HR assumption, so a segment parsed from an HR
+ * target round-trips back out at (approximately) its original bpm rather
+ * than a linear `fraction * thresholdHrBpm`, which overshoots badly above
+ * threshold (HR is compressed there — see normalizeHeartRate's comment).
+ */
+function bpmForHrFraction(fraction: number, thresholdHrBpm: number): number {
+  if (fraction <= 1) return fraction * thresholdHrBpm;
+  const maxHrBpm = thresholdHrBpm / THRESHOLD_HR_AS_FRACTION_OF_MAX;
+  const aboveThreshold = (fraction - 1) / (VO2MAX_FRACTION_AT_MAX_HR - 1);
+  return thresholdHrBpm + aboveThreshold * (maxHrBpm - thresholdHrBpm);
+}
+
 function targetFor(
   discipline: GarminPushDiscipline,
   segment: GarminPushSegment,
@@ -106,8 +122,8 @@ function targetFor(
     if (thresholds.thresholdHrBpm <= 0) return { targetType: NO_TARGET, targetValueOne: null, targetValueTwo: null };
     return {
       targetType: HEART_RATE_ZONE_TARGET,
-      targetValueOne: Math.round(low * thresholds.thresholdHrBpm),
-      targetValueTwo: Math.round(high * thresholds.thresholdHrBpm),
+      targetValueOne: Math.round(bpmForHrFraction(low, thresholds.thresholdHrBpm)),
+      targetValueTwo: Math.round(bpmForHrFraction(high, thresholds.thresholdHrBpm)),
     };
   }
 

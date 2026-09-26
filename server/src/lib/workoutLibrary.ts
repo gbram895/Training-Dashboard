@@ -9,6 +9,12 @@ import { classifyWorkoutCategory, type WorkoutCategory, type WorkoutSegment } fr
 // take forever with a large library, gentle enough not to hammer Dropbox.
 const FETCH_CONCURRENCY = 8;
 
+// Bumped whenever the parsing logic itself changes in a way that alters a
+// segment's computed intensity for the SAME file and thresholds (e.g. fixing
+// a decode bug) — otherwise a cached row keyed only on thresholds looks
+// unchanged and keeps serving the old, wrong parse forever.
+const PARSER_VERSION = 2;
+
 async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let next = 0;
@@ -180,7 +186,7 @@ export async function fetchWorkoutLibrary(userId: string): Promise<ParsedWorkout
   // segment's intensity fraction, so a cached parse is only valid while these
   // haven't changed — otherwise it's stale in exactly the way an edited source
   // file would be.
-  const thresholdsKey = `${user.ftpWatts}:${user.thresholdPaceSecPerKm}:${user.hrZone4Max}`;
+  const thresholdsKey = `${PARSER_VERSION}:${user.ftpWatts}:${user.thresholdPaceSecPerKm}:${user.hrZone4Max}`;
 
   const accessToken = await refreshAccessToken(config.dropboxRefreshToken);
 

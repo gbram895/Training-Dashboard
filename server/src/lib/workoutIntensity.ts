@@ -175,7 +175,13 @@ export function classifyWorkoutCategory(
     (s): s is WorkoutSegment & { intensityFraction: number } => s.intensityFraction != null,
   );
   const sustained = withTarget.filter((s) => s.durationSec >= SUSTAINED_EFFORT_MIN_SEC);
-  const targets = (sustained.length > 0 ? sustained : withTarget).map((s) => s.intensityFraction);
+  // The top of a segment's own prescribed range, not its midpoint — the same
+  // "hardest point reached, not the average" principle this function already
+  // applies across the whole session, just applied within one segment too. A
+  // segment given as "184-198bpm" is prescribing an effort that reaches
+  // 198bpm; averaging it down to ~191 before banding is how a genuine VO2max
+  // interval undershoots into "Threshold".
+  const targets = (sustained.length > 0 ? sustained : withTarget).map((s) => s.intensityHigh ?? s.intensityFraction);
   if (targets.length > 0) {
     return bandForIntensity(Math.max(...targets));
   }

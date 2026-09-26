@@ -115,12 +115,23 @@ function normalizePower(raw: number | undefined, ftpWatts: number): number | und
 }
 
 /**
- * Threshold HR as a share of max HR — the usual rule of thumb, used only to
- * resolve a target written as a percentage of max HR, since there's no stored
- * max HR to divide by. Targets in bpm (what every file in the library actually
- * uses) don't go anywhere near it.
+ * Threshold HR as a share of max HR — the usual rule of thumb, used to
+ * estimate a max HR since there's no stored one to work from directly: to
+ * resolve a target written as a percentage of max HR, and to place a
+ * supra-threshold bpm target on the intensity scale below. Exported so
+ * lib/garminWorkoutPush.ts's reverse conversion (fraction back to bpm, for
+ * pushing a workout to a device) uses the exact same estimate.
  */
-const THRESHOLD_HR_AS_FRACTION_OF_MAX = 0.92;
+export const THRESHOLD_HR_AS_FRACTION_OF_MAX = 0.92;
+
+/**
+ * What effort at estimated max HR represents on the intensity-fraction scale
+ * — the usual VO2max-to-threshold power/pace ratio (VO2max sessions commonly
+ * run ~115-130% of threshold), applied to HR too so a heart-rate-prescribed
+ * interval lands in the same VO2MAX band (bandForIntensity, >1.05) a power-
+ * or pace-prescribed one at equivalent effort would.
+ */
+export const VO2MAX_FRACTION_AT_MAX_HR = 1.2;
 
 /**
  * FIT heart-rate targets carry the same "% or bpm" ambiguity power targets do:
@@ -131,17 +142,25 @@ const THRESHOLD_HR_AS_FRACTION_OF_MAX = 0.92;
  * The result is a fraction of threshold HR, so an HR-prescribed segment lands
  * on the same 1.0-is-threshold scale as a power or pace one and every consumer
  * of a segment (the profile chart's zone colours, planned TSS, the category
- * classifier) works on it unchanged. Threshold here is the zone 4/5 boundary,
- * which is what this app already treats as threshold: lib/trainingLoad.ts's
- * per-zone intensities straddle 1.0 exactly there (z4 = 0.94, z5 = 1.1), and
- * dividing the stored zone bounds by it lands each zone in the matching band of
- * the client's own fraction-to-zone cutoffs.
+ * classifier) works on it unchanged.
+ *
+ * Below threshold this is a plain ratio (bpm / thresholdHrBpm), same as power
+ * or pace. Above it, a plain ratio badly undersells the effort: heart rate is
+ * a compressed, saturating proxy near the top of the scale, so a near-max-HR
+ * 30-second rep can compute to barely 1.05x threshold and land as "Threshold"
+ * instead of "VO2max", even though the athlete is running far harder than
+ * that. Above threshold, the bpm is instead placed between threshold (1.0)
+ * and estimated max HR (VO2MAX_FRACTION_AT_MAX_HR), which is what
+ * lib/garminWorkoutPush.ts's bpmForHrFraction inverts to push a segment back
+ * out at (approximately) its original bpm target.
  */
 function normalizeHeartRate(raw: number | undefined, thresholdHrBpm: number): number | undefined {
   if (raw == null || thresholdHrBpm <= 0) return undefined;
   const maxHrBpm = thresholdHrBpm / THRESHOLD_HR_AS_FRACTION_OF_MAX;
   const bpm = raw > 100 ? raw - 100 : (raw / 100) * maxHrBpm;
-  return bpm / thresholdHrBpm;
+  if (bpm <= thresholdHrBpm || maxHrBpm <= thresholdHrBpm) return bpm / thresholdHrBpm;
+  const aboveThreshold = (bpm - thresholdHrBpm) / (maxHrBpm - thresholdHrBpm);
+  return 1 + aboveThreshold * (VO2MAX_FRACTION_AT_MAX_HR - 1);
 }
 
 export function parseFitWorkoutFile(
