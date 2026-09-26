@@ -178,7 +178,14 @@ app.listen(PORT, () => {
 
   primeJobs()
     .then(() => {
-      const tickSchedule = process.env.SCHEDULER_TICK_CRON ?? '* * * * *';
+      // Nothing this app schedules needs sub-minute precision (the tightest
+      // cadence is Garmin sync every 30 minutes), so ticking every minute
+      // just means a database query every minute, all day — combined with
+      // the external heartbeat keeping this service awake around the clock,
+      // that alone can run a Neon free-tier compute allowance dry well
+      // before the month is out. Every 5 minutes still catches everything
+      // within a few minutes of when it's due.
+      const tickSchedule = process.env.SCHEDULER_TICK_CRON ?? '*/5 * * * *';
       cron.schedule(tickSchedule, () => {
         runDueJobs().catch((err) => console.error('[scheduler] tick failed:', err));
       });
