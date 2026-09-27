@@ -44,7 +44,13 @@ export default function WorkoutProfileChart({
   const totalSec = segments.reduce((sum, s) => sum + s.durationSec, 0);
   if (totalSec <= 0) return null;
 
-  const maxIntensity = Math.max(1, ...segments.map((s) => s.intensityFraction ?? 0));
+  // The top of each segment's own range, not its midpoint — a rep given as
+  // "97-111% of threshold" peaks at 111%, and both the bar's height and its
+  // zone color should reflect that peak rather than the averaged fraction
+  // (which would read this VO2max rep as Threshold). Same principle as
+  // classifyWorkoutCategory on the server (see workoutIntensity.ts).
+  const peakOf = (s: WorkoutProfileSegment) => s.intensityHigh ?? s.intensityFraction ?? 0;
+  const maxIntensity = Math.max(1, ...segments.map(peakOf));
   const baselineHeight = height * 0.12;
   const gap = 1;
   const widths = computeBarWidths(segments);
@@ -55,9 +61,8 @@ export default function WorkoutProfileChart({
     const x = cumX;
     cumX += widthPct;
     const hasTarget = segment.intensityFraction != null;
-    const barHeight = hasTarget
-      ? Math.max(baselineHeight, (segment.intensityFraction! / maxIntensity) * height)
-      : baselineHeight;
+    const peak = peakOf(segment);
+    const barHeight = hasTarget ? Math.max(baselineHeight, (peak / maxIntensity) * height) : baselineHeight;
     const label = hasTarget
       ? `${formatSegmentDuration(segment.durationSec)} @ ${Math.round(segment.intensityFraction! * 100)}%`
       : formatSegmentDuration(segment.durationSec);
@@ -72,7 +77,7 @@ export default function WorkoutProfileChart({
           width: `calc(${widthPct}% - ${gap}px)`,
           bottom: 0,
           height: barHeight,
-          background: hasTarget ? getTrainingZone(segment.intensityFraction!).color : 'var(--border)',
+          background: hasTarget ? getTrainingZone(peak).color : 'var(--border)',
           borderRadius: '2px 2px 0 0',
         }}
       />

@@ -143,9 +143,13 @@ export default function WorkoutDetailView({
               );
             }
 
-            const zone = getTrainingZone(segment.intensityFraction);
             const low = segment.intensityLow ?? segment.intensityFraction;
             const high = segment.intensityHigh ?? segment.intensityFraction;
+            // The top of the segment's own range, not its midpoint — a rep given
+            // as "97-111% of threshold" is a VO2max effort, not a Threshold one
+            // averaged down to ~104%. Same principle as classifyWorkoutCategory
+            // on the server (see workoutIntensity.ts).
+            const zone = getTrainingZone(high);
             const hasThresholds =
               workout.discipline === 'BIKE' ? (thresholds?.ftpWatts ?? 0) > 0 : (thresholds?.thresholdPaceSecPerKm ?? 0) > 0;
 
