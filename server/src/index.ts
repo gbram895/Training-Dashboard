@@ -31,6 +31,14 @@ const PORT = process.env.PORT ?? 4000;
 const SYNC_TZ = process.env.SYNC_TZ ?? 'Europe/Brussels';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+/** Whether the current local time in `timezone` falls in [startHour, endHour). DST-aware via Intl. */
+function isWithinAwakeWindow(timezone: string, startHour: number, endHour: number): boolean {
+  const hour = Number(
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone, hour: 'numeric', hourCycle: 'h23' }).format(new Date()),
+  );
+  return hour >= startHour && hour < endHour;
+}
+
 app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json({ limit: '15mb' }));
@@ -204,11 +212,22 @@ app.listen(PORT, () => {
   // requests. Pinging our own public URL well inside that window keeps it warm.
   // This only helps while the process is alive; what wakes it once it is not is
   // the heartbeat calling /api/cron/tick from outside.
+  //
+  // Both this ping and that outside heartbeat are confined to AWAKE_HOURS_START
+  // through AWAKE_HOURS_END (local time, AWAKE_HOURS_TZ) so the service — and the
+  // Neon database behind it — are free to sit idle and suspend overnight instead
+  // of being kept alive around the clock. A real visit outside those hours still
+  // wakes the app as normal; this only stops the artificial keep-awake traffic.
+  // Keep this window in sync with .github/workflows/sync-heartbeat.yml.
   if (process.env.RENDER_EXTERNAL_URL) {
     const pingUrl = `${process.env.RENDER_EXTERNAL_URL}/api/status`;
+    const awakeTz = process.env.AWAKE_HOURS_TZ ?? SYNC_TZ;
+    const awakeStart = Number(process.env.AWAKE_HOURS_START ?? 7);
+    const awakeEnd = Number(process.env.AWAKE_HOURS_END ?? 23);
     cron.schedule('*/10 * * * *', () => {
+      if (!isWithinAwakeWindow(awakeTz, awakeStart, awakeEnd)) return;
       fetch(pingUrl).catch((err) => console.error('[keep-alive] ping failed:', err));
     });
-    console.log(`[keep-alive] pinging ${pingUrl} every 10 minutes`);
+    console.log(`[keep-alive] pinging ${pingUrl} every 10 minutes between ${awakeStart}:00-${awakeEnd}:00 ${awakeTz}`);
   }
 });

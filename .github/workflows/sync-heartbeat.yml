@@ -37,7 +37,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # Outside the app's active hours this workflow deliberately does nothing,
+      # so the service is free to fall idle and both Render and Neon can
+      # suspend for the night instead of being kept alive by this ping. A real
+      # visit at 3am still wakes the app normally (Render routes the request
+      # regardless of this schedule) — this only stops the ARTIFICIAL keep-awake
+      # traffic overnight. Keep this window in sync with AWAKE_HOURS_START/END
+      # in server/src/index.ts.
+      - name: Check active hours
+        id: gate
+        env:
+          TZ: Europe/Brussels
+        run: |
+          hour=$(date +%-H)
+          if [ "$hour" -ge 7 ] && [ "$hour" -lt 23 ]; then
+            echo "awake=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "awake=false" >> "$GITHUB_OUTPUT"
+            echo "Outside active hours (07:00-23:00 Europe/Brussels, currently ${hour}:00) — skipping."
+          fi
+
       - name: Run anything that has fallen due
+        if: steps.gate.outputs.awake == 'true'
         env:
           APP_URL: ${{ secrets.APP_URL }}
           SYNC_API_KEY: ${{ secrets.SYNC_API_KEY }}
