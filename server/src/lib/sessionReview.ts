@@ -8,6 +8,7 @@ import {
   type WorkoutCategory,
   type WorkoutSegment,
 } from './workoutIntensity.js';
+import { reviewStructure, type StructureReview } from './sessionStructure.js';
 
 /**
  * Did the session that was actually done do the job the planned session was
@@ -65,7 +66,7 @@ export type EffortSource = 'POWER' | 'PACE' | 'HR' | 'NONE';
 export type ReviewBasis = 'TIME_IN_ZONE' | 'RESTRAINT' | 'INTENSITY' | 'NONE';
 
 export interface SessionCheck {
-  key: 'discipline' | 'duration' | 'execution';
+  key: 'discipline' | 'duration' | 'execution' | 'structure';
   label: string;
   verdict: CheckVerdict;
   /** Rendered for the UI here rather than in the client, so the units stay with the logic that knows them. */
@@ -105,6 +106,8 @@ export interface SessionReview {
   headline: string;
   checks: SessionCheck[];
   bands: BandMinutes[];
+  /** The planned reps lined up against the efforts found in the recording; null when the plan had no reps or there was no stream to find them in. */
+  structure: StructureReview | null;
   basis: ReviewBasis;
   effortSource: EffortSource;
   /** Caveats and observations that colour the verdict without being graded: what the load did, what the RPE said, how the effort was measured. */
@@ -581,6 +584,7 @@ export function judgeSession({ date, planned, workouts, thresholds }: SessionInp
     actual,
     checks: [] as SessionCheck[],
     bands: [] as BandMinutes[],
+    structure: null as StructureReview | null,
     notes: [] as string[],
     load: { plannedTss: null as number | null, actualTss: actual.tss },
   };
@@ -636,7 +640,8 @@ export function judgeSession({ date, planned, workouts, thresholds }: SessionInp
 
   // --- Which question is this session actually asking? ---------------------
 
-  const plannedBands = plannedBandMinutes(parseSegments(planned.segments));
+  const plannedSegments = parseSegments(planned.segments);
+  const plannedBands = plannedBandMinutes(plannedSegments);
   const hasSegmentDetail = plannedBands.coveredMin >= MIN_KEY_BAND_MIN;
 
   // The plan already recorded what it picked this day to be (PlannedDay.category,
@@ -658,6 +663,14 @@ export function judgeSession({ date, planned, workouts, thresholds }: SessionInp
     else if (hasSegmentDetail && plannedKeyMin >= MIN_KEY_BAND_MIN) basis = 'TIME_IN_ZONE';
     else if (effort.overall != null) basis = 'INTENSITY';
   }
+
+  // Time in a band says whether the work happened in total; the structure says
+  // whether it happened in the shape it was written in — 4 x 8 min rather than
+  // one 32-minute block, or three good reps and a fourth that fell apart.
+  const structure =
+    planned.discipline && hasSegmentDetail && effort.source !== 'NONE'
+      ? reviewStructure(plannedSegments, planned.discipline, workouts, thresholds)
+      : null;
 
   // --- The checks ----------------------------------------------------------
 
@@ -691,7 +704,7 @@ export function judgeSession({ date, planned, workouts, thresholds }: SessionInp
     });
     // On an easy day the duration IS most of the prescription, so it carries
     // more of the verdict than it does on an interval session.
-    weights.push(basis === 'RESTRAINT' ? 35 : 25);
+    weights.push(basis === 'RESTRAINT' ? 35 : structure ? 20 : 25);
     scores.push(score);
   }
 
@@ -705,7 +718,9 @@ export function judgeSession({ date, planned, workouts, thresholds }: SessionInp
       actual: mins(actualKeyMin),
       note,
     });
-    weights.push(55);
+    // Shares the weight with the structure check when there is one: the two
+    // are the same question asked at two resolutions.
+    weights.push(structure ? 30 : 55);
     scores.push(score);
   } else if (basis === 'RESTRAINT') {
     const { score, note } = scoreRestraint(effort.bands);
@@ -734,6 +749,22 @@ export function judgeSession({ date, planned, workouts, thresholds }: SessionInp
     scores.push(score);
   }
 
+  if (structure) {
+    checks.push({
+      key: 'structure',
+      label: 'Rep by rep',
+      // Stricter than the other checks: one rep in four falling apart still
+      // averages above 0.8, and a verdict of GOOD beside a note saying the
+      // last rep fell apart reads as the app not having looked.
+      verdict: structure.score >= 0.9 ? 'GOOD' : structure.score >= 0.6 ? 'FAIR' : 'POOR',
+      planned: structure.plannedSummary,
+      actual: structure.actualSummary,
+      note: structure.note,
+    });
+    weights.push(basis === 'RESTRAINT' ? 25 : 30);
+    scores.push(structure.score);
+  }
+
   // --- Notes: what colours the verdict without being it --------------------
 
   const notes: string[] = [];
@@ -746,6 +777,11 @@ export function judgeSession({ date, planned, workouts, thresholds }: SessionInp
   } else if (effort.source === 'HR' && planned.discipline != null) {
     notes.push(
       'Measured from heart rate, which lags the effort by half a minute or so. Short, sharp intervals read softer here than they were done.',
+    );
+  }
+  if (structure?.detectedFrom === 'HR') {
+    notes.push(
+      'The reps were found from heart rate alone, which blurs where each one starts and stops, so their lengths are not held against you. Short recoveries can make two reps read as one.',
     );
   }
 
@@ -803,6 +839,12 @@ export function judgeSession({ date, planned, workouts, thresholds }: SessionInp
     grade = 'SOLID';
     headline = 'Right shape, no way to check the efforts';
   }
+  // "You did the session" is not true of a session with a rep missing or fallen
+  // apart, however well the rest averaged out.
+  if (grade === 'NAILED' && structure?.reps.some((r) => r.verdict === 'MISSED' || r.verdict === 'POOR')) {
+    grade = 'SOLID';
+    headline = HEADLINE.SOLID;
+  }
   const score = basis === 'NONE' ? null : weighted;
 
   const bands: BandMinutes[] = CATEGORY_ORDER.map((band) => ({
@@ -819,6 +861,7 @@ export function judgeSession({ date, planned, workouts, thresholds }: SessionInp
     headline,
     checks,
     bands,
+    structure,
     basis,
     effortSource: effort.source,
     notes,
