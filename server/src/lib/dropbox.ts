@@ -69,6 +69,8 @@ export interface DropboxFileEntry {
   name: string;
   path_lower: string;
   server_modified: string;
+  /** Dropbox's hash of the file's bytes; identical files share it whatever they're named. */
+  content_hash?: string;
 }
 
 interface ListFolderResponse {
