@@ -114,6 +114,7 @@ export default function Plan() {
   const [showRearrangeModal, setShowRearrangeModal] = useState(false);
   const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
   const [switchingDiscipline, setSwitchingDiscipline] = useState(false);
+  const [refreshingPlan, setRefreshingPlan] = useState(false);
 
   function load() {
     apiFetch<LibraryWorkout[]>('/workout-library')
@@ -186,6 +187,26 @@ export default function Plan() {
       setError(err instanceof ApiError ? err.message : 'Failed to switch discipline');
     } finally {
       setSwitchingDiscipline(false);
+    }
+  }
+
+  // For right after adding workouts to the Dropbox library: re-reads the
+  // folder and rebuilds the plan around it, instead of waiting for the
+  // half-hourly library check to do the same.
+  async function refreshPlan() {
+    setRefreshingPlan(true);
+    try {
+      const [week, library] = await Promise.all([
+        apiFetch<PlannedDay[]>('/training-plan/regenerate', { method: 'POST' }),
+        apiFetch<LibraryWorkout[]>('/workout-library'),
+      ]);
+      setPlanWeek(week);
+      setWorkouts(library);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to refresh the plan');
+    } finally {
+      setRefreshingPlan(false);
     }
   }
 
@@ -524,7 +545,20 @@ export default function Plan() {
         />
       )}
 
-      <h2 className="plan-category-heading">Workout library</h2>
+      <div className="plan-library-heading">
+        <h2 className="plan-category-heading">Workout library</h2>
+        {planConfig && (
+          <button
+            type="button"
+            className="gd-no-time-btn"
+            disabled={refreshingPlan}
+            title="Added workouts to Dropbox? Rebuild the plan with them now"
+            onClick={refreshPlan}
+          >
+            {refreshingPlan ? 'Refreshing…' : 'Refresh plan'}
+          </button>
+        )}
+      </div>
 
       {error ? (
         <p className="muted">{error}</p>
