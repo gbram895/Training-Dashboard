@@ -1233,6 +1233,13 @@ button.icon-button {
   font-size: 1.1rem;
 }
 
+.plan-library-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
 .plan-grid {
   display: grid;
   grid-template-columns: 1fr;
