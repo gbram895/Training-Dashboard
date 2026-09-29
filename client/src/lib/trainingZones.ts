@@ -26,3 +26,20 @@ export function getTrainingZone(intensityFraction: number): TrainingZone {
   if (intensityFraction <= 1.05) return ZONES[3];
   return ZONES[4];
 }
+
+/**
+ * The intensity a segment is zoned on — mirrors bandingTarget in the server's
+ * workoutIntensity.ts, so a segment's colour and the workout's category agree.
+ * Power and pace use the middle of the range: JOIN writes an "@95%" step as a
+ * 90-100% window, and the top of it is five points above what was asked for.
+ * Heart rate uses the top, since a bpm window's midpoint undersells a hard rep.
+ */
+export function zoneIntensity(segment: {
+  intensityFraction?: number;
+  intensityHigh?: number;
+  targetMetric?: 'power' | 'pace' | 'hr';
+}): number {
+  return segment.targetMetric === 'hr'
+    ? (segment.intensityHigh ?? segment.intensityFraction ?? 0)
+    : (segment.intensityFraction ?? segment.intensityHigh ?? 0);
+}
