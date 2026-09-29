@@ -158,6 +158,9 @@ const SUSTAINED_EFFORT_MIN_SEC = 20;
  */
 const BAND_MIN_TOTAL_SEC = 4 * 60;
 
+/** See classifyWorkoutCategory: how much VO2max time, relative to threshold time, makes a VO2max session. */
+const VO2MAX_MIN_SHARE_OF_THRESHOLD = 0.5;
+
 /**
  * The intensity a segment is banded on. For power and pace that's the middle of
  * its range: JOIN writes every "@95%" step as a 90-100% window, so the top of
@@ -205,7 +208,14 @@ export function classifyWorkoutCategory(
       const idx = CATEGORY_ORDER.indexOf(bandForIntensity(bandingTarget(s)));
       for (const c of CATEGORY_ORDER.slice(0, idx + 1)) secAtOrAbove.set(c, (secAtOrAbove.get(c) ?? 0) + s.durationSec);
     }
-    const reached = [...CATEGORY_ORDER].reverse().find((c) => (secAtOrAbove.get(c) ?? 0) >= BAND_MIN_TOTAL_SEC);
+    const at = (c: WorkoutCategory) => secAtOrAbove.get(c) ?? 0;
+    let reached = [...CATEGORY_ORDER].reverse().find((c) => at(c) >= BAND_MIN_TOTAL_SEC);
+    // Over-unders ("Haarspelden": 2 min at 95%, 30s kicks at 106%) touch VO2max
+    // but are built around threshold. VO2max has to be at least half as much
+    // time as the threshold work around it before it names the session.
+    if (reached === 'VO2MAX' && at('VO2MAX') < VO2MAX_MIN_SHARE_OF_THRESHOLD * (at('THRESHOLD') - at('VO2MAX'))) {
+      reached = 'THRESHOLD';
+    }
     if (reached != null && reached !== 'ENDURANCE') return reached;
     return bandForIntensity(Math.max(...counted.map(bandingTarget)));
   }
