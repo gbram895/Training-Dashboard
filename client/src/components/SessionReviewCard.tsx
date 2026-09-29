@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import type { CheckVerdict, SessionGrade, SessionReview, WorkoutCategory } from '../api/types';
+import type { CheckVerdict, RepIntensity, RepVerdict, SessionGrade, SessionReview, WorkoutCategory } from '../api/types';
 
 /**
  * How the session that was done measured up against the session that was asked
@@ -24,6 +24,21 @@ const GRADE: Record<SessionGrade, { word: string; tone: string }> = {
 };
 
 const VERDICT_TONE: Record<CheckVerdict, string> = { GOOD: 'good', FAIR: 'warn', POOR: 'crit' };
+const REP_TONE: Record<RepVerdict, string> = { ...VERDICT_TONE, MISSED: 'crit' };
+const VERDICT_RANK: Record<CheckVerdict, number> = { POOR: 0, FAIR: 1, GOOD: 2 };
+
+const INTENSITY_MARK: Record<RepIntensity, string> = {
+  ON: 'on target',
+  UNDER: 'under',
+  OVER: 'over',
+  UNJUDGED: '',
+};
+
+function clock(sec: number): string {
+  const s = Math.round(sec);
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
 
 const BAND_LABEL: Record<WorkoutCategory, string> = {
   ENDURANCE: 'Easy',
@@ -48,7 +63,13 @@ export default function SessionReviewCard({ review, compact }: { review: Session
   const plannedName = review.planned.isRestDay ? 'Rest day' : (review.planned.name ?? 'Planned session');
 
   if (compact) {
-    const lead = review.checks.find((c) => c.key === 'execution') ?? review.checks[0];
+    // Whichever of time-in-zone and rep-by-rep has more to say — on a tie the
+    // rep-by-rep, being the more specific of the two.
+    const lead =
+      review.checks
+        .filter((c) => c.key === 'execution' || c.key === 'structure')
+        .sort((a, b) => VERDICT_RANK[a.verdict] - VERDICT_RANK[b.verdict] || (a.key === 'structure' ? -1 : 1))[0] ??
+      review.checks[0];
     const target = review.workoutIds[0];
     const body = (
       <>
@@ -113,6 +134,37 @@ export default function SessionReviewCard({ review, compact }: { review: Session
             </li>
           ))}
         </ul>
+      )}
+
+      {review.structure && review.structure.reps.length > 0 && (
+        <div className="gd-sr-reps">
+          <p className="gd-sr-bands-title">Each rep, asked for → done</p>
+          <ol className="gd-sr-rep-list">
+            {review.structure.reps.map((rep) => (
+              <li key={rep.index} className={`gd-sr-rep gd-sr-${REP_TONE[rep.verdict]}`}>
+                <span className="gd-sr-rep-index mono">{rep.index}</span>
+                <span className="gd-sr-rep-planned mono">
+                  {clock(rep.plannedSec)}
+                  {rep.plannedTarget ? ` · ${rep.plannedTarget}` : ''}
+                </span>
+                <span className="gd-sr-rep-actual mono">
+                  {rep.actualSec == null
+                    ? 'not done'
+                    : `${clock(rep.actualSec)}${rep.actualValue ? ` · ${rep.actualValue}` : ''}`}
+                </span>
+                <span className="gd-sr-rep-mark">
+                  {rep.intensity && rep.intensity !== 'ON' ? INTENSITY_MARK[rep.intensity] : ''}
+                </span>
+              </li>
+            ))}
+          </ol>
+          {review.structure.extraEfforts > 0 && (
+            <p className="gd-sr-legend">
+              + {review.structure.extraEfforts} hard {review.structure.extraEfforts === 1 ? 'effort' : 'efforts'} the plan
+              didn't ask for
+            </p>
+          )}
+        </div>
       )}
 
       {bands.length > 0 && (

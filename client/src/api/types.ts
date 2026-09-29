@@ -156,11 +156,36 @@ export type EffortSource = 'POWER' | 'PACE' | 'HR' | 'NONE';
 export type ReviewBasis = 'TIME_IN_ZONE' | 'RESTRAINT' | 'INTENSITY' | 'NONE';
 
 export interface SessionCheck {
-  key: 'discipline' | 'duration' | 'execution';
+  key: 'discipline' | 'duration' | 'execution' | 'structure';
   label: string;
   verdict: CheckVerdict;
   planned: string | null;
   actual: string | null;
+  note: string;
+}
+
+export type RepIntensity = 'ON' | 'UNDER' | 'OVER' | 'UNJUDGED';
+export type RepVerdict = CheckVerdict | 'MISSED';
+
+export interface SessionRep {
+  index: number;
+  plannedSec: number;
+  plannedTarget: string | null;
+  actualSec: number | null;
+  actualValue: string | null;
+  intensity: RepIntensity | null;
+  verdict: RepVerdict;
+}
+
+/** The planned reps lined up one by one against the efforts found in the recording. */
+export interface SessionStructure {
+  detectedFrom: 'POWER' | 'PACE' | 'HR';
+  metric: 'power' | 'pace' | 'hr';
+  plannedSummary: string;
+  actualSummary: string;
+  reps: SessionRep[];
+  extraEfforts: number;
+  score: number;
   note: string;
 }
 
@@ -188,6 +213,7 @@ export interface SessionReview {
   headline: string;
   checks: SessionCheck[];
   bands: SessionBandMinutes[];
+  structure: SessionStructure | null;
   basis: ReviewBasis;
   effortSource: EffortSource;
   notes: string[];
