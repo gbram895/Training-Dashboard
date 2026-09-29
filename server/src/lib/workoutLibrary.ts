@@ -13,7 +13,7 @@ const FETCH_CONCURRENCY = 8;
 // segment's computed intensity for the SAME file and thresholds (e.g. fixing
 // a decode bug) — otherwise a cached row keyed only on thresholds looks
 // unchanged and keeps serving the old, wrong parse forever.
-const PARSER_VERSION = 3;
+const PARSER_VERSION = 4;
 
 async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array(items.length);
