@@ -3,6 +3,7 @@ import { apiFetch, ApiError } from '../api/client';
 import type { HrZoneSettings, ThresholdSettings } from '../api/types';
 import ApiTokenCard from '../components/settings/ApiTokenCard';
 import CalibrationCard from '../components/settings/CalibrationCard';
+import WidgetTokenCard from '../components/settings/WidgetTokenCard';
 import PageHead from '../components/PageHead';
 import { useAuth } from '../context/AuthContext';
 import { useCachedState } from '../lib/pageCache';
@@ -309,6 +310,11 @@ export default function Settings() {
         <div className="gd-set-group">
           <p className="gd-set-group-label">Garmin & Apple Watch</p>
           <ApiTokenCard />
+        </div>
+
+        <div className="gd-set-group">
+          <p className="gd-set-group-label">Widget</p>
+          <WidgetTokenCard />
         </div>
       </div>
     </div>
