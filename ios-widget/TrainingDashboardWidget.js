@@ -170,6 +170,16 @@ function buildRing(size, percent, arcColor, label, fontScale) {
     ctx.setStrokeColor(arcColor);
     ctx.addPath(arcPath(center, radius, start, end));
     ctx.strokePath();
+
+    // DrawContext has no line-cap setting (butt caps only), so a rounded tip
+    // — the whole point of the SVG-style ring this mirrors — is faked with a
+    // small filled circle at each end of the stroke, same width as the stroke.
+    const capRadius = strokeWidth / 2;
+    ctx.setFillColor(arcColor);
+    for (const angle of [start, end]) {
+      const p = new Point(center.x + radius * Math.cos(angle), center.y + radius * Math.sin(angle));
+      ctx.fillEllipse(new Rect(p.x - capRadius, p.y - capRadius, capRadius * 2, capRadius * 2));
+    }
   }
 
   if (label) {
@@ -200,17 +210,40 @@ function addRingBadge(container, percent, arcColor, label, size, fontScale) {
   }
 }
 
+// Drawn as one image rather than two nested WidgetStacks — a fixed-size
+// WidgetStack centers a smaller child by default with no way to left-align
+// it, which put empty track on both sides of the fill instead of just the
+// right. Drawing it manually pins the fill to x=0 exactly.
+function buildBarImage(width, height, pct, color) {
+  const ctx = new DrawContext();
+  ctx.size = new Size(width, height);
+  ctx.opaque = false;
+  ctx.respectScreenScale = true;
+  const r = height / 2;
+
+  ctx.setFillColor(COLORS.track);
+  const track = new Path();
+  track.addRoundedRect(new Rect(0, 0, width, height), r, r);
+  ctx.addPath(track);
+  ctx.fillPath();
+
+  const clamped = Math.max(0, Math.min(100, pct));
+  // Floored at the bar's own height rather than a fixed few points, so even a
+  // near-zero percentage still renders as a clean pill instead of a corner
+  // radius wider than the shape it's supposed to round.
+  const fillWidth = Math.max(height, (width * clamped) / 100);
+  ctx.setFillColor(color);
+  const fill = new Path();
+  fill.addRoundedRect(new Rect(0, 0, fillWidth, height), r, r);
+  ctx.addPath(fill);
+  ctx.fillPath();
+
+  return ctx.getImage();
+}
+
 function addMiniBar(container, pct, color, width, height) {
-  const track = container.addStack();
-  track.size = new Size(width, height);
-  track.backgroundColor = COLORS.track;
-  track.cornerRadius = height / 2;
-  track.layoutHorizontally();
-  const fillWidth = Math.max(3, (width * Math.max(0, Math.min(100, pct))) / 100);
-  const fill = track.addStack();
-  fill.size = new Size(fillWidth, height);
-  fill.backgroundColor = color;
-  fill.cornerRadius = height / 2;
+  const img = container.addImage(buildBarImage(width, height, pct, color));
+  img.imageSize = new Size(width, height);
 }
 
 function addStatColumn(container, label, value, pct, color, note) {
