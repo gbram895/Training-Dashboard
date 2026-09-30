@@ -184,10 +184,6 @@ function addRingBadge(container, percent, arcColor, label, size, fontScale) {
   }
 }
 
-function shortFatigueLabel(label) {
-  return label === "Moderate" ? "Mod" : label;
-}
-
 function addMiniBar(container, pct, color, width, height) {
   const track = container.addStack();
   track.size = new Size(width, height);
@@ -314,7 +310,10 @@ function addMiniRingRow(widget, dashboard) {
       label: "Fatigue",
       pct: dashboard.fatigue.pct,
       color: COLORS.warn,
-      value: shortFatigueLabel(dashboard.fatigue.label),
+      value:
+        dashboard.fatigue.tsb != null
+          ? `${dashboard.fatigue.tsb >= 0 ? "+" : ""}${Math.round(dashboard.fatigue.tsb)}`
+          : "–",
     },
   ];
 
@@ -322,7 +321,7 @@ function addMiniRingRow(widget, dashboard) {
     const col = row.addStack();
     col.layoutVertically();
     col.centerAlignContent();
-    addRingBadge(col, c.pct, c.color, c.value, 34, 0.32);
+    addRingBadge(col, c.pct, c.color, c.value, 34, 0.28);
     col.addSpacer(2);
     const l = col.addText(c.label.toUpperCase());
     l.font = Font.boldSystemFont(7);
@@ -364,7 +363,7 @@ function buildWidget(data) {
   const hero = widget.addStack();
   hero.layoutHorizontally();
   hero.centerAlignContent();
-  addRingBadge(hero, readiness, COLORS.accent, readiness != null ? `${readiness}%` : "–", ringSize, 0.27);
+  addRingBadge(hero, readiness, COLORS.accent, readiness != null ? `${readiness}%` : "–", ringSize, 0.24);
   hero.addSpacer(10);
 
   const info = hero.addStack();
