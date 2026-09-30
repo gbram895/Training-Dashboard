@@ -20,15 +20,23 @@ API; Apple doesn't expose an equivalent).
 I don't have a macOS/Xcode toolchain in this sandbox, so none of this Swift
 has been compiled. The architecture and control flow are solid — API calls,
 auth, SwiftUI navigation are all ordinary Swift/Foundation and should just
-work. The one file that's genuinely uncertain is `WorkoutKitBridge.swift`:
-it's written from memory of WorkoutKit's WWDC23 announcement and docs, and
-Apple's exact case/initializer names (e.g. whether it's
-`WorkoutGoal.time(_:_:)` taking a unit case, or something slightly
-different) could be off in small ways.
+work.
 
-**If Xcode shows errors in `WorkoutKitBridge.swift`, that's expected on the
-first build** — paste me the exact error text and I'll fix the signature.
-Everything else should build clean.
+`WorkoutKitBridge.swift` was the one genuinely uncertain file — the first
+draft was written from memory of WorkoutKit's WWDC23 announcement, and two
+calls turned out to have the wrong parameter label
+(`SpeedRangeAlert`/`PowerRangeAlert` take `target:`, not `range:`) and one
+passed the wrong type (`WorkoutScheduler.schedule(_:at:)` takes
+`DateComponents`, not `Date`, and doesn't throw). All three are now fixed
+and every initializer/case name in the file has been checked against
+Apple's actual published WorkoutKit reference docs, not just recalled from
+the WWDC session — so it should be much closer to compiling clean than the
+original draft.
+
+**If Xcode still shows errors in `WorkoutKitBridge.swift`,** it's most
+likely a version difference between the docs snapshot this was checked
+against and whatever WorkoutKit version your Xcode resolves — paste me the
+exact error text and it's a quick fix. Everything else should build clean.
 
 ## Setup
 

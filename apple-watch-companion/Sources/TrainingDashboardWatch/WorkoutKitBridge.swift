@@ -2,14 +2,17 @@ import Foundation
 import HealthKit
 import WorkoutKit
 
-// Written from the WWDC23 "Meet WorkoutKit" session and Apple's WorkoutKit
-// docs, without a Mac/Xcode available to compile-check it against the
-// framework's real declarations. The overall shape (CustomWorkout made of
-// IntervalBlocks of IntervalSteps, each WorkoutStep with a .time goal and an
-// optional range alert, scheduled via WorkoutScheduler) is right, but if
-// Xcode flags a specific case name or initializer here as wrong, it's almost
-// certainly a narrow signature mismatch in this file, not a wrong approach —
-// paste the exact compiler error back and it's a quick fix.
+// Verified against Apple's published WorkoutKit reference (developer.apple.com/
+// documentation/workoutkit — the real declaration pages, not just the WWDC23
+// session) rather than from memory: every initializer and case name below is
+// checked against the framework's actual signatures, including the two that
+// turned out wrong on the first pass — SpeedRangeAlert/PowerRangeAlert take
+// `target:`, not `range:`, and WorkoutScheduler.schedule(_:at:) takes
+// DateComponents and doesn't throw, not a plain Date. Still unverified: this
+// was checked against the docs, not compiled in Xcode, since there's no Mac
+// in this sandbox — if something still doesn't compile, it's likely a version
+// difference between the current docs and whatever WorkoutKit version Xcode
+// resolves; paste the exact compiler error back and it's a quick fix.
 
 enum WorkoutKitBridgeError: LocalizedError {
     case notAuthorized
@@ -55,7 +58,9 @@ enum WorkoutKitBridge {
         let plan = WorkoutPlan(.custom(customWorkout))
         // "Now" so it lands in the Watch's scheduled list ready to pick up
         // immediately rather than waiting on a specific calendar day.
-        try await WorkoutScheduler.shared.schedule(plan, at: Date())
+        // schedule(_:at:) takes DateComponents, not a Date, and doesn't throw.
+        let now = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: Date())
+        await WorkoutScheduler.shared.schedule(plan, at: now)
     }
 
     private static func buildStep(
@@ -75,12 +80,12 @@ enum WorkoutKitBridge {
             guard thresholds.thresholdSpeedMps > 0 else { return WorkoutStep(goal: goal) }
             let minSpeed = Measurement(value: low * thresholds.thresholdSpeedMps, unit: UnitSpeed.metersPerSecond)
             let maxSpeed = Measurement(value: high * thresholds.thresholdSpeedMps, unit: UnitSpeed.metersPerSecond)
-            return WorkoutStep(goal: goal, alert: SpeedRangeAlert(range: minSpeed...maxSpeed, metric: .current))
+            return WorkoutStep(goal: goal, alert: SpeedRangeAlert(target: minSpeed...maxSpeed, metric: .current))
         case .bike:
             guard thresholds.ftpWatts > 0 else { return WorkoutStep(goal: goal) }
             let minPower = Measurement(value: low * thresholds.ftpWatts, unit: UnitPower.watts)
             let maxPower = Measurement(value: high * thresholds.ftpWatts, unit: UnitPower.watts)
-            return WorkoutStep(goal: goal, alert: PowerRangeAlert(range: minPower...maxPower, metric: .current))
+            return WorkoutStep(goal: goal, alert: PowerRangeAlert(target: minPower...maxPower, metric: .current))
         }
     }
 }
