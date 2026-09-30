@@ -122,6 +122,24 @@ function addPill(container, text, hex) {
   return pill;
 }
 
+// Scriptable's Path has no addArc(center, radius, startAngle, endAngle) the
+// way UIBezierPath does — only move/addLine/addRect/addEllipse/addCurve etc.
+// A partial arc is approximated as a polyline instead: plenty smooth at
+// widget scale with ~90 segments per full turn, scaled down for shorter arcs
+// (and floored at 8 so even a tiny percentage still reads as a curve).
+function arcPath(center, radius, startAngle, endAngle) {
+  const path = new Path();
+  const span = endAngle - startAngle;
+  const segments = Math.max(8, Math.ceil((Math.abs(span) / (2 * Math.PI)) * 90));
+  for (let i = 0; i <= segments; i++) {
+    const angle = startAngle + (span * i) / segments;
+    const point = new Point(center.x + radius * Math.cos(angle), center.y + radius * Math.sin(angle));
+    if (i === 0) path.move(point);
+    else path.addLine(point);
+  }
+  return path;
+}
+
 // The readiness ring from the Dashboard hero (ProgressRing.tsx), drawn as a
 // single image (arc + centered label baked in together) since a widget can't
 // overlay a text view on an image the way a web page overlays a div. Reused
@@ -141,7 +159,7 @@ function buildRing(size, percent, arcColor, label, fontScale) {
   ctx.setLineWidth(strokeWidth);
   ctx.setStrokeColor(COLORS.track);
   const track = new Path();
-  track.addArc(center, radius, 0, 2 * Math.PI, true);
+  track.addEllipse(new Rect(center.x - radius, center.y - radius, radius * 2, radius * 2));
   ctx.addPath(track);
   ctx.strokePath();
 
@@ -150,9 +168,7 @@ function buildRing(size, percent, arcColor, label, fontScale) {
     const start = -Math.PI / 2;
     const end = start + (clamped / 100) * 2 * Math.PI;
     ctx.setStrokeColor(arcColor);
-    const arc = new Path();
-    arc.addArc(center, radius, start, end, true);
-    ctx.addPath(arc);
+    ctx.addPath(arcPath(center, radius, start, end));
     ctx.strokePath();
   }
 
@@ -229,6 +245,10 @@ function formatHours(hours) {
 
 function weekdayDate() {
   const f = new DateFormatter();
+  // Explicit locale — DateFormatter otherwise follows the phone's language
+  // (e.g. "WO, SEP 30" for woensdag on a Dutch device), and the rest of the
+  // app's UI is English regardless of device locale.
+  f.locale = "en_US";
   f.dateFormat = "EEE, MMM d";
   return f.string(new Date()).toUpperCase();
 }
