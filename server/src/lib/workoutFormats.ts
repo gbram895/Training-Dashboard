@@ -151,7 +151,7 @@ export const VO2MAX_FRACTION_AT_MAX_HR = 1.2;
  * instead of "VO2max", even though the athlete is running far harder than
  * that. Above threshold, the bpm is instead placed between threshold (1.0)
  * and estimated max HR (VO2MAX_FRACTION_AT_MAX_HR), which is what
- * lib/garminWorkoutPush.ts's bpmForHrFraction inverts to push a segment back
+ * bpmForHrFraction below inverts to push a segment back
  * out at (approximately) its original bpm target.
  */
 function normalizeHeartRate(raw: number | undefined, thresholdHrBpm: number): number | undefined {
@@ -161,6 +161,21 @@ function normalizeHeartRate(raw: number | undefined, thresholdHrBpm: number): nu
   if (bpm <= thresholdHrBpm || maxHrBpm <= thresholdHrBpm) return bpm / thresholdHrBpm;
   const aboveThreshold = (bpm - thresholdHrBpm) / (maxHrBpm - thresholdHrBpm);
   return 1 + aboveThreshold * (VO2MAX_FRACTION_AT_MAX_HR - 1);
+}
+
+/**
+ * Inverse of normalizeHeartRate — reconstructs the bpm a
+ * fraction above 1.0 (threshold) was derived from, using the same estimated
+ * max HR and VO2max-at-max-HR assumption, so a segment parsed from an HR
+ * target round-trips back out at (approximately) its original bpm rather
+ * than a linear `fraction * thresholdHrBpm`, which overshoots badly above
+ * threshold (HR is compressed there — see normalizeHeartRate's comment).
+ */
+export function bpmForHrFraction(fraction: number, thresholdHrBpm: number): number {
+  if (fraction <= 1) return fraction * thresholdHrBpm;
+  const maxHrBpm = thresholdHrBpm / THRESHOLD_HR_AS_FRACTION_OF_MAX;
+  const aboveThreshold = (fraction - 1) / (VO2MAX_FRACTION_AT_MAX_HR - 1);
+  return thresholdHrBpm + aboveThreshold * (maxHrBpm - thresholdHrBpm);
 }
 
 export function parseFitWorkoutFile(

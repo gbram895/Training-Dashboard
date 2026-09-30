@@ -1,5 +1,6 @@
 import { prisma } from './prisma.js';
 import { fetchWorkoutLibrary, type ParsedWorkoutFile } from './workoutLibrary.js';
+import { generatePlanWindow } from './trainingPlan.js';
 import { pushConfigured, sendToUser } from './webPush.js';
 
 /**
@@ -16,6 +17,10 @@ import { pushConfigured, sendToUser } from './webPush.js';
  * Everything found in one check goes out as a single notification. Dropping a
  * folder of twenty workouts in at once is the normal way this happens, and
  * twenty separate pushes for it would be unusable.
+ *
+ * The same check also rebuilds the plan, so a new workout can be scheduled the
+ * same day rather than waiting for the 04:00 rebuild. That half runs whether
+ * or not the athlete has notifications switched on.
  */
 
 /** Names listed in full before the body falls back to "and N more". */
@@ -45,9 +50,9 @@ export function buildNewWorkoutBody(workouts: ParsedWorkoutFile[]): string {
 }
 
 /**
- * Refreshes one user's library and notifies them about anything newly
- * uploaded. Returns how many workouts were announced, which is 0 both when
- * nothing is new and on the very first check.
+ * Refreshes one user's library, rebuilds their plan around anything newly
+ * uploaded, and tells them about it. Returns how many new workouts were found,
+ * which is 0 both when nothing is new and on the very first check.
  */
 export async function notifyNewLibraryWorkouts(userId: string): Promise<number> {
   const config = await prisma.healthSyncConfig.findUnique({
@@ -86,39 +91,35 @@ export async function notifyNewLibraryWorkouts(userId: string): Promise<number> 
 
   if (pending.length === 0) return 0;
 
-  const workouts = pending.map((row) => row.parsed as unknown as ParsedWorkoutFile);
-  await sendToUser(userId, {
-    title: 'Gradient',
-    body: buildNewWorkoutBody(workouts),
-    // The workout library lives on the Plan tab, under everything else.
-    url: '/plan',
-  });
+  // Rebuilt before the push goes out, so the plan the notification links to
+  // already has the new workouts in it. Manually rearranged days and one-off
+  // overrides survive this like any other rebuild.
+  await generatePlanWindow(userId);
+
+  if (pushConfigured()) {
+    const workouts = pending.map((row) => row.parsed as unknown as ParsedWorkoutFile);
+    await sendToUser(userId, {
+      title: 'Gradient',
+      body: buildNewWorkoutBody(workouts),
+      // The workout library lives on the Plan tab, under everything else.
+      url: '/plan',
+    });
+  }
   await markAnnounced();
 
-  return workouts.length;
+  return pending.length;
 }
 
-/** Scheduled-job entry point: checks every subscribed user with Dropbox connected. */
+/** Scheduled-job entry point: checks every user with Dropbox connected. */
 export async function notifyAllNewLibraryWorkouts(): Promise<void> {
-  if (!pushConfigured()) return;
-
-  const subscribed = await prisma.pushSubscription.findMany({
-    select: { userId: true },
-    distinct: ['userId'],
-  });
-  if (subscribed.length === 0) return;
-
   // Only a user who has connected Dropbox has a library to watch at all, and
   // fetching one for anybody else just throws.
-  const connected = await prisma.healthSyncConfig.findMany({
-    where: { userId: { in: subscribed.map((s) => s.userId) } },
-    select: { userId: true },
-  });
+  const connected = await prisma.healthSyncConfig.findMany({ select: { userId: true } });
 
   for (const { userId } of connected) {
     try {
-      const announced = await notifyNewLibraryWorkouts(userId);
-      if (announced > 0) console.log(`[new-workouts] told user ${userId} about ${announced} new file(s)`);
+      const found = await notifyNewLibraryWorkouts(userId);
+      if (found > 0) console.log(`[new-workouts] ${found} new file(s) for user ${userId}: plan rebuilt`);
     } catch (err) {
       console.error(`[new-workouts] check failed for user ${userId}:`, err);
     }

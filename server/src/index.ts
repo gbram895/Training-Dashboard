@@ -159,25 +159,31 @@ function registerScheduledJobs() {
       firstRun: 'next',
     });
 
-    if (dropboxConfigured()) {
-      registerJob({
-        name: 'push-new-library-workouts',
-        schedule: process.env.NEW_WORKOUT_CRON ?? '*/30 * * * *',
-        timezone: reminderTimezone,
-        run: notifyAllNewLibraryWorkouts,
-        // Unlike the two reminders above, this one never goes off. They are
-        // about a particular time of day and are noise once it has passed; a
-        // workout file uploaded while the service was asleep is still news
-        // whenever we get round to noticing it.
-        catchUpWindowMinutes: ALWAYS_CATCH_UP,
-        // 'next' rather than 'now' for the usual reason — a deploy should not
-        // fire a push — and because the first run of all is the one that
-        // establishes what "already in the library" means.
-        firstRun: 'next',
-      });
-    }
   } else {
     console.log('[push] VAPID keys not set — daily workout reminders disabled');
+  }
+
+  if (dropboxConfigured()) {
+    // Watches the Dropbox workout library for new files: rebuilds the plan so
+    // they can be scheduled the same day, and pushes a notification when push
+    // is set up. Outside the push block because the plan half is useful
+    // without it. The name predates the plan half and is kept so the job's
+    // stored due date carries over.
+    registerJob({
+      name: 'push-new-library-workouts',
+      schedule: process.env.NEW_WORKOUT_CRON ?? '*/30 * * * *',
+      timezone: SYNC_TZ,
+      run: notifyAllNewLibraryWorkouts,
+      // Unlike the two reminders above, this one never goes off. They are
+      // about a particular time of day and are noise once it has passed; a
+      // workout file uploaded while the service was asleep is still news
+      // whenever we get round to noticing it.
+      catchUpWindowMinutes: ALWAYS_CATCH_UP,
+      // 'next' rather than 'now' for the usual reason — a deploy should not
+      // fire a push — and because the first run of all is the one that
+      // establishes what "already in the library" means.
+      firstRun: 'next',
+    });
   }
 }
 

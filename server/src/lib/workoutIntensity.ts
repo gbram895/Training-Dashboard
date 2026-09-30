@@ -132,13 +132,12 @@ export function estimatedTssForBucket(bucket: number | null | undefined): number
  * the same way a coach would ("this is a VO2max session"), not by its
  * whole-session average, which a brief peak wouldn't move much.
  *
- * Only segments of at least 20s count toward that peak, so a few-second
- * acceleration or attack inside an otherwise steady tempo/sweet-spot ride
- * doesn't reclassify the whole session as VO2max - a real VO2max or
- * threshold effort is sustained, not a blip. Falls back to every segment
- * if nothing clears that floor (e.g. an all-out-sprints-only file), and to
- * the 1-5 intensity score for sources with no segment data (a hand-typed
- * workout note).
+ * That's the hardest band with at least BAND_MIN_TOTAL_SEC of work at or
+ * above it, counting only segments of 20s or longer, so a few surges inside
+ * a sweet spot ride or one attack after a threshold block doesn't make the
+ * whole session VO2max. Sessions that are nothing but short hard efforts
+ * (sprints, 3x 1 min) take their peak instead, and sources with no segment
+ * data (a hand-typed workout note) fall back to the 1-5 intensity score.
  */
 export type WorkoutCategory = 'ENDURANCE' | 'TEMPO' | 'THRESHOLD' | 'VO2MAX';
 
@@ -150,6 +149,29 @@ export type WorkoutCategory = 'ENDURANCE' | 'TEMPO' | 'THRESHOLD' | 'VO2MAX';
 export const CATEGORY_ORDER: WorkoutCategory[] = ['ENDURANCE', 'TEMPO', 'THRESHOLD', 'VO2MAX'];
 
 const SUSTAINED_EFFORT_MIN_SEC = 20;
+
+/**
+ * How much time a session has to spend at or above a band before it's labelled
+ * by it. Four minutes is about the smallest set still called a VO2max session
+ * (eight 30-30s), and more than the accelerations JOIN drops into its sweet
+ * spot rides or the one attack at the end of a threshold block.
+ */
+const BAND_MIN_TOTAL_SEC = 4 * 60;
+
+/** See classifyWorkoutCategory: how much VO2max time, relative to threshold time, makes a VO2max session. */
+const VO2MAX_MIN_SHARE_OF_THRESHOLD = 0.5;
+
+/**
+ * The intensity a segment is banded on. For power and pace that's the middle of
+ * its range: JOIN writes every "@95%" step as a 90-100% window, so the top of
+ * the window is five points above what was actually asked for, and banding on
+ * it turned every 101-105% threshold rep into "VO2max". Heart rate keeps the
+ * top of its range, because a bpm window's midpoint undersells a
+ * supra-threshold rep (see normalizeHeartRate in workoutFormats.ts).
+ */
+function bandingTarget(s: WorkoutSegment & { intensityFraction: number }): number {
+  return s.targetMetric === 'hr' ? (s.intensityHigh ?? s.intensityFraction) : s.intensityFraction;
+}
 
 /**
  * Which band of effort a single intensity fraction (of threshold) falls in.
@@ -175,15 +197,27 @@ export function classifyWorkoutCategory(
     (s): s is WorkoutSegment & { intensityFraction: number } => s.intensityFraction != null,
   );
   const sustained = withTarget.filter((s) => s.durationSec >= SUSTAINED_EFFORT_MIN_SEC);
-  // The top of a segment's own prescribed range, not its midpoint — the same
-  // "hardest point reached, not the average" principle this function already
-  // applies across the whole session, just applied within one segment too. A
-  // segment given as "184-198bpm" is prescribing an effort that reaches
-  // 198bpm; averaging it down to ~191 before banding is how a genuine VO2max
-  // interval undershoots into "Threshold".
-  const targets = (sustained.length > 0 ? sustained : withTarget).map((s) => s.intensityHigh ?? s.intensityFraction);
-  if (targets.length > 0) {
-    return bandForIntensity(Math.max(...targets));
+  const counted = sustained.length > 0 ? sustained : withTarget;
+  if (counted.length > 0) {
+    // The hardest band the session spends real time in, not the hardest single
+    // step: one 30-second surge in a tempo ride isn't a VO2max session. When
+    // nothing above endurance clears that floor, the short hard efforts ARE the
+    // session (3x 1 min kracht, sprint pyramids), so the peak decides instead.
+    const secAtOrAbove = new Map<WorkoutCategory, number>();
+    for (const s of counted) {
+      const idx = CATEGORY_ORDER.indexOf(bandForIntensity(bandingTarget(s)));
+      for (const c of CATEGORY_ORDER.slice(0, idx + 1)) secAtOrAbove.set(c, (secAtOrAbove.get(c) ?? 0) + s.durationSec);
+    }
+    const at = (c: WorkoutCategory) => secAtOrAbove.get(c) ?? 0;
+    let reached = [...CATEGORY_ORDER].reverse().find((c) => at(c) >= BAND_MIN_TOTAL_SEC);
+    // Over-unders ("Haarspelden": 2 min at 95%, 30s kicks at 106%) touch VO2max
+    // but are built around threshold. VO2max has to be at least half as much
+    // time as the threshold work around it before it names the session.
+    if (reached === 'VO2MAX' && at('VO2MAX') < VO2MAX_MIN_SHARE_OF_THRESHOLD * (at('THRESHOLD') - at('VO2MAX'))) {
+      reached = 'THRESHOLD';
+    }
+    if (reached != null && reached !== 'ENDURANCE') return reached;
+    return bandForIntensity(Math.max(...counted.map(bandingTarget)));
   }
   if (fallbackIntensity != null) {
     if (fallbackIntensity >= 5) return 'VO2MAX';

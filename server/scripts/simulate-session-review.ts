@@ -27,18 +27,24 @@ const thresholds = {
   hrZone4Max: 171,
 };
 
-type Block = { min: number; watts?: number; mps?: number };
+type Block = { min: number; watts?: number; mps?: number; bpm?: number };
 
-/** A 1 Hz stream from a list of blocks, with a little noise so the smoothing is doing real work. */
+/**
+ * A 1 Hz stream from a list of blocks, with a little noise so the smoothing is
+ * doing real work. Heart rate, when given, moves toward each block's value with
+ * a ~25 s time constant rather than jumping, the way a real one lags.
+ */
 function stream(blocks: Block[]): { offsetSec: number; heartRate: number | null; speedMps: number | null; powerWatts: number | null }[] {
   const samples = [];
   let t = 0;
+  let hr = blocks.find((b) => b.bpm != null)?.bpm ?? 0;
   for (const block of blocks) {
     for (let i = 0; i < block.min * 60; i++) {
       const jitter = 1 + Math.sin(t / 7) * 0.08;
+      if (block.bpm != null) hr += (block.bpm - hr) / 25;
       samples.push({
         offsetSec: t++,
-        heartRate: null,
+        heartRate: block.bpm != null ? Math.round(hr) : null,
         speedMps: block.mps != null ? block.mps * jitter : null,
         powerWatts: block.watts != null ? Math.round(block.watts * jitter) : null,
       });
@@ -86,8 +92,33 @@ function planned(over: Partial<ReviewPlannedDay>): ReviewPlannedDay {
   };
 }
 
-function seg(durationSec: number, intensityFraction?: number, role?: 'warmup' | 'cooldown') {
-  return { durationSec, intensityFraction, role };
+function seg(
+  durationSec: number,
+  intensityFraction?: number,
+  role?: 'warmup' | 'cooldown',
+  targetMetric?: 'power' | 'pace' | 'hr',
+) {
+  return { durationSec, intensityFraction, role, targetMetric };
+}
+
+/** A JOIN-style heart-rate step: a bpm target turned into a fraction of threshold HR the way the parser does. */
+function hrSeg(durationSec: number, bpm: number, role?: 'warmup' | 'cooldown') {
+  const threshold = thresholds.hrZone4Max;
+  const max = threshold / 0.92;
+  const fraction = bpm <= threshold ? bpm / threshold : 1 + ((bpm - threshold) / (max - threshold)) * 0.2;
+  return seg(durationSec, fraction, role, 'hr');
+}
+
+/** A pace step, as a fraction of threshold speed. */
+function paceSeg(durationSec: number, secPerKm: number, role?: 'warmup' | 'cooldown') {
+  return seg(durationSec, THRESHOLD_PACE / secPerKm, role, 'pace');
+}
+
+const mps = (secPerKm: number) => 1000 / secPerKm;
+
+/** The same workout as recorded by a watch with no GPS: heart rate only. */
+function hrOnly(w: ReviewWorkout): ReviewWorkout {
+  return { ...w, tss: null, samples: w.samples.map((x) => ({ ...x, speedMps: null })) };
 }
 
 // 15 min warm-up, 4 x 8 min at threshold off 5 min easy, 10 min down: 77 min,
@@ -237,6 +268,138 @@ const cases: { name: string; planned: ReviewPlannedDay | null; workouts: ReviewW
       ]),
     ],
   },
+  {
+    name: 'Threshold session ridden as one 32-minute block (same time at threshold, wrong shape)',
+    planned: THRESHOLD_DAY,
+    expect: 'time at threshold fine, rep by rep marked down',
+    workouts: [
+      ride('l', [
+        { min: 15, watts: 120 },
+        { min: 32, watts: 197 },
+        { min: 20, watts: 110 },
+        { min: 10, watts: 110 },
+      ]),
+    ],
+  },
+  {
+    name: 'Threshold session, last rep faded and cut short',
+    planned: THRESHOLD_DAY,
+    expect: 'all reps found, rep 4 flagged soft/short',
+    workouts: [
+      ride('m', [
+        { min: 15, watts: 120 },
+        ...[0, 1, 2].flatMap(() => [
+          { min: 8, watts: 197 },
+          { min: 5, watts: 110 },
+        ]),
+        { min: 5, watts: 172 },
+        { min: 8, watts: 110 },
+        { min: 10, watts: 110 },
+      ]),
+    ],
+  },
+  {
+    name: 'Pace run: 4 x 5 min at 4:45/km, done as written',
+    planned: planned({
+      name: '4x 5 min',
+      discipline: 'RUN',
+      durationMin: 50,
+      category: 'THRESHOLD',
+      segments: [
+        paceSeg(15 * 60, 390, 'warmup'),
+        ...[0, 1, 2, 3].flatMap(() => [paceSeg(5 * 60, 285), paceSeg(2 * 60, 420)]),
+        paceSeg(7 * 60, 400, 'cooldown'),
+      ],
+    }),
+    expect: 'NAILED, 4 of 4 reps on pace',
+    workouts: [
+      run('n', [
+        { min: 15, mps: mps(390) },
+        ...[0, 1, 2, 3].flatMap(() => [
+          { min: 5, mps: mps(284) },
+          { min: 2, mps: mps(420) },
+        ]),
+        { min: 7, mps: mps(400) },
+      ]),
+    ],
+  },
+  {
+    name: 'JOIN heart-rate run: 4 x 3 min at 184 bpm, found from speed, judged in bpm',
+    planned: planned({
+      name: '4x 3 min tempo',
+      discipline: 'RUN',
+      durationMin: 40,
+      category: 'THRESHOLD',
+      segments: [
+        hrSeg(12 * 60, 140, 'warmup'),
+        ...[0, 1, 2, 3].flatMap(() => [hrSeg(3 * 60, 184), hrSeg(2 * 60, 145)]),
+        hrSeg(8 * 60, 140, 'cooldown'),
+      ],
+    }),
+    expect: '4 of 4 reps, bpm compared',
+    workouts: [
+      run('o', [
+        { min: 12, mps: mps(380), bpm: 140 },
+        ...[0, 1, 2, 3].flatMap(() => [
+          { min: 3, mps: mps(270), bpm: 186 },
+          { min: 2, mps: mps(400), bpm: 145 },
+        ]),
+        { min: 8, mps: mps(390), bpm: 140 },
+      ]),
+    ],
+  },
+  {
+    name: 'JOIN heart-rate run, watch recorded heart rate only (no speed)',
+    planned: planned({
+      name: '4x 5 min omslagpunt',
+      discipline: 'RUN',
+      durationMin: 50,
+      category: 'THRESHOLD',
+      segments: [
+        hrSeg(12 * 60, 140, 'warmup'),
+        ...[0, 1, 2, 3].flatMap(() => [hrSeg(5 * 60, 184), hrSeg(3 * 60, 145)]),
+        hrSeg(6 * 60, 140, 'cooldown'),
+      ],
+    }),
+    expect: '4 of 4 reps found from heart rate, lengths not held against it',
+    workouts: [
+      hrOnly(
+        run('q', [
+          { min: 12, bpm: 140 },
+          ...[0, 1, 2, 3].flatMap(() => [
+            { min: 5, bpm: 185 },
+            { min: 3, bpm: 145 },
+          ]),
+          { min: 6, bpm: 140 },
+        ]),
+      ),
+    ],
+  },
+  {
+    name: 'JOIN 30-30s at 198 bpm, only three of the five sets done',
+    planned: planned({
+      name: "30-30's",
+      discipline: 'RUN',
+      durationMin: 30,
+      category: 'VO2MAX',
+      segments: [
+        hrSeg(10 * 60, 140, 'warmup'),
+        ...Array.from({ length: 5 }, () => [hrSeg(30, 198), hrSeg(30, 150)]).flat(),
+        hrSeg(15 * 60, 140, 'cooldown'),
+      ],
+    }),
+    expect: '3 of 5 reps',
+    workouts: [
+      run('p', [
+        { min: 10, mps: mps(380), bpm: 140 },
+        ...Array.from({ length: 3 }, () => [
+          { min: 0.5, mps: mps(230), bpm: 199 },
+          { min: 0.5, mps: mps(420), bpm: 150 },
+        ]).flat(),
+        { min: 17, mps: mps(390), bpm: 140 },
+      ]),
+    ],
+  },
 ];
 
 let failures = 0;
@@ -253,6 +416,15 @@ for (const c of cases) {
   console.log(`     basis ${review.basis}, measured from ${review.effortSource}, load ${review.load.actualTss ?? '—'} vs planned ~${review.load.plannedTss ?? '—'}`);
   for (const check of review.checks) {
     console.log(`     [${check.verdict}] ${check.label}: planned ${check.planned}, actual ${check.actual} — ${check.note}`);
+  }
+  if (review.structure) {
+    const st = review.structure;
+    console.log(`     reps (found from ${st.detectedFrom}, judged in ${st.metric}):`);
+    for (const r of st.reps) {
+      console.log(
+        `       ${r.index}. ${r.plannedSec}s @ ${r.plannedTarget ?? '—'} -> ${r.actualSec ?? '—'}s @ ${r.actualValue ?? '—'} [${r.intensity ?? '—'}] ${r.verdict}`,
+      );
+    }
   }
   for (const note of review.notes) console.log(`     · ${note}`);
   const bands = review.bands.filter((b) => (b.plannedMin ?? 0) > 0 || (b.actualMin ?? 0) > 0);

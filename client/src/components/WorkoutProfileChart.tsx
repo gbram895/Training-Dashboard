@@ -1,5 +1,5 @@
 import type { WorkoutProfileSegment } from '../api/types';
-import { getTrainingZone } from '../lib/trainingZones';
+import { getTrainingZone, zoneIntensity } from '../lib/trainingZones';
 
 // A 6-second sprint block rounds to "0min" with a flat durationSec/60 —
 // show seconds instead for anything under a minute.
@@ -44,13 +44,10 @@ export default function WorkoutProfileChart({
   const totalSec = segments.reduce((sum, s) => sum + s.durationSec, 0);
   if (totalSec <= 0) return null;
 
-  // The top of each segment's own range, not its midpoint — a rep given as
-  // "97-111% of threshold" peaks at 111%, and both the bar's height and its
-  // zone color should reflect that peak rather than the averaged fraction
-  // (which would read this VO2max rep as Threshold). Same principle as
-  // classifyWorkoutCategory on the server (see workoutIntensity.ts).
-  const peakOf = (s: WorkoutProfileSegment) => s.intensityHigh ?? s.intensityFraction ?? 0;
-  const maxIntensity = Math.max(1, ...segments.map(peakOf));
+  // Zoned the same way the server categorises the workout (zoneIntensity), so
+  // a bar's height and colour agree with the label on the session.
+  const levelOf = (s: WorkoutProfileSegment) => zoneIntensity(s);
+  const maxIntensity = Math.max(1, ...segments.map(levelOf));
   const baselineHeight = height * 0.12;
   const gap = 1;
   const widths = computeBarWidths(segments);
@@ -61,8 +58,8 @@ export default function WorkoutProfileChart({
     const x = cumX;
     cumX += widthPct;
     const hasTarget = segment.intensityFraction != null;
-    const peak = peakOf(segment);
-    const barHeight = hasTarget ? Math.max(baselineHeight, (peak / maxIntensity) * height) : baselineHeight;
+    const level = levelOf(segment);
+    const barHeight = hasTarget ? Math.max(baselineHeight, (level / maxIntensity) * height) : baselineHeight;
     const label = hasTarget
       ? `${formatSegmentDuration(segment.durationSec)} @ ${Math.round(segment.intensityFraction! * 100)}%`
       : formatSegmentDuration(segment.durationSec);
@@ -77,7 +74,7 @@ export default function WorkoutProfileChart({
           width: `calc(${widthPct}% - ${gap}px)`,
           bottom: 0,
           height: barHeight,
-          background: hasTarget ? getTrainingZone(peak).color : 'var(--border)',
+          background: hasTarget ? getTrainingZone(level).color : 'var(--border)',
           borderRadius: '2px 2px 0 0',
         }}
       />

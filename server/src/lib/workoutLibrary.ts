@@ -13,7 +13,7 @@ const FETCH_CONCURRENCY = 8;
 // segment's computed intensity for the SAME file and thresholds (e.g. fixing
 // a decode bug) — otherwise a cached row keyed only on thresholds looks
 // unchanged and keeps serving the old, wrong parse forever.
-const PARSER_VERSION = 2;
+const PARSER_VERSION = 4;
 
 async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array(items.length);
@@ -167,6 +167,34 @@ async function parseEntry(
   return parsed;
 }
 
+/**
+ * Drops files whose bytes are identical to another file in the folder. Uploading
+ * the same export twice leaves Dropbox holding "1004_pwr_nl.fit" and
+ * "1004_pwr_nl (1).fit" side by side; without this the workout shows twice in
+ * the library, and the plan's don't-repeat memory (keyed on path) can hand back
+ * the copy the day after the original. The shortest name wins, which is the
+ * original rather than Dropbox's numbered copy.
+ */
+function dropDuplicateFiles(entries: DropboxFileEntry[]): DropboxFileEntry[] {
+  const byHash = new Map<string, DropboxFileEntry>();
+  const kept: DropboxFileEntry[] = [];
+  const ordered = [...entries].sort((a, b) => a.name.length - b.name.length || a.name.localeCompare(b.name));
+  for (const entry of ordered) {
+    if (!entry.content_hash) {
+      kept.push(entry);
+      continue;
+    }
+    const original = byHash.get(entry.content_hash);
+    if (original) {
+      console.log(`[workout-library] ignoring ${entry.path_lower}: same file as ${original.path_lower}`);
+      continue;
+    }
+    byHash.set(entry.content_hash, entry);
+    kept.push(entry);
+  }
+  return kept;
+}
+
 export async function fetchWorkoutLibrary(userId: string): Promise<ParsedWorkoutFile[]> {
   const config = await prisma.healthSyncConfig.findUnique({ where: { userId } });
   if (!config) throw new Error('Connect Dropbox first (from the dashboard) to load your workout library.');
@@ -206,7 +234,7 @@ export async function fetchWorkoutLibrary(userId: string): Promise<ParsedWorkout
     throw err;
   }
   console.log(`[workout-library] found ${entries.length} file(s) in "${WORKOUT_LIBRARY_FOLDER}" for user ${userId}`);
-  const supportedFiles = entries.filter((e) => /\.(txt|md|zwo|fit)$/i.test(e.name));
+  const supportedFiles = dropDuplicateFiles(entries.filter((e) => /\.(txt|md|zwo|fit)$/i.test(e.name)));
 
   const cachedRows = await prisma.cachedLibraryWorkout.findMany({ where: { userId } });
   const cacheByPath = new Map(cachedRows.map((c) => [c.path, c]));

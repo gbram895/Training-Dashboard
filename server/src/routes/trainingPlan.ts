@@ -184,6 +184,15 @@ router.post('/revert', async (req: AuthedRequest, res) => {
   res.json(await getPlannedWeek(req.userId!));
 });
 
+// Rebuilds the plan on demand — for right after adding workouts to the
+// library, rather than waiting for the next library check or the 04:00
+// rebuild. Keeps manual rearrangements and one-off overrides, like every
+// other rebuild.
+router.post('/regenerate', async (req: AuthedRequest, res) => {
+  await generatePlanWindow(req.userId!);
+  res.json(await getPlannedWeek(req.userId!));
+});
+
 router.get('/today', async (req: AuthedRequest, res) => {
   const today = await getPlannedDay(req.userId!, new Date());
   if (req.query.format !== 'fit') return res.json(today);
