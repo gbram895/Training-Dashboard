@@ -2,6 +2,7 @@ import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { requireAuth, AuthedRequest } from '../middleware/auth.js';
 import { getPlannedDay } from '../lib/trainingPlan.js';
+import { getDashboardSnapshot } from '../lib/dashboardSnapshot.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET is not set');
@@ -28,29 +29,33 @@ function utcMidnight(date: Date): Date {
 }
 
 // Deliberately minimal — just what a small Home Screen tile can show at a
-// glance. Anything richer (segments, pace/power targets) belongs in the app.
+// glance, mirroring the Dashboard hero (readiness ring + today's session) and
+// its Sleep/HRV/Fatigue stat row. Anything richer (segments, pace/power
+// targets, charts) belongs in the app.
 router.get('/today', async (req: AuthedRequest, res) => {
   const today = utcMidnight(new Date());
-  const day = await getPlannedDay(req.userId!, today);
+  const [day, snapshot] = await Promise.all([
+    getPlannedDay(req.userId!, today),
+    getDashboardSnapshot(req.userId!),
+  ]);
   const date = today.toISOString().slice(0, 10);
 
-  if (!day) {
-    return res.json({ date, hasPlan: false });
-  }
+  const plan = day
+    ? {
+        hasPlan: true,
+        isRestDay: day.isRestDay,
+        restReason: day.restReason,
+        name: day.name,
+        discipline: day.discipline,
+        durationMin: day.durationMin,
+        intensity: day.intensity,
+        trainingStress: day.trainingStress,
+        category: day.category,
+        focus: day.focus,
+      }
+    : { hasPlan: false };
 
-  res.json({
-    date,
-    hasPlan: true,
-    isRestDay: day.isRestDay,
-    restReason: day.restReason,
-    name: day.name,
-    discipline: day.discipline,
-    durationMin: day.durationMin,
-    intensity: day.intensity,
-    trainingStress: day.trainingStress,
-    category: day.category,
-    focus: day.focus,
-  });
+  res.json({ date, ...plan, dashboard: snapshot });
 });
 
 export default router;

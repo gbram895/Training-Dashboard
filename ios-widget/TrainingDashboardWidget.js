@@ -5,6 +5,32 @@
 const APP_URL = "https://training-dashboard-peiv.onrender.com";
 const KEYCHAIN_KEY = "training-dashboard-widget-token";
 
+function dyn(lightHex, darkHex) {
+  return Color.dynamic(new Color(lightHex), new Color(darkHex));
+}
+
+// Same palette the web app uses (client/src/index.css) — light/dark pairs for
+// surfaces, text, and the accent/good/warn tones the hero ring and stat row
+// use. Zone hexes are the app's own --chart-z2..z5, which the app doesn't
+// redefine under dark mode, so one value each is enough.
+const COLORS = {
+  bg: dyn("#f6f7f6", "#111514"),
+  text: dyn("#101514", "#f2f5f4"),
+  textDim: dyn("#66716e", "#9ba6a3"),
+  textFaint: dyn("#9aa3a0", "#6d7876"),
+  accent: dyn("#0a93a8", "#3fd0c9"),
+  good: dyn("#1e9e5a", "#3fbe7b"),
+  warn: dyn("#c97a1e", "#e0a23f"),
+  track: new Color("#8e8e93", 0.22),
+};
+
+const ZONES = {
+  ENDURANCE: { label: "Endurance", hex: "#5fc9f0" },
+  TEMPO: { label: "Tempo", hex: "#6fcf8e" },
+  THRESHOLD: { label: "Threshold", hex: "#f2cb55" },
+  VO2MAX: { label: "VO2max", hex: "#ef7b72" },
+};
+
 const fm = FileManager.local();
 const CACHE_PATH = fm.joinPath(fm.documentsDirectory(), "training-dashboard-widget-cache.json");
 
@@ -65,88 +91,290 @@ async function fetchToday() {
     if (status === 401) return { error: "Token expired — regenerate in Settings" };
     return withCacheFallback(`Server error (${status})`);
   } catch (e) {
-    return withCacheFallback("Server is waking up — showing last known plan");
+    return withCacheFallback("Waking up — showing last known plan");
   }
 }
 
-const ZONE_COLORS = {
-  ENDURANCE: new Color("#4a90d9"),
-  TEMPO: new Color("#4caf7d"),
-  THRESHOLD: new Color("#e8b93a"),
-  VO2MAX: new Color("#d9534f"),
-};
+// ---- drawing helpers -------------------------------------------------
 
-function addStat(row, value, label) {
-  const col = row.addStack();
+function addIcon(container, symbolName, color, size) {
+  const symbol = SFSymbol.named(symbolName);
+  symbol.applyFont(Font.systemFont(size));
+  const img = container.addImage(symbol.image);
+  img.imageSize = new Size(size, size);
+  img.tintColor = color;
+  return img;
+}
+
+// A rounded, tinted label — "Threshold" on a soft wash of its own zone color,
+// the same idea as the colored segment cards in WorkoutDetailView, just
+// inverted (tint-on-surface instead of white-on-solid) since a solid block of
+// color reads as too heavy at widget scale.
+function addPill(container, text, hex) {
+  const pill = container.addStack();
+  pill.layoutHorizontally();
+  pill.setPadding(2, 7, 2, 7);
+  pill.backgroundColor = new Color(hex, 0.16);
+  pill.cornerRadius = 5;
+  const label = pill.addText(text.toUpperCase());
+  label.font = Font.boldSystemFont(9);
+  label.textColor = new Color(hex);
+  return pill;
+}
+
+// The readiness ring from the Dashboard hero (ProgressRing.tsx), drawn as a
+// single image (arc + centered number baked in together) since a widget
+// can't overlay a text view on an image the way a web page overlays a div.
+// Any DrawContext/Path API mismatch is caught by the caller, which falls
+// back to a plain number instead of crashing the whole widget.
+function buildReadinessRing(percent, size) {
+  const ctx = new DrawContext();
+  ctx.size = new Size(size, size);
+  ctx.opaque = false;
+  ctx.respectScreenScale = true;
+
+  const strokeWidth = size * 0.11;
+  const center = new Point(size / 2, size / 2);
+  const radius = (size - strokeWidth) / 2;
+
+  ctx.setLineWidth(strokeWidth);
+  ctx.setStrokeColor(COLORS.track);
+  const track = new Path();
+  track.addArc(center, radius, 0, 2 * Math.PI, true);
+  ctx.addPath(track);
+  ctx.strokePath();
+
+  const clamped = Math.max(0, Math.min(100, percent ?? 0));
+  if (percent != null && clamped > 0) {
+    const start = -Math.PI / 2;
+    const end = start + (clamped / 100) * 2 * Math.PI;
+    ctx.setStrokeColor(COLORS.accent);
+    const arc = new Path();
+    arc.addArc(center, radius, start, end, true);
+    ctx.addPath(arc);
+    ctx.strokePath();
+  }
+
+  ctx.setFont(Font.boldSystemFont(size * 0.3));
+  ctx.setTextColor(COLORS.text);
+  ctx.setTextAlignedCenter();
+  ctx.drawTextInRect(percent != null ? `${percent}` : "–", new Rect(0, size * 0.34, size, size * 0.36));
+
+  return ctx.getImage();
+}
+
+function addReadinessBadge(container, percent, size) {
+  try {
+    const img = container.addImage(buildReadinessRing(percent, size));
+    img.imageSize = new Size(size, size);
+  } catch (e) {
+    // DrawContext/Path fell over for some reason — a plain number still gets
+    // the one thing that matters (the score) across.
+    const col = container.addStack();
+    col.layoutVertically();
+    col.size = new Size(size, size);
+    col.centerAlignContent();
+    const v = col.addText(percent != null ? `${percent}` : "–");
+    v.font = Font.boldSystemFont(size * 0.3);
+    v.textColor = COLORS.text;
+    v.centerAlignText();
+    const l = col.addText("READY");
+    l.font = Font.boldSystemFont(8);
+    l.textColor = COLORS.textFaint;
+    l.centerAlignText();
+  }
+}
+
+function addMiniBar(container, pct, color, width, height) {
+  const track = container.addStack();
+  track.size = new Size(width, height);
+  track.backgroundColor = COLORS.track;
+  track.cornerRadius = height / 2;
+  track.layoutHorizontally();
+  const fillWidth = Math.max(3, (width * Math.max(0, Math.min(100, pct))) / 100);
+  const fill = track.addStack();
+  fill.size = new Size(fillWidth, height);
+  fill.backgroundColor = color;
+  fill.cornerRadius = height / 2;
+}
+
+function addStatColumn(container, label, value, pct, color, note) {
+  const col = container.addStack();
   col.layoutVertically();
+  const l = col.addText(label.toUpperCase());
+  l.font = Font.boldSystemFont(9);
+  l.textColor = COLORS.textFaint;
+  col.addSpacer(2);
   const v = col.addText(value);
-  v.font = Font.semiboldSystemFont(15);
-  v.textColor = Color.white();
-  const l = col.addText(label);
-  l.font = Font.systemFont(10);
-  l.textColor = new Color("#8e8e93");
+  v.font = Font.semiboldSystemFont(13);
+  v.textColor = COLORS.text;
+  v.lineLimit = 1;
+  v.minimumScaleFactor = 0.8;
+  col.addSpacer(3);
+  addMiniBar(col, pct, color, 46, 4);
+  col.addSpacer(3);
+  const n = col.addText(note);
+  n.font = Font.systemFont(8.5);
+  n.textColor = COLORS.textFaint;
+  n.lineLimit = 1;
+  n.minimumScaleFactor = 0.8;
+  return col;
+}
+
+function formatHours(hours) {
+  if (hours == null) return "—";
+  const h = Math.floor(hours);
+  const m = Math.round((hours - h) * 60);
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+function weekdayDate() {
+  const f = new DateFormatter();
+  f.dateFormat = "EEE, MMM d";
+  return f.string(new Date()).toUpperCase();
+}
+
+// ---- states ------------------------------------------------------------
+
+function centeredMessage(widget, symbolName, text) {
+  widget.addSpacer();
+  const row = widget.addStack();
+  row.layoutHorizontally();
+  row.centerAlignContent();
+  addIcon(row, symbolName, COLORS.textDim, 15);
+  row.addSpacer(6);
+  const label = row.addText(text);
+  label.font = Font.mediumSystemFont(14);
+  label.textColor = COLORS.text;
+  widget.addSpacer();
+}
+
+function addDashboardRow(widget, dashboard) {
+  if (!dashboard) return;
+  widget.addSpacer(10);
+  const row = widget.addStack();
+  row.layoutHorizontally();
+  addStatColumn(
+    row,
+    "Sleep",
+    formatHours(dashboard.sleep.hours),
+    dashboard.sleep.pct,
+    COLORS.good,
+    dashboard.sleep.note,
+  );
+  row.addSpacer();
+  addStatColumn(
+    row,
+    "HRV",
+    dashboard.hrv.value != null ? `${Math.round(dashboard.hrv.value)}ms` : "—",
+    dashboard.hrv.pct,
+    COLORS.accent,
+    dashboard.hrv.deltaVs7d != null
+      ? `${dashboard.hrv.deltaVs7d >= 0 ? "+" : ""}${dashboard.hrv.deltaVs7d.toFixed(0)} vs 7d`
+      : "No HRV data",
+  );
+  row.addSpacer();
+  addStatColumn(
+    row,
+    "Fatigue",
+    dashboard.fatigue.label,
+    dashboard.fatigue.pct,
+    COLORS.warn,
+    dashboard.fatigue.tsb != null ? `TSB ${dashboard.fatigue.tsb >= 0 ? "+" : ""}${dashboard.fatigue.tsb.toFixed(0)}` : "No data",
+  );
 }
 
 function buildWidget(data) {
   const widget = new ListWidget();
-  widget.backgroundColor = new Color("#1c1c1e");
-  widget.setPadding(14, 14, 14, 14);
+  widget.backgroundColor = COLORS.bg;
+  widget.setPadding(14, 14, 12, 14);
   widget.refreshAfterDate = new Date(Date.now() + 30 * 60 * 1000);
 
-  const header = widget.addText("TODAY");
-  header.font = Font.boldSystemFont(11);
-  header.textColor = new Color("#8e8e93");
-  widget.addSpacer(6);
+  const family = config.widgetFamily ?? "medium";
+
+  const header = widget.addText(weekdayDate());
+  header.font = Font.boldSystemFont(10);
+  header.textColor = COLORS.textFaint;
 
   if (data.needsSetup) {
-    const msg = widget.addText("Tap to set up");
-    msg.font = Font.mediumSystemFont(15);
-    msg.textColor = Color.white();
     widget.url = URLScheme.forRunningScript();
+    centeredMessage(widget, "gearshape", "Tap to set up");
     return widget;
   }
 
   if (data.error) {
-    const msg = widget.addText(data.error);
-    msg.font = Font.mediumSystemFont(13);
-    msg.textColor = new Color("#ff6961");
     widget.url = URLScheme.forRunningScript();
+    centeredMessage(widget, "exclamationmark.triangle", data.error);
     return widget;
   }
 
   widget.url = APP_URL;
 
-  if (!data.hasPlan || data.isRestDay) {
-    const msg = widget.addText(data.isRestDay ? data.restReason || "Rest day" : "No plan yet");
-    msg.font = Font.mediumSystemFont(15);
-    msg.textColor = Color.white();
-    return widget;
-  }
-
-  const name = widget.addText(data.name || (data.discipline === "BIKE" ? "Bike" : "Run"));
-  name.font = Font.boldSystemFont(17);
-  name.textColor = Color.white();
-  name.minimumScaleFactor = 0.7;
-
-  if (data.category && ZONE_COLORS[data.category]) {
-    widget.addSpacer(4);
-    const badge = widget.addText(data.category);
-    badge.font = Font.boldSystemFont(11);
-    badge.textColor = ZONE_COLORS[data.category];
-  }
+  const readiness = data.dashboard?.readiness ?? null;
+  const ringSize = family === "small" ? 46 : 54;
 
   widget.addSpacer(8);
-  const row = widget.addStack();
-  row.layoutHorizontally();
-  row.spacing = 16;
-  if (data.durationMin != null) addStat(row, `${data.durationMin}m`, "Duration");
-  if (data.intensity != null) addStat(row, `${data.intensity}/5`, "Intensity");
+  const hero = widget.addStack();
+  hero.layoutHorizontally();
+  hero.centerAlignContent();
+  addReadinessBadge(hero, readiness, ringSize);
+  hero.addSpacer(10);
+
+  const info = hero.addStack();
+  info.layoutVertically();
+
+  if (!data.hasPlan || data.isRestDay) {
+    const title = info.addText(data.isRestDay ? "Rest day" : "No plan yet");
+    title.font = Font.boldSystemFont(15);
+    title.textColor = COLORS.text;
+    title.lineLimit = 1;
+    if (data.isRestDay && data.restReason) {
+      info.addSpacer(2);
+      const sub = info.addText(data.restReason);
+      sub.font = Font.systemFont(10);
+      sub.textColor = COLORS.textDim;
+      sub.lineLimit = family === "small" ? 1 : 2;
+    }
+  } else {
+    const zone = ZONES[data.category] ?? null;
+    const name = info.addText(data.name || (data.discipline === "BIKE" ? "Bike" : "Run"));
+    name.font = Font.boldSystemFont(15);
+    name.textColor = COLORS.text;
+    name.lineLimit = 1;
+    name.minimumScaleFactor = 0.75;
+
+    info.addSpacer(3);
+    const meta = info.addStack();
+    meta.layoutHorizontally();
+    meta.centerAlignContent();
+    addIcon(meta, data.discipline === "BIKE" ? "bicycle" : "figure.run", COLORS.textDim, 11);
+    if (data.durationMin != null) {
+      meta.addSpacer(4);
+      const dur = meta.addText(`${data.durationMin}m`);
+      dur.font = Font.systemFont(11);
+      dur.textColor = COLORS.textDim;
+    }
+    if (zone && family !== "small") {
+      meta.addSpacer(6);
+      addPill(meta, zone.label, zone.hex);
+    }
+  }
+
+  if (family !== "small") addDashboardRow(widget, data.dashboard);
 
   if (data.stale) {
     widget.addSpacer(6);
-    const note = widget.addText(data.staleMessage || "Showing last known plan");
+    const noteRow = widget.addStack();
+    noteRow.layoutHorizontally();
+    noteRow.centerAlignContent();
+    addIcon(noteRow, "clock.arrow.circlepath", COLORS.textFaint, 9);
+    noteRow.addSpacer(3);
+    const note = noteRow.addText(data.staleMessage || "Showing last known plan");
     note.font = Font.systemFont(9);
-    note.textColor = new Color("#8e8e93");
+    note.textColor = COLORS.textFaint;
+    note.lineLimit = 1;
+  } else {
+    widget.addSpacer();
   }
 
   return widget;

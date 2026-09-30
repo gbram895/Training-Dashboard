@@ -1,9 +1,27 @@
 # Training Dashboard — iPhone Home Screen widget
 
-Shows today's suggested training (name, zone, duration, intensity) as a
-Home Screen tile, using [Scriptable](https://apps.apple.com/app/scriptable/id1405459188)
-— a free, well-established app that runs a JavaScript file as a widget. No
-native app, Xcode, or Apple Developer account needed.
+A Home Screen tile shaped like the Dashboard's own hero card: the readiness
+ring, today's suggested session (name, zone, duration), and the Sleep / HRV /
+Fatigue row from underneath it — using
+[Scriptable](https://apps.apple.com/app/scriptable/id1405459188) — a free,
+well-established app that runs a JavaScript file as a widget. No native app,
+Xcode, or Apple Developer account needed.
+
+**Already have the widget installed from before?** The design changed —
+open the script in Scriptable, select all, delete, and paste in the current
+[`TrainingDashboardWidget.js`](./TrainingDashboardWidget.js) again. Your
+saved token stays put; nothing else in setup needs repeating.
+
+## What it shows
+
+- A readiness ring (same 0-100 blend of HRV, sleep, and training load/TSB as
+  the Dashboard's hero) with today's session name, discipline, duration, and
+  zone next to it — or "Rest day" / "No plan yet" when there isn't one.
+- Below that, the same three stats as the Dashboard's Sleep/HRV/Fatigue row,
+  each with its own mini progress bar.
+- **Medium** widget size gets the full layout above. **Small** drops the
+  stats row and zone pill and just shows the ring + session name — there
+  isn't room for both at that size.
 
 ## Why a third-party app instead of a "real" widget
 
