@@ -123,17 +123,18 @@ function addPill(container, text, hex) {
 }
 
 // The readiness ring from the Dashboard hero (ProgressRing.tsx), drawn as a
-// single image (arc + centered number baked in together) since a widget
-// can't overlay a text view on an image the way a web page overlays a div.
-// Any DrawContext/Path API mismatch is caught by the caller, which falls
-// back to a plain number instead of crashing the whole widget.
-function buildReadinessRing(percent, size) {
+// single image (arc + centered label baked in together) since a widget can't
+// overlay a text view on an image the way a web page overlays a div. Reused
+// for the small-size Sleep/HRV/Fatigue mini-rings too (same shape, smaller,
+// tinted per metric) — one drawing routine rather than two so a fix to one
+// automatically covers the other.
+function buildRing(size, percent, arcColor, label, fontScale) {
   const ctx = new DrawContext();
   ctx.size = new Size(size, size);
   ctx.opaque = false;
   ctx.respectScreenScale = true;
 
-  const strokeWidth = size * 0.11;
+  const strokeWidth = size * 0.13;
   const center = new Point(size / 2, size / 2);
   const radius = (size - strokeWidth) / 2;
 
@@ -148,41 +149,43 @@ function buildReadinessRing(percent, size) {
   if (percent != null && clamped > 0) {
     const start = -Math.PI / 2;
     const end = start + (clamped / 100) * 2 * Math.PI;
-    ctx.setStrokeColor(COLORS.accent);
+    ctx.setStrokeColor(arcColor);
     const arc = new Path();
     arc.addArc(center, radius, start, end, true);
     ctx.addPath(arc);
     ctx.strokePath();
   }
 
-  ctx.setFont(Font.boldSystemFont(size * 0.3));
-  ctx.setTextColor(COLORS.text);
-  ctx.setTextAlignedCenter();
-  ctx.drawTextInRect(percent != null ? `${percent}` : "–", new Rect(0, size * 0.34, size, size * 0.36));
+  if (label) {
+    ctx.setFont(Font.boldSystemFont(size * fontScale));
+    ctx.setTextColor(COLORS.text);
+    ctx.setTextAlignedCenter();
+    ctx.drawTextInRect(label, new Rect(0, size * 0.34, size, size * 0.36));
+  }
 
   return ctx.getImage();
 }
 
-function addReadinessBadge(container, percent, size) {
+// Any DrawContext/Path API mismatch is caught here, which falls back to a
+// plain label instead of crashing the whole widget.
+function addRingBadge(container, percent, arcColor, label, size, fontScale) {
   try {
-    const img = container.addImage(buildReadinessRing(percent, size));
+    const img = container.addImage(buildRing(size, percent, arcColor, label, fontScale));
     img.imageSize = new Size(size, size);
   } catch (e) {
-    // DrawContext/Path fell over for some reason — a plain number still gets
-    // the one thing that matters (the score) across.
     const col = container.addStack();
     col.layoutVertically();
     col.size = new Size(size, size);
     col.centerAlignContent();
-    const v = col.addText(percent != null ? `${percent}` : "–");
-    v.font = Font.boldSystemFont(size * 0.3);
-    v.textColor = COLORS.text;
+    const v = col.addText(label);
+    v.font = Font.boldSystemFont(size * fontScale);
+    v.textColor = arcColor;
     v.centerAlignText();
-    const l = col.addText("READY");
-    l.font = Font.boldSystemFont(8);
-    l.textColor = COLORS.textFaint;
-    l.centerAlignText();
   }
+}
+
+function shortFatigueLabel(label) {
+  return label === "Moderate" ? "Mod" : label;
 }
 
 function addMiniBar(container, pct, color, width, height) {
@@ -284,6 +287,50 @@ function addDashboardRow(widget, dashboard) {
   );
 }
 
+// Small size has no room for the bar-chart stat row, so Sleep/HRV/Fatigue
+// become three small rings instead — same shape and colors as the hero
+// ring, just tinted per metric and carrying a short value instead of a %.
+function addMiniRingRow(widget, dashboard) {
+  if (!dashboard) return;
+  widget.addSpacer(8);
+  const row = widget.addStack();
+  row.layoutHorizontally();
+  row.centerAlignContent();
+
+  const cols = [
+    {
+      label: "Sleep",
+      pct: dashboard.sleep.pct,
+      color: COLORS.good,
+      value: dashboard.sleep.hours != null ? `${Math.round(dashboard.sleep.hours)}h` : "–",
+    },
+    {
+      label: "HRV",
+      pct: dashboard.hrv.pct,
+      color: COLORS.accent,
+      value: dashboard.hrv.value != null ? `${Math.round(dashboard.hrv.value)}` : "–",
+    },
+    {
+      label: "Fatigue",
+      pct: dashboard.fatigue.pct,
+      color: COLORS.warn,
+      value: shortFatigueLabel(dashboard.fatigue.label),
+    },
+  ];
+
+  cols.forEach((c, i) => {
+    const col = row.addStack();
+    col.layoutVertically();
+    col.centerAlignContent();
+    addRingBadge(col, c.pct, c.color, c.value, 34, 0.32);
+    col.addSpacer(2);
+    const l = col.addText(c.label.toUpperCase());
+    l.font = Font.boldSystemFont(7);
+    l.textColor = COLORS.textFaint;
+    if (i < cols.length - 1) row.addSpacer();
+  });
+}
+
 function buildWidget(data) {
   const widget = new ListWidget();
   widget.backgroundColor = COLORS.bg;
@@ -317,7 +364,7 @@ function buildWidget(data) {
   const hero = widget.addStack();
   hero.layoutHorizontally();
   hero.centerAlignContent();
-  addReadinessBadge(hero, readiness, ringSize);
+  addRingBadge(hero, readiness, COLORS.accent, readiness != null ? `${readiness}%` : "–", ringSize, 0.27);
   hero.addSpacer(10);
 
   const info = hero.addStack();
@@ -360,7 +407,11 @@ function buildWidget(data) {
     }
   }
 
-  if (family !== "small") addDashboardRow(widget, data.dashboard);
+  if (family === "small") {
+    addMiniRingRow(widget, data.dashboard);
+  } else {
+    addDashboardRow(widget, data.dashboard);
+  }
 
   if (data.stale) {
     widget.addSpacer(6);
