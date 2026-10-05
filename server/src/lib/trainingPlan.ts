@@ -263,14 +263,42 @@ function rotateAmongClosest(
   return equallyGood[seed % equallyGood.length] ?? best;
 }
 
+/**
+ * What counts as "the same workout" for the don't-repeat memory. JOIN exports
+ * one workout at several lengths as separate files — nine "2x 15 min
+ * omslagpunt" files that differ only in warm-up, or "Parijs-criterium – Kort",
+ * "– Middel" and "– Lang" — so keying the memory on the file path let the plan
+ * hand back the same session on consecutive days in a different length.
+ */
+export function workoutFamily(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/\s+[–-]\s+(kort|middel|med|lang)$/, '');
+}
+
+export interface RecentPick {
+  path: string;
+  family: string;
+}
+
+interface PickResult {
+  workout: ParsedWorkoutFile;
+  /** The session type of what was actually picked, which a variety swap can move off the asked-for one. */
+  category: WorkoutCategory;
+  /** A one-line note when the pick isn't what the day asked for, or is a repeat. */
+  note: string | null;
+}
+
 function pickWorkout(
   library: ParsedWorkoutFile[],
   discipline: PlannedDiscipline,
   targetMinutes: number,
   category: WorkoutCategory,
-  avoidPaths: string[],
+  ceiling: WorkoutCategory,
+  recent: RecentPick[],
   seed: number,
-): ParsedWorkoutFile | null {
+): PickResult | null {
   const byDiscipline = library.filter((w) => w.discipline === discipline);
   if (byDiscipline.length === 0) return null;
 
@@ -282,29 +310,83 @@ function pickWorkout(
   const withinTolerance = byDiscipline.filter((w) => w.durationMin == null || w.durationMin <= maxAllowedMinutes);
   if (withinTolerance.length === 0) return null;
 
-  // Prefer a workout not used recently, so a library with several options in
-  // the same category doesn't collapse to one repeat — but never refuse to
-  // plan a day just to avoid a repeat.
+  const recentPaths = new Set(recent.map((r) => r.path));
+  const recentFamilies = new Set(recent.map((r) => r.family));
+  const isFresh = (w: ParsedWorkoutFile) => !recentPaths.has(w.path) && !recentFamilies.has(workoutFamily(w.name));
+  const ofCategory = (c: WorkoutCategory) => withinTolerance.filter((w) => (w.category ?? undefined) === c);
+  const result = (workout: ParsedWorkoutFile, note: string | null = null, placed = category): PickResult => ({
+    workout,
+    category: placed,
+    note,
+  });
+
+  const inCategory = ofCategory(category);
+  const freshInCategory = inCategory.filter(isFresh);
+  if (freshInCategory.length > 0) return result(rotateAmongClosest(freshInCategory, targetMinutes, seed));
+
+  if (inCategory.length > 0) {
+    // Everything of this type that fits the day was used in the last few days.
+    // A library can be big and still thin in one corner — at the time of
+    // writing, a 230-ride library held exactly one endurance ride under 90
+    // minutes — and repeating it is what put the same session on the plan
+    // three times in a week. A different session type at or below what
+    // fatigue allows beats a repeat: the ceiling stays the ceiling, and the
+    // next day's mix sees what was actually placed and corrects for it.
+    // Easier types are tried before harder ones at the same distance.
+    const idx = CATEGORY_ORDER.indexOf(category);
+    const ceilingIdx = CATEGORY_ORDER.indexOf(ceiling);
+    for (let radius = 1; radius < CATEGORY_ORDER.length; radius++) {
+      for (const i of [idx - radius, idx + radius]) {
+        if (i < 0 || i > ceilingIdx || i >= CATEGORY_ORDER.length) continue;
+        const alternative = CATEGORY_ORDER[i];
+        const fresh = ofCategory(alternative).filter(isFresh);
+        if (fresh.length > 0) {
+          return result(
+            rotateAmongClosest(fresh, targetMinutes, seed),
+            `A ${alternative.toLowerCase()} session instead of ${category.toLowerCase()}: every ` +
+              `${category.toLowerCase()} ${discipline === 'RUN' ? 'run' : 'ride'} in your library that fits ` +
+              `${formatMinutes(targetMinutes)} was used in the last few days.`,
+            alternative,
+          );
+        }
+      }
+    }
+
+    // Nothing else fits either, so the repeat stands — but say so, so a thin
+    // corner of the library reads as a gap to fill rather than a broken plan.
+    const fitting = new Set(inCategory.map((w) => workoutFamily(w.name))).size;
+    return result(
+      rotateAmongClosest(inCategory, targetMinutes, seed),
+      `A repeat: your library has ${fitting === 1 ? 'only one' : `only ${fitting}`} ` +
+        `${category.toLowerCase()} ${discipline === 'RUN' ? 'run' : 'ride'}${fitting === 1 ? '' : 's'} that ` +
+        `fit${fitting === 1 ? 's' : ''} ${formatMinutes(targetMinutes)}. Adding a few more would give this day some variety.`,
+    );
+  }
+
+  // No workout of this type fits at all: fall back to the nearest category
+  // tier (both directions) before giving up on the category entirely — an
+  // easier or harder session beats no session.
   const pickFrom = (pool: ParsedWorkoutFile[]) => {
     if (pool.length === 0) return null;
-    const notRecent = pool.filter((w) => !avoidPaths.includes(w.path));
-    return rotateAmongClosest(notRecent.length > 0 ? notRecent : pool, targetMinutes, seed);
+    const fresh = pool.filter(isFresh);
+    return result(rotateAmongClosest(fresh.length > 0 ? fresh : pool, targetMinutes, seed));
   };
-
-  const inCategory = withinTolerance.filter((w) => (w.category ?? undefined) === category);
-  if (inCategory.length > 0) return pickFrom(inCategory);
-
-  // Fall back to the nearest category tier (both directions) before giving up
-  // on the category entirely — an easier or harder session beats no session.
   const idx = CATEGORY_ORDER.indexOf(category);
   for (let radius = 1; radius < CATEGORY_ORDER.length; radius++) {
     const candidates = [CATEGORY_ORDER[idx - radius], CATEGORY_ORDER[idx + radius]]
       .filter((c): c is WorkoutCategory => c != null)
-      .flatMap((c) => withinTolerance.filter((w) => w.category === c));
+      .flatMap((c) => ofCategory(c));
     if (candidates.length > 0) return pickFrom(candidates);
   }
 
   return pickFrom(withinTolerance);
+}
+
+function formatMinutes(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, '0')}`;
 }
 
 interface GeneratedDay {
@@ -328,6 +410,7 @@ interface ManualOverrideRow {
   isRestDay: boolean;
   trainingStress: number | null;
   sourcePath: string | null;
+  name: string | null;
 }
 
 const CTL_DECAY = 1 - Math.exp(-1 / 42);
@@ -378,7 +461,7 @@ function decideDay(
   config: PlanConfigHours & { includeRunning: boolean; runDays: number[] },
   library: ParsedWorkoutFile[],
   readiness: ReadinessModifiers,
-  avoidPaths: string[],
+  recentPicks: RecentPick[],
   goal: GoalContext | null,
   disciplineOverride?: PlannedDiscipline,
 ): GeneratedDay {
@@ -477,7 +560,7 @@ function decideDay(
   // Days apart rather than the raw timestamp, so the rotation advances by one
   // per day rather than jumping by 86,400,000.
   const seed = Math.floor(date.getTime() / 86_400_000);
-  let workout = pickWorkout(library, discipline, targetMinutes, category, avoidPaths, seed);
+  let pick = pickWorkout(library, discipline, targetMinutes, category, ceiling, recentPicks, seed);
 
   // A day the goal (rather than the athlete's own schedule) turned into a run
   // falls back to the configured discipline when the library has no run that
@@ -486,12 +569,18 @@ function decideDay(
   // run keeps today's behaviour and says what's missing instead. Same logic
   // for an explicit disciplineOverride: falling back would silently ignore
   // what the athlete just asked for, so it stays put and says what's missing.
-  if (!workout && discipline !== configuredDiscipline && !disciplineOverride) {
-    workout = pickWorkout(library, configuredDiscipline, targetMinutes, category, avoidPaths, seed);
+  if (!pick && discipline !== configuredDiscipline && !disciplineOverride) {
+    pick = pickWorkout(library, configuredDiscipline, targetMinutes, category, ceiling, recentPicks, seed);
   }
 
-  return workout
-    ? { date, isRestDay: false, workout, category, focus }
+  if (pick?.note) {
+    // A swapped session type makes the goal's "why" line wrong, so the note
+    // replaces it; a repeat keeps it and says why it is a repeat.
+    focus = pick.category !== category ? pick.note : focus ? `${focus} ${pick.note}` : pick.note;
+  }
+
+  return pick
+    ? { date, isRestDay: false, workout: pick.workout, category: pick.category, focus }
     : {
         date,
         isRestDay: true,
@@ -553,6 +642,18 @@ async function recentPlannedCategories(userId: string, today: Date): Promise<Rec
   return recent;
 }
 
+/** The workouts planned on the days just before `today`, oldest first. */
+async function recentPlannedPicks(userId: string, today: Date): Promise<RecentPick[]> {
+  const since = new Date(today);
+  since.setUTCDate(since.getUTCDate() - 7);
+  const rows = await prisma.plannedDay.findMany({
+    where: { userId, date: { gte: since, lt: today }, isRestDay: false, sourcePath: { not: null } },
+    orderBy: { date: 'asc' },
+    select: { sourcePath: true, name: true },
+  });
+  return rows.map((r) => ({ path: r.sourcePath!, family: workoutFamily(r.name ?? r.sourcePath!) }));
+}
+
 /**
  * Generates each day in order, carrying a running CTL/ATL projection forward
  * from the athlete's real, current fitness — each day's own (estimated) TSS
@@ -602,8 +703,12 @@ async function runProjection(
     : null;
 
   const today = utcMidnight(new Date());
-  const recentPicks: string[] = [];
   const pickMemory = recentPicksMemory(library.length);
+  // Seeded with the days just behind the window, which is what today's own
+  // pick is judged against. Without this, today was always picked with an
+  // empty memory — and so, on any day with only a few fitting workouts, was
+  // the same session it had been yesterday and the day before.
+  const recentPicks: RecentPick[] = (await recentPlannedPicks(userId, today)).slice(-pickMemory);
   const results: GeneratedDay[] = [];
 
   // Which goal the ramp points at, and the mix of sessions already behind the
@@ -708,9 +813,15 @@ async function runProjection(
     atl = atl + (dayTss - atl) * ATL_DECAY;
     ctlTrail.push(ctl);
 
-    const recentPickPath = override ? (override.isRestDay ? null : override.sourcePath) : generated.workout?.path;
-    if (recentPickPath) {
-      recentPicks.push(recentPickPath);
+    const recentPick: RecentPick | null = override
+      ? override.isRestDay || !override.sourcePath
+        ? null
+        : { path: override.sourcePath, family: workoutFamily(override.name ?? override.sourcePath) }
+      : generated.workout
+        ? { path: generated.workout.path, family: workoutFamily(generated.workout.name) }
+        : null;
+    if (recentPick) {
+      recentPicks.push(recentPick);
       if (recentPicks.length > pickMemory) recentPicks.shift();
     }
   }
@@ -813,6 +924,7 @@ export async function generatePlanWindow(userId: string, days = ROLLING_WINDOW_D
       isRestDay: true,
       trainingStress: true,
       sourcePath: true,
+      name: true,
       manualOverride: true,
       availableHoursOverride: true,
       disciplineOverride: true,
@@ -827,6 +939,7 @@ export async function generatePlanWindow(userId: string, days = ROLLING_WINDOW_D
         isRestDay: row.isRestDay,
         trainingStress: row.trainingStress,
         sourcePath: row.sourcePath,
+        name: row.name,
       });
     }
     if (row.availableHoursOverride != null) hourOverrides.set(row.date.getTime(), row.availableHoursOverride);
