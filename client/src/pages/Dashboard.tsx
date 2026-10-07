@@ -23,8 +23,10 @@ import { computeReadiness } from '../lib/readiness';
 import { toSleepNight } from '../lib/sleep';
 import { average } from '../lib/hrv';
 import { formatDateUTC } from '../lib/format';
+import CadenceLoader from '../components/CadenceLoader';
 import PageHead from '../components/PageHead';
 import DashboardHero from '../components/dashboard/DashboardHero';
+import DashboardSkeleton from '../components/dashboard/DashboardSkeleton';
 import GradientStatRow from '../components/dashboard/GradientStatRow';
 import SleepCard from '../components/dashboard/SleepCard';
 import WeekStrip from '../components/dashboard/WeekStrip';
@@ -143,7 +145,7 @@ export default function Dashboard() {
   return (
     <div className="page">
       {loading ? (
-        <p className="muted">Loading…</p>
+        <DashboardSkeleton />
       ) : (
         <>
           <div className="gd-dashboard-top">
@@ -193,7 +195,13 @@ export default function Dashboard() {
 
           <div className="gd-legacy-divider">More</div>
 
-          <Suspense fallback={<p className="muted">Loading…</p>}>
+          <Suspense
+            fallback={
+              <div className="gd-cadence-inline">
+                <CadenceLoader />
+              </div>
+            }
+          >
             <LegacyAnalytics
               days={days}
               disciplineStats={disciplineStats}
