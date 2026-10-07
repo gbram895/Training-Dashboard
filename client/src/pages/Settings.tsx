@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { apiFetch, ApiError } from '../api/client';
+import LoadingScreen from '../components/LoadingScreen';
 import type { HrZoneSettings, ThresholdSettings } from '../api/types';
 import ApiTokenCard from '../components/settings/ApiTokenCard';
 import CalibrationCard from '../components/settings/CalibrationCard';
@@ -139,7 +140,7 @@ export default function Settings() {
     setTheme(next);
   }
 
-  if (!zones || !thresholds) return <div className="page">Loading…</div>;
+  if (!zones || !thresholds) return <LoadingScreen />;
 
   return (
     <div className="page">

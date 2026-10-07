@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiFetch, ApiError } from '../api/client';
+import LoadingScreen from '../components/LoadingScreen';
 import type { SessionReview, TssSource, Workout, WorkoutSample } from '../api/types';
 import { formatDateUTC, formatDistance, formatDuration, formatPace, formatSpeed } from '../lib/format';
 import WorkoutSampleChart from '../components/WorkoutSampleChart';
@@ -94,11 +95,7 @@ export default function WorkoutDetail() {
   }
 
   if (loading || !workout) {
-    return (
-      <div className="page">
-        <p className="muted">Loading…</p>
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   const showGraphs = workout.type === 'RUN' || workout.type === 'RIDE';

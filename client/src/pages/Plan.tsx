@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch, ApiError } from '../api/client';
+import CadenceLoader from '../components/CadenceLoader';
 import type {
   LibraryWorkout,
   PlannedDay,
@@ -563,7 +564,9 @@ export default function Plan() {
       {error ? (
         <p className="muted">{error}</p>
       ) : workouts === null ? (
-        <p className="muted">Loading…</p>
+        <div className="gd-cadence-inline">
+          <CadenceLoader />
+        </div>
       ) : workouts.length === 0 ? (
         <p className="muted">
           No workouts found. Add files to a "Workout Database" folder in your Dropbox — one workout per file.

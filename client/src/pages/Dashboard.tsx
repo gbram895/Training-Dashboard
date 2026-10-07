@@ -1,6 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../api/client';
+import LoadingScreen from '../components/LoadingScreen';
+import useSplashHold from '../lib/useSplashHold';
 import type {
   DailyHealthSummary,
   DisciplineStats,
@@ -128,6 +130,7 @@ export default function Dashboard() {
     [load],
   );
 
+  const holdingSplash = useSplashHold();
   const loading = days === null || disciplineStats === null || hrZones === null;
 
   const hrvValues = days?.map((d) => d.avgHrv ?? null) ?? [];
@@ -141,6 +144,10 @@ export default function Dashboard() {
         tsb: fitness && fitness.length ? fitness[fitness.length - 1].tsb : null,
       })
     : null;
+
+  // The launch splash gets its two full cycles before the dashboard
+  // appears, however fast the fetches came back.
+  if (holdingSplash) return <LoadingScreen />;
 
   return (
     <div className="page">
