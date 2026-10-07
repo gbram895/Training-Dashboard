@@ -36,9 +36,100 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&display=swap"
       rel="stylesheet"
     />
+    <style>
+      /* First-paint splash, below. Inline because index.css only arrives with
+         the JS bundle, and these are the same values as its --bg,
+         --surface-sunken and --accent-solid tokens. */
+      .boot {
+        --boot-bg: #f6f7f6;
+        --boot-track: #eff2f1;
+        --boot-label: #0a93a8;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 24px;
+        background: var(--boot-bg);
+      }
+      .boot-track {
+        stroke: var(--boot-track);
+      }
+      .boot-pulse {
+        stroke-dasharray: 34.6 34.6;
+        animation: boot-travel 1.6s linear infinite;
+      }
+      @keyframes boot-travel {
+        from {
+          stroke-dashoffset: 34.6;
+        }
+        to {
+          stroke-dashoffset: -34.6;
+        }
+      }
+      .boot-label {
+        margin: 0;
+        font-family: 'IBM Plex Mono', ui-monospace, monospace;
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--boot-label);
+      }
+      html[data-theme='dark'] .boot {
+        --boot-bg: #111514;
+        --boot-track: #212827;
+        --boot-label: #3fd0c9;
+      }
+      @media (prefers-color-scheme: dark) {
+        html:not([data-theme='light']) .boot {
+          --boot-bg: #111514;
+          --boot-track: #212827;
+          --boot-label: #3fd0c9;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .boot-pulse {
+          animation: none;
+          stroke-dasharray: none;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Shown on the very first paint, before the bundle has parsed: the same
+           cadence loader the app uses, so a cold launch doesn't start on a blank
+           screen. createRoot replaces all of it the moment React mounts. -->
+      <div class="boot">
+        <svg width="200" height="114" viewBox="-2 -2 28 16" aria-hidden="true">
+          <defs>
+            <linearGradient id="bootGradient" x1="0" y1="1" x2="1" y2="0">
+              <stop offset="0" stop-color="#4fb6e8" />
+              <stop offset="1" stop-color="#4fd8a0" />
+            </linearGradient>
+          </defs>
+          <polyline
+            class="boot-track"
+            points="1,11 6,3 10,8 14,1 18,5 22,2"
+            fill="none"
+            stroke-width="2.6"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+          <polyline
+            class="boot-pulse"
+            points="1,11 6,3 10,8 14,1 18,5 22,2"
+            fill="none"
+            stroke="url(#bootGradient)"
+            stroke-width="2.6"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+        <p class="boot-label">Loading</p>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

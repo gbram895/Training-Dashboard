@@ -4204,3 +4204,145 @@ button.gd-ramp-why {
   margin: 0 0 0.3rem;
   font-size: 0.92rem;
 }
+
+/* ------------------------------------------------------------------ Loading
+   The wordmark's cadence line doubles as the app's loader: a cyan-to-teal
+   pulse travels the mark's own path over a hairline track (CadenceLoader).
+   Skeletons stand in for text and tiles with a shimmer over surface-sunken
+   (Skeleton, DashboardSkeleton). Everything here stops under
+   prefers-reduced-motion, leaving a readable static state behind.
+   -------------------------------------------------------------------------- */
+
+.gd-cadence {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gd-cadence svg {
+  display: block;
+}
+
+.gd-cadence-track {
+  stroke: var(--surface-sunken);
+}
+
+/* 34.6 is the mark's own path length, so a dash and a gap of that length each
+   turn the stroke into a single pulse: it enters at one end, leaves at the
+   other, and the loop never snaps back. */
+.gd-cadence-pulse {
+  stroke-dasharray: 34.6 34.6;
+  animation: gd-cadence-travel 1.6s linear infinite;
+}
+
+@keyframes gd-cadence-travel {
+  from {
+    stroke-dashoffset: 34.6;
+  }
+  to {
+    stroke-dashoffset: -34.6;
+  }
+}
+
+.gd-cadence-label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent-solid);
+}
+
+/* Whole-screen wait: a lazy route chunk that hasn't arrived yet. */
+.gd-cadence-page {
+  min-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+}
+
+/* Wait for one section inside a loaded screen. */
+.gd-cadence-inline {
+  display: flex;
+  justify-content: center;
+  padding: 28px 0;
+}
+
+.gd-skeleton {
+  --gd-sheen: rgba(255, 255, 255, 0.9);
+  display: block;
+  background-color: var(--surface-sunken);
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    var(--gd-sheen) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  background-size: 240px 100%;
+  background-repeat: no-repeat;
+  background-position: -240px 0;
+  animation: gd-shimmer 1.5s linear infinite;
+}
+
+@keyframes gd-shimmer {
+  to {
+    background-position: calc(100% + 240px) 0;
+  }
+}
+
+/* A near-white sheen disappears on the dark surfaces — lift it instead. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .gd-skeleton {
+    --gd-sheen: rgba(255, 255, 255, 0.07);
+  }
+}
+
+:root[data-theme='dark'] .gd-skeleton {
+  --gd-sheen: rgba(255, 255, 255, 0.07);
+}
+
+.gd-sk-head {
+  margin-bottom: 16px;
+}
+
+/* The CTA keeps its gradient while loading — it's the one thing on the screen
+   the gradient is reserved for — but dimmed and breathing, with no label. */
+.gd-sk-cta {
+  min-height: 46px;
+  animation: gd-sk-breathe 1.6s ease-in-out infinite;
+}
+
+@keyframes gd-sk-breathe {
+  0%,
+  100% {
+    opacity: 0.26;
+  }
+  50% {
+    opacity: 0.46;
+  }
+}
+
+.gd-sk-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gd-cadence-pulse {
+    animation: none;
+    stroke-dasharray: none;
+  }
+
+  .gd-skeleton {
+    animation: none;
+    background-image: none;
+  }
+
+  .gd-sk-cta {
+    animation: none;
+    opacity: 0.3;
+  }
+}
