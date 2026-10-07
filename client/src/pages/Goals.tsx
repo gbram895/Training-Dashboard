@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { apiFetch } from '../api/client';
+import CadenceLoader from '../components/CadenceLoader';
 import type { Goal } from '../api/types';
 import { useCachedState } from '../lib/pageCache';
 import PageHead from '../components/PageHead';
@@ -121,7 +122,9 @@ export default function Goals() {
         </p>
 
         {loading ? (
-          <p className="muted">Loading…</p>
+          <div className="gd-cadence-inline">
+            <CadenceLoader />
+          </div>
         ) : list.length === 0 && !showForm ? (
           <p className="muted">Nothing tracked yet.</p>
         ) : (

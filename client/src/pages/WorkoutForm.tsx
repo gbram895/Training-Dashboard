@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { apiFetch } from '../api/client';
+import LoadingScreen from '../components/LoadingScreen';
 import type { ExerciseEntry, Workout, WorkoutType } from '../api/types';
 
 const WORKOUT_TYPES: WorkoutType[] = ['RUN', 'RIDE', 'STRENGTH', 'SWIM', 'WALK', 'BADMINTON', 'OTHER'];
@@ -112,7 +113,7 @@ export default function WorkoutForm() {
     navigate('/workouts');
   }
 
-  if (loading) return <div className="page">Loading…</div>;
+  if (loading) return <LoadingScreen />;
 
   return (
     <div className="page">

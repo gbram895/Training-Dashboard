@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api/client';
+import LoadingScreen from '../components/LoadingScreen';
 import type { LibraryWorkout, PlannedDay, SelectedWorkout, ThresholdSettings } from '../api/types';
 import WorkoutDetailView from '../components/WorkoutDetailView';
 
@@ -60,11 +61,7 @@ export default function TodaysWorkoutDetail() {
   }
 
   if (workout === undefined || plannedToday === undefined) {
-    return (
-      <div className="page">
-        <p className="muted">Loading…</p>
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   if (workout === null && plannedToday?.isRestDay) {

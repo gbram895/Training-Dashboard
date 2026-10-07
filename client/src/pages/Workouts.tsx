@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../api/client';
+import CadenceLoader from '../components/CadenceLoader';
 import type { Workout, WorkoutType } from '../api/types';
 import { mondayOf } from '../lib/week';
 import { useCachedState } from '../lib/pageCache';
@@ -207,7 +208,9 @@ export default function Workouts() {
         )}
 
         {loading ? (
-          <p className="muted">Loading…</p>
+          <div className="gd-cadence-inline">
+            <CadenceLoader />
+          </div>
         ) : list.length === 0 ? (
           <p className="muted">No workouts yet. Tap + to log your first session.</p>
         ) : filtered.length === 0 ? (
