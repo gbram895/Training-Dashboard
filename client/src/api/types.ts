@@ -598,10 +598,23 @@ export interface CalendarEventItem {
   location: string | null;
 }
 
+export interface CalendarDoneWorkout {
+  id: string;
+  type: WorkoutType;
+  title: string | null;
+  durationMin: number;
+  load: number | null;
+}
+
 export interface CalendarMonthDay {
   /** YYYY-MM-DD */
   date: string;
   planned: PlannedDay | null;
+  /** The planned session's estimated load, on the same scale as a done workout's. */
+  plannedLoad: number | null;
+  done: CalendarDoneWorkout[];
+  /** End-of-day Fitness/Fatigue and that morning's Form; projected on the plan for future days. */
+  fitness: { ctl: number; atl: number; tsb: number } | null;
   events: CalendarEventItem[];
 }
 

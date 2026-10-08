@@ -4435,99 +4435,337 @@ button.gd-month-connect > span:first-child {
   border-radius: 10px;
 }
 
-.gd-month-row {
+.gd-month-head,
+.gd-month-week {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 3px;
-  margin-bottom: 3px;
 }
 
-.gd-month-weekdays span {
+.gd-month-head {
+  margin-bottom: 4px;
+}
+
+.gd-month-head span {
   text-align: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* On a phone the week's totals run as a line above its seven days; on a
+   wide screen they become their own column, like a training calendar's. */
+.gd-month-head .gd-month-weekcol {
+  display: none;
+}
+
+.gd-month-week {
+  padding: 6px 4px 8px;
+  margin: 0 -4px;
+  border-top: 1px solid var(--border);
+}
+
+.gd-month-week-now {
+  background: var(--accent-wash);
+  border-radius: 12px;
+  border-top-color: transparent;
+}
+
+.gd-month-week-now + .gd-month-week {
+  border-top-color: transparent;
+}
+
+.gd-week-sum {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  padding: 0 2px 4px;
   font-size: 11px;
+  color: var(--text-dim);
+}
+
+.gd-week-no {
   font-weight: 700;
   color: var(--text-faint);
+}
+
+.gd-week-time {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.gd-week-sum dl {
+  display: contents;
+  margin: 0;
+}
+
+.gd-week-sum dl > div {
+  display: flex;
+  gap: 4px;
+}
+
+.gd-week-sum dt {
+  font-weight: 600;
+}
+
+.gd-week-sum dd {
+  margin: 0;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.gd-week-sum dd.gd-form-fresh {
+  color: var(--good);
+}
+
+.gd-week-sum dd.gd-form-deep {
+  color: var(--warn);
 }
 
 button.gd-month-cell {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   gap: 3px;
   min-width: 0;
-  min-height: 58px;
-  padding: 5px 1px 4px;
+  min-height: 64px;
+  padding: 3px 2px 4px;
   font-family: inherit;
   font-weight: 400;
+  text-align: left;
   color: var(--text);
-  background: var(--surface-sunken);
+  background: none;
   border: 1px solid transparent;
   border-radius: 10px;
   cursor: pointer;
 }
 
-button.gd-month-cell.gd-month-outside {
-  opacity: 0.45;
-}
-
-button.gd-month-cell.gd-month-past .gd-month-session {
-  opacity: 0.55;
-}
-
-button.gd-month-cell.gd-month-today .gd-month-num {
-  color: #fff;
-  background: linear-gradient(135deg, var(--accent-a), var(--accent-b));
+button.gd-month-cell.gd-month-outside .gd-month-num {
+  color: var(--text-faint);
 }
 
 button.gd-month-cell.gd-month-picked {
-  background: var(--accent-wash);
+  background: var(--surface);
   border-color: var(--accent-solid);
 }
 
 .gd-month-num {
-  min-width: 20px;
-  padding: 2px 4px;
-  font-size: 11.5px;
-  font-weight: 600;
-  line-height: 1.2;
-  border-radius: 999px;
-}
-
-.gd-month-session {
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 18px;
-  font-size: 11px;
-  line-height: 1;
-  border-radius: 6px;
-}
-
-.gd-month-rest,
-.gd-month-session-empty {
-  height: 18px;
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  padding: 0 2px;
   font-size: 12px;
-  line-height: 18px;
+  line-height: 20px;
+}
+
+.gd-month-num small {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
   color: var(--text-faint);
 }
 
-.gd-month-dots {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  height: 6px;
+.gd-month-num b {
+  font-weight: 700;
 }
 
-.gd-month-dots i {
+button.gd-month-cell.gd-month-today .gd-month-num b {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  color: var(--bg);
+  background: var(--text);
+  border-radius: 999px;
+}
+
+/* A session, done or planned. On a phone only the icon and its length fit;
+   the name comes back on a wide screen and in the agenda. */
+.gd-day-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: 4px 3px 4px 4px;
+  font-size: 10.5px;
+  line-height: 1.25;
+  border-radius: 7px;
+  box-shadow: 0 1px 2px rgba(16, 21, 20, 0.06);
+}
+
+.gd-day-card-plan {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-a);
+}
+
+.gd-day-card-done {
+  color: var(--text);
+  background: linear-gradient(135deg, var(--border), var(--surface-sunken));
+  border: 1px solid transparent;
+}
+
+.gd-day-card-name {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+}
+
+.gd-day-card-name i {
+  flex: none;
+  font-style: normal;
+}
+
+.gd-day-card-name em {
+  font-style: normal;
+  font-weight: 700;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.gd-day-card-meta {
+  font-size: 10px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.gd-day-card-load {
+  display: none;
+}
+
+.gd-month-rest {
+  padding: 0 2px;
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.gd-month-events {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 0 2px;
+}
+
+.gd-month-event {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.gd-month-event i {
+  flex: none;
   width: 5px;
   height: 5px;
   border-radius: 999px;
 }
 
-.gd-month-dots b {
-  font-size: 8px;
+.gd-month-event em {
+  display: none;
+}
+
+.gd-month-events b {
+  font-size: 8.5px;
   font-weight: 700;
   color: var(--text-faint);
+}
+
+@media (max-width: 719px) {
+  .gd-day-card-name em {
+    display: none;
+  }
+}
+
+@media (min-width: 720px) {
+  .gd-month {
+    padding: 16px 18px 14px;
+  }
+
+  .gd-month-head,
+  .gd-month-week {
+    grid-template-columns: 92px repeat(7, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .gd-month-head .gd-month-weekcol {
+    display: block;
+    text-align: left;
+  }
+
+  .gd-month-week {
+    padding: 10px 8px 12px;
+    margin: 0 -8px;
+  }
+
+  .gd-week-sum {
+    grid-column: auto;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 2px;
+    padding: 2px 0 0;
+  }
+
+  .gd-week-time {
+    font-size: 15px;
+    margin-bottom: 4px;
+  }
+
+  .gd-week-sum dl {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .gd-week-sum dl > div {
+    justify-content: space-between;
+  }
+
+  button.gd-month-cell {
+    min-height: 96px;
+  }
+
+  .gd-day-card {
+    padding: 6px 8px 7px 9px;
+    font-size: 12.5px;
+    border-radius: 10px;
+  }
+
+  .gd-day-card-meta {
+    font-size: 11px;
+  }
+
+  .gd-day-card-load {
+    display: inline;
+  }
+
+  .gd-month-event em {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 10.5px;
+    font-style: normal;
+    color: var(--text-dim);
+  }
+
+  .gd-month-events {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 .gd-month-agenda {
@@ -4695,35 +4933,116 @@ a.gd-calsrc-subscribe {
   background: linear-gradient(135deg, var(--accent-a), var(--accent-b));
 }
 
-/* Training windows in the plan setup */
+/* Training time slots in the plan setup */
 
-.plan-window-row {
+.gd-slots {
   display: flex;
-  flex-wrap: wrap;
-  row-gap: 4px;
-  align-items: center;
+  flex-direction: column;
   gap: 6px;
+  padding: 8px 10px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+/* The day from 05:00 to 23:00, with each slot drawn on it. */
+.gd-slots-bar {
+  position: relative;
+  height: 10px;
+  margin: 2px 0 14px;
+  background: var(--surface-sunken);
+  border-radius: 999px;
+}
+
+.gd-slots-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-a), var(--accent-b));
+}
+
+.gd-slots-tick {
+  position: absolute;
+  top: 12px;
+  transform: translateX(-50%);
+  font-size: 9.5px;
+  color: var(--text-faint);
+}
+
+.gd-slots-any {
+  margin: 0;
   font-size: 12.5px;
   color: var(--text-dim);
 }
 
-.plan-window-row input[type='time'] {
-  width: 6.6em;
+.gd-slot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.gd-slot input[type='time'] {
+  width: 8em;
   min-width: 0;
-  padding: 0.3rem 0.4rem;
-  font-size: 0.85rem;
+  padding: 0.35rem 0.45rem;
+  font-size: 0.9rem;
+  background: var(--bg);
 }
 
-.gd-calsrc-row input[type='checkbox'] {
-  width: auto;
-  margin: 0;
+.gd-slot-bad input[type='time'] {
+  border-color: var(--crit);
 }
 
-button.plan-window-add {
-  align-self: flex-start;
+.gd-slot-dash {
+  color: var(--text-faint);
 }
 
-.plan-window-error {
-  font-size: 12px;
+button.gd-slot-remove {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  margin-left: auto;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.gd-slot-note {
+  flex-basis: 100%;
+  font-size: 11.5px;
   color: var(--crit);
+}
+
+.gd-slot-note-soft {
+  color: var(--text-faint);
+}
+
+.gd-slots-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+button.gd-slot-chip {
+  padding: 5px 10px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-solid);
+  background: var(--accent-wash);
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+button.gd-slots-copy {
+  margin-left: auto;
 }
