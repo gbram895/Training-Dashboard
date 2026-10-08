@@ -98,6 +98,9 @@ export default function WorkoutDetail() {
     return <LoadingScreen />;
   }
 
+  // Keyed below, so each state's label mounts fresh and fades up into place.
+  const feedbackLabel = feedbackSaving ? 'Saving…' : feedbackSaved ? 'Saved ✓' : 'Save feedback';
+
   const showGraphs = workout.type === 'RUN' || workout.type === 'RIDE';
   const isRide = workout.type === 'RIDE';
 
@@ -234,7 +237,9 @@ export default function WorkoutDetail() {
           />
           {feedbackError && <p className="gd-set-note gd-set-danger">{feedbackError}</p>}
           <button type="button" className="gd-set-save" onClick={saveFeedback} disabled={feedbackSaving}>
-            {feedbackSaving ? 'Saving…' : feedbackSaved ? 'Saved ✓' : 'Save feedback'}
+            <span key={feedbackLabel} className="gd-swap-label">
+              {feedbackLabel}
+            </span>
           </button>
         </div>
 
