@@ -528,6 +528,18 @@ button {
   padding: 0.65rem 1.1rem;
   font-weight: 600;
   cursor: pointer;
+  transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* Press feedback: buttons give slightly under the finger. Kept small because
+   they're tapped all day. The day rail is left out; it's flicked through
+   too often for any motion to help. */
+button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+button.gd-date-card:active {
+  transform: none;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -1511,6 +1523,42 @@ button.icon-button {
   }
 }
 
+/* Sheets slide up from the bottom edge they're attached to on the phone, and
+   fade up slightly when centred on a wider screen. They mount on open, so
+   @starting-style plays the entrance with no JS; closing stays instant. */
+.modal-overlay {
+  transition: opacity 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.modal-card {
+  transition: transform 300ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@starting-style {
+  .modal-overlay {
+    opacity: 0;
+  }
+
+  .modal-card {
+    transform: translateY(100%);
+  }
+}
+
+@media (min-width: 640px) {
+  .modal-card {
+    transition:
+      transform 200ms cubic-bezier(0.23, 1, 0.32, 1),
+      opacity 200ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  @starting-style {
+    .modal-card {
+      transform: scale(0.96);
+      opacity: 0;
+    }
+  }
+}
+
 .plan-slider-row {
   display: flex;
   flex-direction: column;
@@ -1966,6 +2014,18 @@ button.gd-why-btn {
   font-size: 13px;
   color: var(--text-dim);
   line-height: 1.5;
+  /* Settles in from just above rather than appearing in one jump. The space
+     it takes still opens instantly: animating height would be janky. */
+  transition:
+    opacity 180ms cubic-bezier(0.23, 1, 0.32, 1),
+    transform 180ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@starting-style {
+  .gd-plan-why-text {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
 }
 
 .gd-suggest-rest {
@@ -2747,6 +2807,22 @@ button.gd-set-save {
 button.gd-set-save:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+/* A button label that changes state (Save feedback → Saving… → Saved ✓) is
+   keyed, so each new label mounts and fades up into place. */
+.gd-swap-label {
+  display: inline-block;
+  transition:
+    opacity 150ms cubic-bezier(0.23, 1, 0.32, 1),
+    transform 150ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@starting-style {
+  .gd-swap-label {
+    opacity: 0;
+    transform: translateY(3px);
+  }
 }
 
 /* Post-workout RPE (WorkoutDetail) */
@@ -4389,6 +4465,26 @@ button.gd-ramp-why {
   .bottom-nav-indicator,
   .gd-toggle span {
     transition: none;
+  }
+
+  /* Gentler, not nothing: entrances keep their fade but lose the movement. */
+  button:active:not(:disabled) {
+    transform: none;
+  }
+
+  .modal-card,
+  .gd-plan-why-text,
+  .gd-swap-label {
+    transition: opacity 200ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  @starting-style {
+    .modal-card,
+    .gd-plan-why-text,
+    .gd-swap-label {
+      transform: none;
+      opacity: 0;
+    }
   }
 
   .gd-sk-cta {
