@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, AuthedRequest } from '../middleware/auth.js';
 import {
@@ -60,6 +61,25 @@ const configSchema = z.object({
   sundayHours: hoursSchema,
   includeRunning: z.boolean(),
   runDays: z.array(z.number().int().min(0).max(6)),
+  // When in the day each weekday's training can go, local time. Optional so
+  // an older client saving the plan doesn't wipe windows it never showed;
+  // null clears them. See lib/calendarAvailability.ts.
+  trainingWindows: z
+    .record(
+      z.string().regex(/^[0-6]$/),
+      z
+        .array(
+          z
+            .object({
+              start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+              end: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+            })
+            .refine((w) => w.start < w.end, 'A window has to end after it starts'),
+        )
+        .max(3),
+    )
+    .nullable()
+    .optional(),
 });
 
 router.post('/config', async (req: AuthedRequest, res) => {
@@ -67,10 +87,15 @@ router.post('/config', async (req: AuthedRequest, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const userId = req.userId!;
 
+  const { trainingWindows, ...rest } = parsed.data;
+  const windowsData =
+    trainingWindows === undefined
+      ? {}
+      : { trainingWindows: trainingWindows === null ? Prisma.DbNull : (trainingWindows as Prisma.InputJsonValue) };
   const config = await prisma.trainingPlanConfig.upsert({
     where: { userId },
-    create: { userId, ...parsed.data },
-    update: { ...parsed.data },
+    create: { userId, ...rest, ...windowsData },
+    update: { ...rest, ...windowsData },
   });
 
   await generatePlanWindow(userId);

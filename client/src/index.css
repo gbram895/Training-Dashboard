@@ -4346,3 +4346,384 @@ button.gd-ramp-why {
     opacity: 0.3;
   }
 }
+
+/* --- Month calendar (Plan → Show month) -----------------------------------
+   The week overview expanded in place to a whole month: the planned sessions
+   and the athlete's own calendar on one grid. Seven columns have to fit a
+   320px screen, so a cell carries the date, the session as an icon on its
+   session type's colour, and a dot per event; the day's agenda underneath has
+   the rest. */
+
+.gd-month {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 12px 8px 10px;
+  box-shadow: var(--shadow);
+  margin-bottom: 6px;
+}
+
+.gd-month-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+}
+
+.gd-month-title {
+  flex: 1;
+  margin: 0;
+  text-align: center;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+button.gd-month-step {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  font-family: inherit;
+  font-size: 20px;
+  line-height: 1;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.gd-month-tools {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin: 6px 0 10px;
+}
+
+button.gd-month-connect {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  text-align: left;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.35;
+  color: var(--text-dim);
+  background: var(--accent-wash);
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+button.gd-month-connect strong {
+  color: var(--text);
+}
+
+button.gd-month-connect > span:first-child {
+  font-size: 20px;
+}
+
+.gd-month-error {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  color: var(--warn);
+  background: var(--warn-wash);
+  border-radius: 10px;
+}
+
+.gd-month-row {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+  margin-bottom: 3px;
+}
+
+.gd-month-weekdays span {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-faint);
+}
+
+button.gd-month-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  min-height: 58px;
+  padding: 5px 1px 4px;
+  font-family: inherit;
+  font-weight: 400;
+  color: var(--text);
+  background: var(--surface-sunken);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+button.gd-month-cell.gd-month-outside {
+  opacity: 0.45;
+}
+
+button.gd-month-cell.gd-month-past .gd-month-session {
+  opacity: 0.55;
+}
+
+button.gd-month-cell.gd-month-today .gd-month-num {
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent-a), var(--accent-b));
+}
+
+button.gd-month-cell.gd-month-picked {
+  background: var(--accent-wash);
+  border-color: var(--accent-solid);
+}
+
+.gd-month-num {
+  min-width: 20px;
+  padding: 2px 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  border-radius: 999px;
+}
+
+.gd-month-session {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 18px;
+  font-size: 11px;
+  line-height: 1;
+  border-radius: 6px;
+}
+
+.gd-month-rest,
+.gd-month-session-empty {
+  height: 18px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-faint);
+}
+
+.gd-month-dots {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 6px;
+}
+
+.gd-month-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+}
+
+.gd-month-dots b {
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--text-faint);
+}
+
+.gd-month-agenda {
+  margin: 10px 4px 2px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.gd-month-agenda h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.gd-agenda-row {
+  display: grid;
+  grid-template-columns: 78px 3px minmax(0, 1fr);
+  gap: 8px;
+  align-items: stretch;
+  padding: 5px 0;
+  font-size: 13px;
+}
+
+.gd-agenda-time {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--text-dim);
+  padding-top: 1px;
+}
+
+.gd-agenda-bar {
+  border-radius: 3px;
+}
+
+.gd-agenda-what {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.gd-agenda-what small {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+.gd-agenda-plan .gd-agenda-what {
+  font-weight: 700;
+}
+
+.gd-agenda-plan .gd-agenda-what small {
+  font-weight: 400;
+}
+
+.gd-agenda-empty {
+  margin: 4px 0;
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+
+button.gd-month-toggle {
+  display: block;
+  margin: -10px auto 12px;
+  padding: 4px 12px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.gd-suggest-body .gd-sb-when {
+  margin: -10px 0 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-solid);
+}
+
+/* Calendars modal */
+
+.gd-calsrc-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.gd-calsrc-section h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.gd-calsrc-meta {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.gd-calsrc-steps {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.gd-calsrc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.gd-calsrc-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gd-calsrc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 14px;
+}
+
+.gd-calsrc-row label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.gd-calsrc-row i {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+
+.gd-calsrc-link-row {
+  display: flex;
+  gap: 8px;
+}
+
+.gd-calsrc-link-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+a.gd-calsrc-subscribe {
+  display: block;
+  padding: 0.65rem 1.1rem;
+  text-align: center;
+  font-weight: 600;
+  color: #fff;
+  text-decoration: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent-a), var(--accent-b));
+}
+
+/* Training windows in the plan setup */
+
+.plan-window-row {
+  display: flex;
+  flex-wrap: wrap;
+  row-gap: 4px;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.plan-window-row input[type='time'] {
+  width: 6.6em;
+  min-width: 0;
+  padding: 0.3rem 0.4rem;
+  font-size: 0.85rem;
+}
+
+.gd-calsrc-row input[type='checkbox'] {
+  width: auto;
+  margin: 0;
+}
+
+button.plan-window-add {
+  align-self: flex-start;
+}
+
+.plan-window-error {
+  font-size: 12px;
+  color: var(--crit);
+}

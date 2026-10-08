@@ -21,6 +21,8 @@ import RearrangePlanModal from '../components/RearrangePlanModal';
 import WeeklyAvailabilityModal from '../components/WeeklyAvailabilityModal';
 import PageHead from '../components/PageHead';
 import WeeklyReviewCard from '../components/plan/WeeklyReviewCard';
+import MonthCalendar from '../components/plan/MonthCalendar';
+import CalendarsModal from '../components/plan/CalendarsModal';
 import { useCachedState } from '../lib/pageCache';
 import { useRefreshOnResume } from '../lib/useRefreshOnResume';
 import { configDisciplineForDate, weekdayLabel } from '../lib/planDates';
@@ -116,6 +118,12 @@ export default function Plan() {
   const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
   const [switchingDiscipline, setSwitchingDiscipline] = useState(false);
   const [refreshingPlan, setRefreshingPlan] = useState(false);
+  // The week overview, expanded to the whole month in place. Remembered
+  // across tab switches so it stays open while you go and look at something.
+  const [monthOpen, setMonthOpen] = useCachedState<boolean>('plan.monthOpen', false);
+  const [showCalendars, setShowCalendars] = useState(false);
+  // Bumped when a calendar is connected or switched, which replans server-side.
+  const [calendarVersion, setCalendarVersion] = useState(0);
 
   function load() {
     apiFetch<LibraryWorkout[]>('/workout-library')
@@ -240,6 +248,11 @@ export default function Plan() {
   }
 
   const selectedDay = planWeek[selectedDayIndex] ?? null;
+  // What the month grid re-reads on: any change to the week's sessions or
+  // times, or to which calendars are connected.
+  const monthRefreshKey = `${calendarVersion}|${planWeek
+    .map((d) => `${d.id}:${d.isRestDay ? 'rest' : d.sourcePath}:${d.plannedStart ?? ''}`)
+    .join(',')}`;
 
   const byDiscipline = workouts?.filter((w) => w.discipline === discipline) ?? null;
   const inCategory = category ? (byDiscipline ?? []).filter((w) => (w.category ?? 'OTHER') === category) : [];
@@ -301,28 +314,47 @@ export default function Plan() {
             </div>
           ) : (
             <>
-              <div className="gd-date-rail">
-                {planWeek.map((day, i) => {
-                  const { name, date, isToday } = weekdayLabel(day.date);
-                  return (
-                    <button
-                      type="button"
-                      key={day.id}
-                      className={`gd-date-card${i === selectedDayIndex ? ' gd-selected' : ''}`}
-                      onClick={() => selectDayTab(i)}
-                    >
-                      {day.manualOverride && (
-                        <span className="gd-dc-pin" title="Manually rearranged">
-                          📌
-                        </span>
-                      )}
-                      <span className="gd-dc-day">{name}</span>
-                      <p className="gd-dc-date">{isToday ? 'Today' : date}</p>
-                      <div className="gd-dc-under" />
-                    </button>
-                  );
-                })}
-              </div>
+              {monthOpen ? (
+                <MonthCalendar
+                  refreshKey={monthRefreshKey}
+                  onOpenCalendars={() => setShowCalendars(true)}
+                  onPickPlanDay={(dateKey) => {
+                    const index = planWeek.findIndex((d) => d.date.slice(0, 10) === dateKey);
+                    if (index >= 0) selectDayTab(index);
+                  }}
+                />
+              ) : (
+                <div className="gd-date-rail">
+                  {planWeek.map((day, i) => {
+                    const { name, date, isToday } = weekdayLabel(day.date);
+                    return (
+                      <button
+                        type="button"
+                        key={day.id}
+                        className={`gd-date-card${i === selectedDayIndex ? ' gd-selected' : ''}`}
+                        onClick={() => selectDayTab(i)}
+                      >
+                        {day.manualOverride && (
+                          <span className="gd-dc-pin" title="Manually rearranged">
+                            📌
+                          </span>
+                        )}
+                        <span className="gd-dc-day">{name}</span>
+                        <p className="gd-dc-date">{isToday ? 'Today' : date}</p>
+                        <div className="gd-dc-under" />
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <button
+                type="button"
+                className="gd-month-toggle"
+                aria-expanded={monthOpen}
+                onClick={() => setMonthOpen(!monthOpen)}
+              >
+                {monthOpen ? 'Show week ▴' : 'Show month ▾'}
+              </button>
 
               <div className="gd-sec-title">
                 <span className="gd-flag" />
@@ -381,6 +413,16 @@ export default function Plan() {
 
                     <div className="gd-suggest-body">
                       <p className="gd-sb-title">{selectedDay.name}</p>
+                      {selectedDay.plannedStart && (
+                        <p className="gd-sb-when">
+                          Planned for{' '}
+                          {new Date(selectedDay.plannedStart).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hourCycle: 'h23',
+                          })}
+                        </p>
+                      )}
 
                       <div className="gd-stat-trio">
                         <div>
@@ -521,6 +563,16 @@ export default function Plan() {
           onClose={() => setShowPlanModal(false)}
           onSaved={() => {
             setShowPlanModal(false);
+            loadPlan();
+          }}
+        />
+      )}
+
+      {showCalendars && (
+        <CalendarsModal
+          onClose={() => setShowCalendars(false)}
+          onChanged={() => {
+            setCalendarVersion((v) => v + 1);
             loadPlan();
           }}
         />

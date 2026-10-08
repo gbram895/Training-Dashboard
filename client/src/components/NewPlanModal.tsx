@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { apiFetch } from '../api/client';
-import type { TrainingPlanConfig } from '../api/types';
+import type { TimeWindow, TrainingPlanConfig, TrainingWindows } from '../api/types';
 
 const DAYS: { key: keyof Pick<TrainingPlanConfig, 'mondayHours' | 'tuesdayHours' | 'wednesdayHours' | 'thursdayHours' | 'fridayHours' | 'saturdayHours' | 'sundayHours'>; label: string; jsDay: number }[] = [
   { key: 'mondayHours', label: 'Monday', jsDay: 1 },
@@ -36,10 +36,31 @@ export default function NewPlanModal({
   );
   const [includeRunning, setIncludeRunning] = useState(initialConfig?.includeRunning ?? false);
   const [runDays, setRunDays] = useState<Set<number>>(new Set(initialConfig?.runDays ?? []));
+  // When in the day each weekday's training can go. A day without one is
+  // "any time"; the plan then fits it around the calendar alone, if one is
+  // connected. One window per day here — the API takes up to three, and any
+  // extra ones saved elsewhere are kept as they are.
+  const [windows, setWindows] = useState<TrainingWindows>(() => initialConfig?.trainingWindows ?? {});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const allocated = Object.values(dayHours).reduce((a, b) => a + b, 0);
+
+  function setWindow(jsDay: number, window: TimeWindow | null) {
+    setWindows((prev) => {
+      const next = { ...prev };
+      const rest = (prev[String(jsDay)] ?? []).slice(1);
+      if (window) next[String(jsDay)] = [window, ...rest];
+      else if (rest.length) next[String(jsDay)] = rest;
+      else delete next[String(jsDay)];
+      return next;
+    });
+  }
+
+  const invalidWindow = DAYS.some((d) => {
+    const w = windows[String(d.jsDay)]?.[0];
+    return dayHours[d.key] > 0 && w && !(w.start < w.end);
+  });
 
   function toggleRunDay(jsDay: number) {
     setRunDays((prev) => {
@@ -61,6 +82,13 @@ export default function NewPlanModal({
           ...dayHours,
           includeRunning,
           runDays: Array.from(runDays),
+          // Only the days with hours keep a window: a window on a day off
+          // would only confuse the next person to open this.
+          trainingWindows: Object.fromEntries(
+            Object.entries(windows).filter(
+              ([day, list]) => list?.length && dayHours[DAYS.find((d) => String(d.jsDay) === day)!.key] > 0,
+            ),
+          ),
         }),
       });
       onSaved();
@@ -98,23 +126,77 @@ export default function NewPlanModal({
           {formatHours(allocated)} allocated across the days below{weeklyHours > 0 ? ` of your ${formatHours(weeklyHours)} target` : ''}
         </p>
 
+        <p className="muted plan-allocated-note">
+          Set a time for a day and its session is planned inside it, around anything in your calendar. Leave it on
+          "any time" and only the hours count.
+        </p>
+
         <div className="plan-day-sliders">
-          {DAYS.map((d) => (
-            <label className="plan-slider-row" key={d.key}>
-              <div className="plan-slider-label">
-                <span>{d.label}</span>
-                <span className="plan-slider-value">{formatHours(dayHours[d.key])}</span>
+          {DAYS.map((d) => {
+            const window = windows[String(d.jsDay)]?.[0] ?? null;
+            return (
+              <div className="plan-slider-row" key={d.key}>
+                <label className="plan-slider-row">
+                  <div className="plan-slider-label">
+                    <span>{d.label}</span>
+                    <span className="plan-slider-value">{formatHours(dayHours[d.key])}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={4}
+                    step={0.25}
+                    value={dayHours[d.key]}
+                    onChange={(e) => setDayHours((prev) => ({ ...prev, [d.key]: Number(e.target.value) }))}
+                  />
+                </label>
+                {dayHours[d.key] > 0 &&
+                  (window ? (
+                    <div className="plan-window-row">
+                      <span>Between</span>
+                      <input
+                        type="time"
+                        step={900}
+                        value={window.start}
+                        aria-label={`${d.label} earliest start`}
+                        onChange={(e) => setWindow(d.jsDay, { ...window, start: e.target.value })}
+                      />
+                      <span>and</span>
+                      <input
+                        type="time"
+                        step={900}
+                        value={window.end}
+                        aria-label={`${d.label} latest finish`}
+                        onChange={(e) => setWindow(d.jsDay, { ...window, end: e.target.value })}
+                      />
+                      <button
+                        type="button"
+                        className="gd-no-time-btn"
+                        onClick={() => setWindow(d.jsDay, null)}
+                        aria-label={`${d.label}: any time`}
+                      >
+                        Any time
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="gd-no-time-btn plan-window-add"
+                      onClick={() => {
+                        // Weekends default to the morning, weekdays to after work.
+                        const weekend = d.jsDay === 0 || d.jsDay === 6;
+                        setWindow(d.jsDay, weekend ? { start: '08:00', end: '12:00' } : { start: '18:00', end: '21:00' });
+                      }}
+                    >
+                      Any time · set a time
+                    </button>
+                  ))}
+                {window && dayHours[d.key] > 0 && !(window.start < window.end) && (
+                  <span className="plan-window-error">The end has to be after the start.</span>
+                )}
               </div>
-              <input
-                type="range"
-                min={0}
-                max={4}
-                step={0.25}
-                value={dayHours[d.key]}
-                onChange={(e) => setDayHours((prev) => ({ ...prev, [d.key]: Number(e.target.value) }))}
-              />
-            </label>
-          ))}
+            );
+          })}
         </div>
 
         <label className="plan-checkbox-row">
@@ -147,7 +229,7 @@ export default function NewPlanModal({
         {error && <div className="alert">{error}</div>}
 
         <div className="form-actions">
-          <button type="button" onClick={save} disabled={saving}>
+          <button type="button" onClick={save} disabled={saving || invalidWindow}>
             {saving ? 'Creating…' : 'Create plan'}
           </button>
           <button type="button" className="secondary" onClick={onClose} disabled={saving}>

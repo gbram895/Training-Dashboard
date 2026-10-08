@@ -14,6 +14,8 @@ import trainingPlanRouter from './routes/trainingPlan.js';
 import pushRouter from './routes/push.js';
 import cronRouter from './routes/cron.js';
 import widgetRouter from './routes/widget.js';
+import calendarRouter, { calendarFeedRouter } from './routes/calendar.js';
+import { replanAllForCalendarChanges } from './lib/calendarReplan.js';
 import { dropboxConfigured } from './lib/dropbox.js';
 import { runAllSyncs } from './lib/healthSyncJob.js';
 import { runAllGarminSyncs } from './lib/garminSync.js';
@@ -63,6 +65,10 @@ app.use('/api/training-plan', trainingPlanRouter);
 app.use('/api/push', pushRouter);
 app.use('/api/cron', cronRouter);
 app.use('/api/widget', widgetRouter);
+// The feed is fetched by the iPhone's Calendar app, which has no login of its
+// own; its secret URL is the credential, so it sits outside the auth router.
+app.use('/api/calendar/feed', calendarFeedRouter);
+app.use('/api/calendar', calendarRouter);
 
 if (process.env.NODE_ENV === 'production') {
   const clientDist = path.resolve(__dirname, '../../client/dist');
@@ -127,6 +133,19 @@ function registerScheduledJobs() {
     // Tuesday rebuilds what was owed on Monday.
     catchUpWindowMinutes: 12 * 60,
     firstRun: 'now',
+  });
+
+  // Moves the plan when something moves in the athlete's own calendar. Cheap
+  // when nothing has: one calendar read per connected athlete and no rebuild.
+  registerJob({
+    name: 'calendar-replan',
+    schedule: process.env.CALENDAR_REPLAN_CRON ?? '*/15 * * * *',
+    timezone: SYNC_TZ,
+    run: replanAllForCalendarChanges,
+    // Only ever about the calendar as it is now, so one missed run is made
+    // up and a backlog of them is not.
+    catchUpWindowMinutes: 60,
+    firstRun: 'next',
   });
 
   if (pushConfigured()) {
