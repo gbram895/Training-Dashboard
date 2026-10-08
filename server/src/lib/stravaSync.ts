@@ -44,7 +44,7 @@ export async function connectStravaAccount(userId: string, code: string) {
   await saveTokens(userId, tokens);
 }
 
-async function getValidAccessToken(userId: string, config: { accessToken: string; refreshToken: string; expiresAt: Date }) {
+export async function getValidAccessToken(userId: string, config: { accessToken: string; refreshToken: string; expiresAt: Date }) {
   if (config.expiresAt.getTime() > Date.now() + 5 * 60_000) return config.accessToken;
   const refreshed = await refreshTokens(config.refreshToken);
   await saveTokens(userId, refreshed);

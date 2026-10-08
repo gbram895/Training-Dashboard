@@ -9,8 +9,8 @@ import { buildAuthorizeUrl, dropboxConfigured, exchangeCodeForTokens } from '../
 import { completeGarminAccountConnect, connectGarminAccountAndSave, runGarminSyncForUser } from '../lib/garminSync.js';
 import { pushWorkoutToGarmin } from '../lib/garminWorkoutPush.js';
 import { friendlyGarminAuthError } from '../lib/garminAuth.js';
-import { buildAuthorizeUrl as buildStravaAuthorizeUrl, stravaConfigured } from '../lib/strava.js';
-import { connectStravaAccount, runStravaSyncForUser } from '../lib/stravaSync.js';
+import { buildAuthorizeUrl as buildStravaAuthorizeUrl, stravaConfigured, StravaUploadError, uploadFitActivity } from '../lib/strava.js';
+import { connectStravaAccount, getValidAccessToken, runStravaSyncForUser } from '../lib/stravaSync.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET is not set');
@@ -380,6 +380,47 @@ router.get('/strava/callback', async (req, res) => {
   } catch (err) {
     console.error(`[strava] callback failed for user ${userId}:`, err);
     res.status(500).send(`Failed to connect Strava: ${err instanceof Error ? err.message : err}`);
+  }
+});
+
+// Upload a finished ride (a FIT file, base64 in JSON) to Strava. Used by
+// IndoorWarior, the indoor trainer page, so its rides reach Strava without a
+// manual upload; Gradient then imports them on its next Strava sync.
+const stravaUploadSchema = z.object({
+  fitBase64: z.string().min(1),
+  name: z.string().min(1).max(200),
+  externalId: z.string().min(1).max(100),
+});
+
+router.post('/strava/upload', requireAuth, async (req: AuthedRequest, res) => {
+  const parsed = stravaUploadSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const config = await prisma.stravaSyncConfig.findUnique({ where: { userId: req.userId } });
+  if (!config) return res.status(409).json({ error: 'Strava is not connected in Gradient.', reconnect: true });
+
+  try {
+    const accessToken = await getValidAccessToken(req.userId!, config);
+    const upload = await uploadFitActivity(accessToken, Buffer.from(parsed.data.fitBase64, 'base64'), {
+      name: parsed.data.name,
+      externalId: parsed.data.externalId,
+    });
+    if (upload.error) {
+      // Strava reports a ride it already has as an error; that is a success for us.
+      const duplicate = /duplicate of(?: activity)? (\d+)/i.exec(upload.error);
+      if (duplicate) return res.json({ activityId: Number(duplicate[1]), duplicate: true });
+      return res.status(422).json({ error: upload.error });
+    }
+    res.json({ activityId: upload.activity_id, status: upload.status });
+  } catch (err) {
+    if (err instanceof StravaUploadError && (err.status === 401 || err.status === 403)) {
+      return res.status(403).json({
+        error: 'Strava has not given Gradient permission to upload. Reconnect Strava to allow it.',
+        reconnect: true,
+      });
+    }
+    console.error(`[strava] upload failed for user ${req.userId}:`, err);
+    res.status(502).json({ error: err instanceof Error ? err.message : 'Strava upload failed' });
   }
 });
 
