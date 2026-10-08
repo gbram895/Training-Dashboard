@@ -14,7 +14,8 @@ export function buildAuthorizeUrl(redirectUri: string, state: string): string {
     response_type: 'code',
     redirect_uri: redirectUri,
     approval_prompt: 'auto',
-    scope: 'activity:read_all',
+    // activity:write lets IndoorWarior's indoor rides be uploaded through Gradient.
+    scope: 'activity:read_all,activity:write',
     state,
   });
   return `https://www.strava.com/oauth/authorize?${params.toString()}`;
@@ -150,4 +151,51 @@ export function mapStravaActivityType(sportType: string): WorkoutType {
 
 export function stravaExternalId(activityId: number): string {
   return `strava:${activityId}`;
+}
+
+export interface StravaUpload {
+  id: number;
+  status: string;
+  error: string | null;
+  activity_id: number | null;
+}
+
+export class StravaUploadError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
+async function uploadRequest(accessToken: string, path: string, init?: RequestInit): Promise<StravaUpload> {
+  const res = await fetch(`https://www.strava.com/api/v3/uploads${path}`, {
+    ...init,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) throw new StravaUploadError(`Strava upload failed: ${res.status} ${await res.text()}`, res.status);
+  return res.json() as Promise<StravaUpload>;
+}
+
+/**
+ * Uploads a FIT activity and waits briefly for Strava to process it. Strava
+ * processes uploads asynchronously; if it is still working after the wait,
+ * the upload is returned without an activity id and will finish on its own.
+ */
+export async function uploadFitActivity(
+  accessToken: string,
+  file: Buffer,
+  opts: { name: string; externalId: string },
+): Promise<StravaUpload> {
+  const form = new FormData();
+  form.append('file', new Blob([new Uint8Array(file)]), `${opts.externalId}.fit`);
+  form.append('data_type', 'fit');
+  form.append('name', opts.name);
+  form.append('trainer', '1');
+  form.append('external_id', opts.externalId);
+
+  let upload = await uploadRequest(accessToken, '', { method: 'POST', body: form });
+  for (let i = 0; i < 8 && !upload.activity_id && !upload.error; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    upload = await uploadRequest(accessToken, `/${upload.id}`);
+  }
+  return upload;
 }
