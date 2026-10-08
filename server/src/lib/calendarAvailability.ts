@@ -43,7 +43,15 @@ export function parseTrainingWindows(value: unknown): TrainingWindows | null {
       (w): w is TimeWindow =>
         !!w && HHMM.test((w as TimeWindow).start) && HHMM.test((w as TimeWindow).end) && (w as TimeWindow).start < (w as TimeWindow).end,
     );
-    if (windows.length) out[day] = windows.map(({ start, end }) => ({ start, end }));
+    // Overlapping slots ("18:00–20:00" and "19:00–21:00") are one stretch of
+    // free time, not two; merged here so nothing downstream counts it twice.
+    const merged: TimeWindow[] = [];
+    for (const { start, end } of [...windows].sort((a, b) => a.start.localeCompare(b.start))) {
+      const last = merged.at(-1);
+      if (last && start <= last.end) last.end = end > last.end ? end : last.end;
+      else merged.push({ start, end });
+    }
+    if (merged.length) out[day] = merged;
   }
   return out;
 }

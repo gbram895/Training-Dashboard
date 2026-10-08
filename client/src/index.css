@@ -4933,35 +4933,116 @@ a.gd-calsrc-subscribe {
   background: linear-gradient(135deg, var(--accent-a), var(--accent-b));
 }
 
-/* Training windows in the plan setup */
+/* Training time slots in the plan setup */
 
-.plan-window-row {
+.gd-slots {
   display: flex;
-  flex-wrap: wrap;
-  row-gap: 4px;
-  align-items: center;
+  flex-direction: column;
   gap: 6px;
+  padding: 8px 10px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+/* The day from 05:00 to 23:00, with each slot drawn on it. */
+.gd-slots-bar {
+  position: relative;
+  height: 10px;
+  margin: 2px 0 14px;
+  background: var(--surface-sunken);
+  border-radius: 999px;
+}
+
+.gd-slots-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-a), var(--accent-b));
+}
+
+.gd-slots-tick {
+  position: absolute;
+  top: 12px;
+  transform: translateX(-50%);
+  font-size: 9.5px;
+  color: var(--text-faint);
+}
+
+.gd-slots-any {
+  margin: 0;
   font-size: 12.5px;
   color: var(--text-dim);
 }
 
-.plan-window-row input[type='time'] {
-  width: 6.6em;
+.gd-slot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.gd-slot input[type='time'] {
+  width: 8em;
   min-width: 0;
-  padding: 0.3rem 0.4rem;
-  font-size: 0.85rem;
+  padding: 0.35rem 0.45rem;
+  font-size: 0.9rem;
+  background: var(--bg);
 }
 
-.gd-calsrc-row input[type='checkbox'] {
-  width: auto;
-  margin: 0;
+.gd-slot-bad input[type='time'] {
+  border-color: var(--crit);
 }
 
-button.plan-window-add {
-  align-self: flex-start;
+.gd-slot-dash {
+  color: var(--text-faint);
 }
 
-.plan-window-error {
-  font-size: 12px;
+button.gd-slot-remove {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  margin-left: auto;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.gd-slot-note {
+  flex-basis: 100%;
+  font-size: 11.5px;
   color: var(--crit);
+}
+
+.gd-slot-note-soft {
+  color: var(--text-faint);
+}
+
+.gd-slots-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+button.gd-slot-chip {
+  padding: 5px 10px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-solid);
+  background: var(--accent-wash);
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+button.gd-slots-copy {
+  margin-left: auto;
 }

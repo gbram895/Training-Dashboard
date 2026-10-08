@@ -76,7 +76,7 @@ const configSchema = z.object({
             })
             .refine((w) => w.start < w.end, 'A window has to end after it starts'),
         )
-        .max(3),
+        .max(4),
     )
     .nullable()
     .optional(),
