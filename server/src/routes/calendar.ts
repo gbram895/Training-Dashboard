@@ -25,6 +25,11 @@ import {
 } from '../lib/calendarAvailability.js';
 import { replanIfCalendarChanged } from '../lib/calendarReplan.js';
 import { generatePlanWindow, getPlannedWeek } from '../lib/trainingPlan.js';
+import { computeFitnessSeries } from '../lib/fitness.js';
+import { estimatedTssForBucket } from '../lib/workoutIntensity.js';
+
+const CTL_DECAY = 1 - Math.exp(-1 / 42);
+const ATL_DECAY = 1 - Math.exp(-1 / 7);
 
 // The month view on the Plan tab and everything behind connecting it to the
 // athlete's own calendar: their iCloud account (and any private .ics link for
@@ -237,7 +242,7 @@ router.get('/month', async (req: AuthedRequest, res) => {
   // Makes sure the rolling window exists before reading it.
   await getPlannedWeek(userId);
 
-  const [planned, calendar] = await Promise.all([
+  const [planned, calendar, done, fitness] = await Promise.all([
     prisma.plannedDay.findMany({
       where: { userId, date: { gte: gridStart, lt: gridEnd } },
       orderBy: { date: 'asc' },
@@ -245,6 +250,12 @@ router.get('/month', async (req: AuthedRequest, res) => {
     readCalendar(userId, localInstant(gridStart, '00:00'), localInstant(gridEnd, '00:00'), {
       fresh: req.query.fresh === '1',
     }),
+    prisma.workout.findMany({
+      where: { userId, date: { gte: gridStart, lt: gridEnd } },
+      orderBy: { date: 'asc' },
+      select: { id: true, type: true, title: true, date: true, durationMin: true, tss: true },
+    }),
+    computeFitnessSeries(userId),
   ]);
 
   const eventsByDay = new Map<string, ReturnType<typeof publicEvent>[]>();
@@ -264,10 +275,62 @@ router.get('/month', async (req: AuthedRequest, res) => {
   }
 
   const plannedByDay = new Map(planned.map((p) => [p.date.toISOString().slice(0, 10), p]));
+  // Filed by UTC date, the same way the fitness series and the rest of the
+  // app bucket a workout into a day.
+  const doneByDay = new Map<string, typeof done>();
+  for (const w of done) {
+    const key = w.date.toISOString().slice(0, 10);
+    if (!doneByDay.has(key)) doneByDay.set(key, []);
+    doneByDay.get(key)!.push(w);
+  }
+
+  // Fitness, Fatigue and Form per day: the real curve up to today, then
+  // carried forward on the plan's own estimated load for as far as the plan
+  // goes (the same projection the plan itself is picked against). Past the
+  // plan there is nothing to project on, so those days have none.
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const fitnessByDay = new Map(fitness.map((p) => [p.date, p]));
+  const lastReal = fitness.at(-1);
+  const lastPlannedKey = planned.at(-1)?.date.toISOString().slice(0, 10) ?? todayKey;
+  if (lastReal && lastPlannedKey > todayKey) {
+    const futurePlans = await prisma.plannedDay.findMany({
+      where: { userId, date: { gt: new Date(`${todayKey}T00:00:00Z`) } },
+      orderBy: { date: 'asc' },
+      select: { date: true, isRestDay: true, trainingStress: true },
+    });
+    let ctl = lastReal.ctl;
+    let atl = lastReal.atl;
+    for (const p of futurePlans) {
+      const tsb = ctl - atl;
+      const tss = p.isRestDay ? 0 : estimatedTssForBucket(p.trainingStress);
+      ctl += (tss - ctl) * CTL_DECAY;
+      atl += (tss - atl) * ATL_DECAY;
+      const key = p.date.toISOString().slice(0, 10);
+      fitnessByDay.set(key, { date: key, ctl: Math.round(ctl * 10) / 10, atl: Math.round(atl * 10) / 10, tsb: Math.round(tsb * 10) / 10 });
+    }
+  }
+
   const days = [];
   for (let d = new Date(gridStart); d < gridEnd; d = new Date(d.getTime() + 86_400_000)) {
     const key = d.toISOString().slice(0, 10);
-    days.push({ date: key, planned: plannedByDay.get(key) ?? null, events: eventsByDay.get(key) ?? [] });
+    const point = fitnessByDay.get(key);
+    const plannedDay = plannedByDay.get(key) ?? null;
+    days.push({
+      date: key,
+      planned: plannedDay,
+      // A planned session's load as a number on the same scale as a done
+      // one, rather than the 1-5 bucket it is stored as.
+      plannedLoad: plannedDay && !plannedDay.isRestDay ? estimatedTssForBucket(plannedDay.trainingStress) : null,
+      done: (doneByDay.get(key) ?? []).map((w) => ({
+        id: w.id,
+        type: w.type,
+        title: w.title,
+        durationMin: w.durationMin,
+        load: w.tss != null ? Math.round(w.tss) : null,
+      })),
+      fitness: point ? { ctl: point.ctl, atl: point.atl, tsb: point.tsb } : null,
+      events: eventsByDay.get(key) ?? [],
+    });
   }
 
   res.json({
