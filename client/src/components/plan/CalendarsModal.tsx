@@ -143,6 +143,9 @@ export default function CalendarsModal({ onClose, onChanged }: { onClose: () => 
               <input
                 type="email"
                 autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 value={appleId}
                 onChange={(e) => setAppleId(e.target.value)}
                 placeholder="you@icloud.com"
@@ -153,6 +156,9 @@ export default function CalendarsModal({ onClose, onChanged }: { onClose: () => 
               <input
                 type="password"
                 autoComplete="off"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 value={appPassword}
                 onChange={(e) => setAppPassword(e.target.value)}
                 placeholder="xxxx-xxxx-xxxx-xxxx"
@@ -199,6 +205,10 @@ export default function CalendarsModal({ onClose, onChanged }: { onClose: () => 
         <div className="gd-calsrc-link-row">
           <input
             type="url"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            enterKeyHint="done"
             value={link}
             onChange={(e) => setLink(e.target.value)}
             placeholder="https://… or webcal://…"

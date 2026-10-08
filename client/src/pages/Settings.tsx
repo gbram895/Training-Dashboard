@@ -216,6 +216,7 @@ export default function Settings() {
                 <span className="gd-set-label">Zone 1 max</span>
                 <input
                   type="number"
+                  inputMode="numeric"
                   required
                   className="gd-set-input"
                   value={zones.hrZone1Max}
@@ -227,6 +228,7 @@ export default function Settings() {
                 <span className="gd-set-label">Zone 2 max</span>
                 <input
                   type="number"
+                  inputMode="numeric"
                   required
                   className="gd-set-input"
                   value={zones.hrZone2Max}
@@ -238,6 +240,7 @@ export default function Settings() {
                 <span className="gd-set-label">Zone 3 max</span>
                 <input
                   type="number"
+                  inputMode="numeric"
                   required
                   className="gd-set-input"
                   value={zones.hrZone3Max}
@@ -249,6 +252,7 @@ export default function Settings() {
                 <span className="gd-set-label">Zone 4 max</span>
                 <input
                   type="number"
+                  inputMode="numeric"
                   required
                   className="gd-set-input"
                   value={zones.hrZone4Max}
@@ -276,6 +280,7 @@ export default function Settings() {
                 <span className="gd-set-label">FTP</span>
                 <input
                   type="number"
+                  inputMode="numeric"
                   required
                   min={1}
                   className="gd-set-input"

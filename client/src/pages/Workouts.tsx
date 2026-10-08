@@ -102,6 +102,7 @@ export default function Workouts() {
                 </span>
                 <input
                   type="search"
+                  enterKeyHint="search"
                   className="gd-search-input"
                   placeholder="Search workouts"
                   aria-label="Search workouts"
