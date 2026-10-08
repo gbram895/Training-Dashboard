@@ -27,6 +27,7 @@
     "garmin-connect": "^1.6.2",
     "jsonwebtoken": "^9.0.3",
     "node-cron": "^4.6.0",
+    "node-ical": "^0.27.3",
     "prisma": "^6.19.3",
     "web-push": "^3.6.7",
     "zod": "^4.4.3"

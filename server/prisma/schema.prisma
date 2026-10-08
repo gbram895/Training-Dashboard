@@ -28,6 +28,7 @@ model User {
   pushSubscriptions     PushSubscription[]
   trainingTargets       TrainingTarget[]
   powerBests            WorkoutPowerBest[]
+  calendarConnection    CalendarConnection?
 
   // Heart-rate zone thresholds (bpm) — upper bound of zones 1-4; zone 5 is everything above z4Max
   hrZone1Max Int @default(114)
@@ -297,23 +298,30 @@ model SelectedWorkout {
 // to train each day of the week, and which of those days (if any) are runs
 // rather than rides. Drives the daily auto-generation in lib/trainingPlan.ts.
 model TrainingPlanConfig {
-  id             String   @id @default(uuid())
-  userId         String   @unique
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  weeklyHours    Float
-  mondayHours    Float    @default(0)
-  tuesdayHours   Float    @default(0)
-  wednesdayHours Float    @default(0)
-  thursdayHours  Float    @default(0)
-  fridayHours    Float    @default(0)
-  saturdayHours  Float    @default(0)
-  sundayHours    Float    @default(0)
-  includeRunning Boolean  @default(false)
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weeklyHours     Float
+  mondayHours     Float    @default(0)
+  tuesdayHours    Float    @default(0)
+  wednesdayHours  Float    @default(0)
+  thursdayHours   Float    @default(0)
+  fridayHours     Float    @default(0)
+  saturdayHours   Float    @default(0)
+  sundayHours     Float    @default(0)
+  includeRunning  Boolean  @default(false)
   // Days of the week that should be a run instead of a ride, JS Date.getDay()
   // convention: 0=Sunday .. 6=Saturday.
-  runDays        Int[]    @default([])
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  runDays         Int[]    @default([])
+  // When in the day the athlete can train, per weekday, in local time (SYNC_TZ):
+  // { "1": [{ "start": "18:00", "end": "21:00" }], ... } keyed by JS getDay().
+  // A weekday with no entry means "any time", and null means none were ever
+  // set — the plan then behaves as it did before this existed. The windows cap
+  // a day's standing hours and are what the private calendar is subtracted
+  // from. See lib/calendarAvailability.ts.
+  trainingWindows Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 // What kind of event a goal is, which is what makes the plan train FOR it
@@ -472,6 +480,11 @@ model PlannedDay {
   // still feeding its (persisted) training stress into the fitness projection
   // for later days.
   manualOverride         Boolean            @default(false)
+  // When in the day the session is planned for, as an instant. Only set when
+  // the athlete has training windows or a connected calendar to place it in;
+  // null means "some time today", which is all a day ever was before. See
+  // lib/calendarAvailability.ts.
+  plannedStart           DateTime?
 
   @@unique([userId, date])
 }
@@ -556,4 +569,37 @@ model ScheduledJob {
   updatedAt     DateTime  @updatedAt
 
   @@index([nextRunAt])
+}
+
+// The athlete's iPhone calendar, reached through iCloud's CalDAV server with
+// an app-specific password (a web app cannot read the iOS Calendar directly,
+// and iCloud is what it syncs with). Events are never stored: they are read
+// live for the month view and for the plan window, so a meeting moved on the
+// phone moves the plan with it. Also holds the private token for the .ics feed
+// that puts the planned sessions back into the Calendar app. See
+// lib/caldav.ts and routes/calendar.ts.
+model CalendarConnection {
+  id                String    @id @default(uuid())
+  userId            String    @unique
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Null until an iCloud account is connected; the feed works without one.
+  appleId           String?
+  // AES-GCM sealed with a key derived from CALENDAR_SECRET (or JWT_SECRET),
+  // never stored or returned in the clear. See lib/secretBox.ts.
+  appPasswordSealed String?
+  // The calendars found on the account: [{ url, name, color, enabled }].
+  // Disabled ones are shown nowhere and never block the plan.
+  calendars         Json?
+  // Random, unguessable: anyone with the feed URL can read the planned
+  // sessions (names and times only), which is how subscribed calendars work.
+  feedToken         String    @unique
+  lastSyncedAt      DateTime?
+  lastAttemptedAt   DateTime?
+  lastSyncError     String?
+  // A digest of the busy events across the plan window as last planned
+  // around, so the quarter-hourly check rebuilds the plan only when something
+  // on the phone actually moved. See lib/calendarReplan.ts.
+  planFingerprint   String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 }

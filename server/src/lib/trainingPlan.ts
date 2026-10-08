@@ -22,6 +22,16 @@ import {
   selectCategory,
   type GoalLegs,
 } from './goalSpecificity.js';
+import {
+  describeFree,
+  localInstant,
+  MIN_SESSION_MIN,
+  parseTrainingWindows,
+  placeSession,
+  readCalendar,
+  slotForDay,
+  type DaySlot,
+} from './calendarAvailability.js';
 
 const DAY_KEYS = [
   'sundayHours',
@@ -298,6 +308,7 @@ function pickWorkout(
   ceiling: WorkoutCategory,
   recent: RecentPick[],
   seed: number,
+  hardMaxMinutes?: number,
 ): PickResult | null {
   const byDiscipline = library.filter((w) => w.discipline === discipline);
   if (byDiscipline.length === 0) return null;
@@ -306,8 +317,15 @@ function pickWorkout(
   // — a 3h ride on a day set for 1h is worse than no ride at all. A workout
   // with no parsed duration can't be checked, so it's let through but ranked
   // last (see distance above), rather than assumed to fit.
-  const maxAllowedMinutes = Math.max(targetMinutes * 1.5, targetMinutes + 20);
-  const withinTolerance = byDiscipline.filter((w) => w.durationMin == null || w.durationMin <= maxAllowedMinutes);
+  //
+  // A gap in the athlete's calendar is a wall rather than a guide, though:
+  // the hour between work and dinner does not stretch to 80 minutes, so there
+  // the tolerance stops at the gap, and a workout of unknown length can't be
+  // trusted to fit it.
+  const maxAllowedMinutes = Math.min(Math.max(targetMinutes * 1.5, targetMinutes + 20), hardMaxMinutes ?? Infinity);
+  const withinTolerance = byDiscipline.filter((w) =>
+    w.durationMin == null ? hardMaxMinutes == null : w.durationMin <= maxAllowedMinutes,
+  );
   if (withinTolerance.length === 0) return null;
 
   const recentPaths = new Set(recent.map((r) => r.path));
@@ -397,6 +415,8 @@ interface GeneratedDay {
   category?: WorkoutCategory;
   /** One line on why this session, when a typed goal drove the choice. */
   focus?: string | null;
+  /** When in the day it goes, when the athlete's windows or calendar say. */
+  plannedStart?: Date | null;
   // Where this day sits across all of the athlete's goals, and what that did to
   // its hours. Null when there are none, in which case the plan behaves exactly
   // as it did before periodisation existed.
@@ -464,6 +484,7 @@ function decideDay(
   recentPicks: RecentPick[],
   goal: GoalContext | null,
   disciplineOverride?: PlannedDiscipline,
+  hardMaxMinutes?: number,
 ): GeneratedDay {
   if (!targetHours || targetHours <= 0) {
     return { date, isRestDay: true, restReason: 'No training hours scheduled today' };
@@ -560,7 +581,7 @@ function decideDay(
   // Days apart rather than the raw timestamp, so the rotation advances by one
   // per day rather than jumping by 86,400,000.
   const seed = Math.floor(date.getTime() / 86_400_000);
-  let pick = pickWorkout(library, discipline, targetMinutes, category, ceiling, recentPicks, seed);
+  let pick = pickWorkout(library, discipline, targetMinutes, category, ceiling, recentPicks, seed, hardMaxMinutes);
 
   // A day the goal (rather than the athlete's own schedule) turned into a run
   // falls back to the configured discipline when the library has no run that
@@ -570,7 +591,7 @@ function decideDay(
   // for an explicit disciplineOverride: falling back would silently ignore
   // what the athlete just asked for, so it stays put and says what's missing.
   if (!pick && discipline !== configuredDiscipline && !disciplineOverride) {
-    pick = pickWorkout(library, configuredDiscipline, targetMinutes, category, ceiling, recentPicks, seed);
+    pick = pickWorkout(library, configuredDiscipline, targetMinutes, category, ceiling, recentPicks, seed, hardMaxMinutes);
   }
 
   if (pick?.note) {
@@ -677,6 +698,7 @@ async function runProjection(
   hourOverrides?: Map<number, number>,
   manualOverrides?: Map<number, ManualOverrideRow>,
   disciplineOverrides?: Map<number, PlannedDiscipline>,
+  slots?: Map<number, DaySlot>,
 ): Promise<GeneratedDay[]> {
   const fitness = await computeFitnessSeries(userId);
   let ctl = fitness.length ? fitness[fitness.length - 1].ctl : 0;
@@ -759,8 +781,20 @@ async function runProjection(
     // they actually have that day, so the periodisation multiplier is applied
     // to the standing weekly hours only — never to an answer they gave us.
     const explicitHours = hourOverrides?.get(date.getTime());
-    const targetHours =
+    let targetHours =
       explicitHours != null ? explicitHours : config[dayKeyFor(date)] * (periodization?.loadMultiplier ?? 1);
+
+    // The athlete's training windows and their own calendar cap the standing
+    // hours: two free hours is two hours however many the week asked for. An
+    // explicit "I have X hours today" is newer news than the calendar (the
+    // meeting may well have been cancelled), so it is taken as given.
+    const slot = slots?.get(date.getTime());
+    const calendarBound = slot != null && explicitHours == null && targetHours > 0;
+    let calendarShortened = false;
+    if (calendarBound && slot.longestFreeMin < targetHours * 60) {
+      targetHours = Math.floor(slot.longestFreeMin / 15) / 4;
+      calendarShortened = true;
+    }
 
     // A manually rearranged day (calendar drag-and-drop) keeps its own
     // content — still fed into the fitness projection below, exactly like a
@@ -776,6 +810,19 @@ async function runProjection(
         restReason: `${periodization.targetName} — today's the day. Nothing else is planned.`,
         periodization,
       };
+    } else if (calendarShortened && slot!.longestFreeMin < MIN_SESSION_MIN) {
+      generated = {
+        date,
+        isRestDay: true,
+        restReason: !slot!.conflicts.length
+          ? `Your training window today is too short for a session, so it's a rest day.`
+          : slot!.hasOwnWindows
+            ? `Your calendar fills your training time today${
+                slot!.free.length ? ` (free: ${describeFree(slot!)})` : ''
+              }, so it's a rest day.`
+            : `Your calendar has no gap long enough for a session today, so it's a rest day.`,
+        periodization,
+      };
     } else {
       generated = {
         ...decideDay(
@@ -789,9 +836,30 @@ async function runProjection(
           recentPicks,
           goalContext,
           disciplineOverrides?.get(date.getTime()),
+          calendarBound ? slot.longestFreeMin : undefined,
         ),
         periodization,
       };
+      if (generated.isRestDay && calendarShortened) {
+        // The library had nothing short enough for the gap the calendar left;
+        // say it was the calendar, not that the day had no hours.
+        generated.restReason =
+          `Your ${slot!.conflicts.length ? 'calendar' : 'training window'} leaves only ${describeFree(slot!)} today, ` +
+          `and nothing in your library fits that, so it's a rest day.`;
+      }
+      if (!generated.isRestDay && slot) {
+        const minutes = generated.workout?.durationMin ?? Math.round(targetHours * 60);
+        // Only a day the athlete gave hours for gets a time: on a day with
+        // no windows of its own the any-time default would put everything at
+        // six in the morning, which nobody asked for.
+        if (slot.hasOwnWindows) generated.plannedStart = placeSession(slot, minutes);
+        if (calendarShortened) {
+          const note = slot.conflicts.length
+            ? `Shorter than usual to fit your calendar (free ${describeFree(slot)}).`
+            : `Shorter than usual to fit your training window (${describeFree(slot)}).`;
+          generated.focus = generated.focus ? `${note} ${generated.focus}` : note;
+        }
+      }
     }
     results.push(generated);
 
@@ -864,6 +932,7 @@ async function upsertPlannedDay(
         segments: Prisma.DbNull,
         category: null,
         focus: null,
+        plannedStart: null,
         generatedAt: new Date(),
       }
     : {
@@ -879,6 +948,7 @@ async function upsertPlannedDay(
         segments: (generated.workout!.segments as Prisma.InputJsonValue | undefined) ?? Prisma.DbNull,
         category: generated.category,
         focus: generated.focus ?? null,
+        plannedStart: generated.plannedStart ?? null,
         generatedAt: new Date(),
       };
 
@@ -897,6 +967,28 @@ async function upsertPlannedDay(
 }
 
 export const ROLLING_WINDOW_DAYS = 14;
+
+/**
+ * Each day's free time, for the days that have any say in it: every day once a
+ * calendar is connected (with the any-time default where the athlete set no
+ * window), otherwise only the weekdays they gave windows for. Empty when
+ * neither exists, which leaves the plan exactly as it was before.
+ */
+async function daySlots(userId: string, dates: Date[], storedWindows: Prisma.JsonValue | null): Promise<Map<number, DaySlot>> {
+  const slots = new Map<number, DaySlot>();
+  if (dates.length === 0) return slots;
+  const windows = parseTrainingWindows(storedWindows);
+  const end = new Date(dates[dates.length - 1]);
+  end.setUTCDate(end.getUTCDate() + 1);
+  const calendar = await readCalendar(userId, localInstant(dates[0], '00:00'), localInstant(end, '00:00'));
+
+  for (const date of dates) {
+    const own = windows?.[String(date.getUTCDay())];
+    if (!calendar.connected && !own?.length) continue;
+    slots.set(date.getTime(), slotForDay(date, windows, calendar.events));
+  }
+  return slots;
+}
 
 /** (Re)generates today through the next `days` days for a user with an active plan config. */
 export async function generatePlanWindow(userId: string, days = ROLLING_WINDOW_DAYS): Promise<void> {
@@ -946,7 +1038,17 @@ export async function generatePlanWindow(userId: string, days = ROLLING_WINDOW_D
     if (row.disciplineOverride != null) disciplineOverrides.set(row.date.getTime(), row.disciplineOverride);
   }
 
-  const generatedDays = await runProjection(userId, dates, config, library, hourOverrides, manualOverrides, disciplineOverrides);
+  const slots = await daySlots(userId, dates, config.trainingWindows);
+  const generatedDays = await runProjection(
+    userId,
+    dates,
+    config,
+    library,
+    hourOverrides,
+    manualOverrides,
+    disciplineOverrides,
+    slots,
+  );
   for (const generated of generatedDays) {
     if (generated.skipUpsert) continue;
     await upsertPlannedDay(
@@ -986,6 +1088,8 @@ export async function swapPlannedDays(userId: string, dateA: Date, dateB: Date) 
     segments: row.segments ?? Prisma.DbNull,
     category: row.category,
     focus: row.focus,
+    // A time picked for the other day's calendar means nothing on this one.
+    plannedStart: null,
   });
 
   const [updatedA, updatedB] = await Promise.all([

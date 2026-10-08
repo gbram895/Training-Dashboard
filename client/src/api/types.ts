@@ -118,6 +118,8 @@ export interface TrainingPlanConfig {
   sundayHours: number;
   includeRunning: boolean;
   runDays: number[];
+  /** When in the day each weekday's training can go, keyed by JS getDay(). Missing = any time. */
+  trainingWindows?: TrainingWindows | null;
 }
 
 export interface PlannedDay {
@@ -142,6 +144,8 @@ export interface PlannedDay {
   phase?: TrainingPhase | null;
   phaseWeek?: number | null;
   loadMultiplier?: number | null;
+  /** When in the day the session is planned for; null when the plan only knows the day. */
+  plannedStart?: string | null;
 }
 
 /**
@@ -569,4 +573,58 @@ export interface PowerCurveRebuildResult {
   analysed: number;
   withPower: number;
   remaining: number;
+}
+
+// --- Calendar (Plan tab month view, iPhone calendar connection) -------------
+
+export interface TimeWindow {
+  /** "HH:MM", local time. */
+  start: string;
+  end: string;
+}
+
+export type TrainingWindows = Partial<Record<string, TimeWindow[]>>;
+
+export interface CalendarEventItem {
+  id: string;
+  title: string;
+  start: string;
+  end: string;
+  allDay: boolean;
+  /** False for "Show as: Free" events, which the plan doesn't fit around. */
+  busy: boolean;
+  calendar: string;
+  color: string | null;
+  location: string | null;
+}
+
+export interface CalendarMonthDay {
+  /** YYYY-MM-DD */
+  date: string;
+  planned: PlannedDay | null;
+  events: CalendarEventItem[];
+}
+
+export interface CalendarMonth {
+  month: string;
+  timezone: string;
+  calendarConnected: boolean;
+  calendarError: string | null;
+  days: CalendarMonthDay[];
+}
+
+export interface CalendarSource {
+  id: string;
+  kind: 'caldav' | 'ics';
+  name: string;
+  color: string | null;
+  enabled: boolean;
+}
+
+export interface CalendarConnectionStatus {
+  appleId: string | null;
+  calendars: CalendarSource[];
+  lastSyncedAt: string | null;
+  lastSyncError: string | null;
+  feedUrl: string;
 }
