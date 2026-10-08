@@ -159,6 +159,46 @@ textarea {
   color: inherit;
 }
 
+/* --- Platform feel on the phone -------------------------------------------
+   The handful of browser behaviours that give a web app away on an iPhone. */
+
+/* Rotating to landscape shouldn't inflate the text. */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Controls never double-tap-zoom, so the browser can fire the tap at once
+   instead of waiting to see if a second one follows. */
+button,
+a,
+label,
+summary,
+[role='button'] {
+  touch-action: manipulation;
+}
+
+/* Holding a finger on a control shouldn't select its label or pop the
+   copy/share callout. Only controls: text that's content stays selectable. */
+button,
+[role='button'],
+.bottom-nav,
+.sidebar-link {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* iOS zooms the page into any field under 16px and doesn't zoom back out.
+   Several fields here are styled smaller for the look; on touch screens they
+   come up to 16px instead (never by disabling zoom). :root lifts this above
+   the per-field rules without !important. */
+@media (pointer: coarse) {
+  :root :is(input:not([type='range']):not([type='checkbox']):not([type='radio']), textarea, select) {
+    font-size: 16px;
+  }
+}
+
 a {
   color: var(--accent);
   text-decoration: none;
@@ -1530,8 +1570,12 @@ button.icon-button {
   width: 100%;
   max-width: 480px;
   max-height: 92vh;
+  max-height: 92dvh;
   overflow-y: auto;
   border-radius: 16px 16px 0 0;
+  /* On the phone the sheet runs to the bottom edge; keep its last button
+     clear of the home indicator. */
+  padding-bottom: calc(1.1rem + env(safe-area-inset-bottom, 0px));
   display: flex;
   flex-direction: column;
   gap: 0.9rem;
@@ -1540,6 +1584,7 @@ button.icon-button {
 @media (min-width: 640px) {
   .modal-card {
     border-radius: 16px;
+    padding-bottom: 1rem;
   }
 }
 

@@ -157,6 +157,7 @@ export default function WorkoutForm() {
           Duration (minutes)
           <input
             type="number"
+            inputMode="numeric"
             min={1}
             required
             value={durationMin}
@@ -169,6 +170,7 @@ export default function WorkoutForm() {
             Distance (km)
             <input
               type="number"
+              inputMode="decimal"
               min={0}
               step="0.01"
               value={distanceKm}
@@ -210,6 +212,7 @@ export default function WorkoutForm() {
                 <div className="exercise-row-bottom">
                   <input
                     type="number"
+                    inputMode="numeric"
                     placeholder="Sets"
                     min={1}
                     value={ex.sets}
@@ -217,6 +220,7 @@ export default function WorkoutForm() {
                   />
                   <input
                     type="number"
+                    inputMode="numeric"
                     placeholder="Reps"
                     min={1}
                     value={ex.reps}
@@ -224,6 +228,7 @@ export default function WorkoutForm() {
                   />
                   <input
                     type="number"
+                    inputMode="decimal"
                     placeholder="kg"
                     min={0}
                     step="0.5"

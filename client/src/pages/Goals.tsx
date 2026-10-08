@@ -159,6 +159,7 @@ export default function Goals() {
                       <input
                         id={`goal-progress-${g.id}`}
                         type="number"
+                        inputMode="decimal"
                         className="gd-goal-progress-input"
                         defaultValue={g.currentValue}
                         onBlur={(e) => updateProgress(g, Number(e.target.value))}
@@ -187,6 +188,7 @@ export default function Goals() {
                 Target
                 <input
                   type="number"
+                  inputMode="decimal"
                   required
                   min={0}
                   step="0.1"
