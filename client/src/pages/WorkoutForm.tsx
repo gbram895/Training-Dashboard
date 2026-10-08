@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { apiFetch } from '../api/client';
 import LoadingScreen from '../components/LoadingScreen';
 import type { ExerciseEntry, Workout, WorkoutType } from '../api/types';
+import useConfirm from '../components/useConfirm';
 
 const WORKOUT_TYPES: WorkoutType[] = ['RUN', 'RIDE', 'STRENGTH', 'SWIM', 'WALK', 'BADMINTON', 'OTHER'];
 
@@ -23,6 +24,7 @@ export default function WorkoutForm() {
   const { id } = useParams();
   const isNew = !id || id === 'new';
   const navigate = useNavigate();
+  const [confirm, confirmSheet] = useConfirm();
 
   const [type, setType] = useState<WorkoutType>('RUN');
   const [date, setDate] = useState(toDateInputValue(new Date()));
@@ -108,7 +110,7 @@ export default function WorkoutForm() {
   }
 
   async function handleDelete() {
-    if (!confirm('Delete this workout?')) return;
+    if (!(await confirm({ title: 'Delete this workout?', confirmLabel: 'Delete workout' }))) return;
     await apiFetch(`/workouts/${id}`, { method: 'DELETE' });
     navigate('/workouts');
   }
@@ -245,6 +247,7 @@ export default function WorkoutForm() {
           )}
         </div>
       </form>
+      {confirmSheet}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { apiFetch } from '../../api/client';
 import type { GoalKind, TargetPriority, TrainingTarget, TrainingTargets } from '../../api/types';
+import useConfirm from '../useConfirm';
 
 /**
  * What each tier actually does to the calendar, in the athlete's terms rather
@@ -146,6 +147,7 @@ export default function GoalsCard({ onChanged }: { onChanged: () => void }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPast, setShowPast] = useState(false);
+  const [confirm, confirmSheet] = useConfirm();
 
   function load() {
     apiFetch<TrainingTargets>('/training-plan/targets')
@@ -208,7 +210,12 @@ export default function GoalsCard({ onChanged }: { onChanged: () => void }) {
   }
 
   async function remove(target: TrainingTarget) {
-    if (!confirm(`Remove ${target.name}? The rest of your plan rebuilds around what's left.`)) return;
+    const ok = await confirm({
+      title: `Remove ${target.name}?`,
+      message: "The rest of your plan rebuilds around what's left.",
+      confirmLabel: 'Remove goal',
+    });
+    if (!ok) return;
     await apiFetch(`/training-plan/targets/${target.id}`, { method: 'DELETE' });
     setDraft(null);
     load();
@@ -362,6 +369,7 @@ export default function GoalsCard({ onChanged }: { onChanged: () => void }) {
             )}
           </div>
         </form>
+        {confirmSheet}
       </div>
     );
   }
@@ -460,6 +468,7 @@ export default function GoalsCard({ onChanged }: { onChanged: () => void }) {
           Add a goal
         </button>
       </div>
+      {confirmSheet}
     </div>
   );
 }

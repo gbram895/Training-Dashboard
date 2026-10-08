@@ -8,9 +8,10 @@ import type {
   PlannedDay,
 } from '../../api/types';
 import { formatDuration } from '../../lib/format';
-import { TYPE_ICON, TYPE_LABEL } from '../../lib/workoutTypes';
+import { TYPE_ICON, TYPE_LABEL, disciplineIcon } from '../../lib/workoutTypes';
 import { todayKey } from '../../lib/planDates';
 import CadenceLoader from '../CadenceLoader';
+import Icon from '../Icon';
 
 const MONTH_NAMES = [
   'January',
@@ -259,7 +260,7 @@ export default function MonthCalendar({
 
       {shownData && !shownData.calendarConnected && (
         <button type="button" className="gd-month-connect" onClick={onOpenCalendars}>
-          <span>📅</span>
+          <Icon name="calendar" />
           <span>
             <strong>Show your iPhone calendar here</strong>
             <br />
@@ -359,7 +360,9 @@ export default function MonthCalendar({
                       {done.map((w) => (
                         <span className="gd-day-card gd-day-card-done" key={w.id}>
                           <span className="gd-day-card-name">
-                            <i>{TYPE_ICON[w.type]}</i>
+                            <i>
+                              <Icon name={TYPE_ICON[w.type]} />
+                            </i>
                             <em>{w.title ?? TYPE_LABEL[w.type]}</em>
                           </span>
                           <span className="gd-day-card-meta">
@@ -376,7 +379,9 @@ export default function MonthCalendar({
                           }}
                         >
                           <span className="gd-day-card-name">
-                            <i>{planned.discipline === 'RUN' ? '🏃' : '🚴'}</i>
+                            <i>
+                              <Icon name={disciplineIcon(planned.discipline)} />
+                            </i>
                             <em>{planned.name}</em>
                           </span>
                           <span className="gd-day-card-meta">
@@ -422,7 +427,7 @@ export default function MonthCalendar({
                 <span className="gd-agenda-time">Done</span>
                 <span className="gd-agenda-bar" style={{ background: 'var(--text-faint)' }} />
                 <span className="gd-agenda-what">
-                  {TYPE_ICON[item.workout.type]} {item.workout.title ?? TYPE_LABEL[item.workout.type]}
+                  <Icon name={TYPE_ICON[item.workout.type]} /> {item.workout.title ?? TYPE_LABEL[item.workout.type]}
                   <small>
                     {hm(item.workout.durationMin)}
                     {item.workout.load != null ? ` · load ${item.workout.load}` : ''}
@@ -468,7 +473,7 @@ export default function MonthCalendar({
                     </>
                   ) : (
                     <>
-                      {item.day.discipline === 'RUN' ? '🏃' : '🚴'} {item.day.name}
+                      <Icon name={disciplineIcon(item.day.discipline)} /> {item.day.name}
                       <small>
                         {item.day.durationMin != null ? formatDuration(item.day.durationMin) : ''}
                         {item.day.category ? ` · ${item.day.category.toLowerCase()}` : ''}

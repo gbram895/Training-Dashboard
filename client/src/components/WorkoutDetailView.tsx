@@ -5,6 +5,8 @@ import { formatDuration } from '../lib/format';
 import { getTrainingZone, zoneIntensity } from '../lib/trainingZones';
 import BarScale from './BarScale';
 import WorkoutProfileChart from './WorkoutProfileChart';
+import Icon from './Icon';
+import { disciplineIcon } from '../lib/workoutTypes';
 
 function formatPace(secPerKm: number): string {
   const m = Math.floor(secPerKm / 60);
@@ -94,7 +96,7 @@ export default function WorkoutDetailView({
       <div className="workout-card-header">
         <h1 className="workout-detail-title">{workout.name}</h1>
         <span className={`discipline-pill discipline-${workout.discipline.toLowerCase()}`}>
-          {workout.discipline === 'BIKE' ? '🚴 Bike' : '🏃 Run'}
+          <Icon name={disciplineIcon(workout.discipline)} /> {workout.discipline === 'BIKE' ? 'Bike' : 'Run'}
         </span>
       </div>
 

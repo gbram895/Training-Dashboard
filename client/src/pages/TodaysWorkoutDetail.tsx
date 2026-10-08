@@ -71,7 +71,7 @@ export default function TodaysWorkoutDetail() {
           ← Back
         </button>
         <div className="workout-detail">
-          <h1 className="workout-detail-title">Rest day 😌</h1>
+          <h1 className="workout-detail-title">Rest day</h1>
           <p className="muted">{plannedToday.restReason ?? 'No training scheduled today — recover up.'}</p>
         </div>
       </div>

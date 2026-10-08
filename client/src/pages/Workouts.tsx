@@ -25,6 +25,7 @@ import {
   type Sort,
   type WorkoutFilters,
 } from '../lib/workoutFilters';
+import Icon from '../components/Icon';
 
 const FILTER_ORDER: WorkoutType[] = ['RIDE', 'RUN', 'SWIM', 'STRENGTH', 'WALK', 'BADMINTON', 'OTHER'];
 
@@ -97,7 +98,7 @@ export default function Workouts() {
             <div className="gd-search-bar">
               <div className="gd-search-field">
                 <span className="gd-search-icon" aria-hidden="true">
-                  🔍
+                  <Icon name="search" />
                 </span>
                 <input
                   type="search"
@@ -144,7 +145,7 @@ export default function Workouts() {
                     className={`gd-filter-chip${filters.type === t ? ' gd-on' : ''}`}
                     onClick={() => update('type', t)}
                   >
-                    {TYPE_ICON[t]} {TYPE_LABEL[t]}
+                    <Icon name={TYPE_ICON[t]} /> {TYPE_LABEL[t]}
                   </button>
                 ))}
               </div>
