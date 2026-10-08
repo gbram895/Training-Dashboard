@@ -218,6 +218,25 @@ a {
   z-index: 10;
 }
 
+/* Reduce Transparency and Increase Contrast make the floating bar a solid
+   surface with a defined edge, so the labels never sit over moving content. */
+@media (prefers-reduced-transparency: reduce) {
+  .bottom-nav {
+    background: var(--surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .bottom-nav {
+    background: var(--surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-color: var(--text-dim);
+  }
+}
+
 /* The active tab's grey pill — a single element that slides between tabs
    (NavShell measures the active link's offset/width and animates this via
    transform/width) rather than each tab drawing its own static background. */
@@ -1221,6 +1240,7 @@ button.icon-button {
 }
 
 .plan-category-card-icon {
+  color: var(--accent-solid);
   font-size: 1.6rem;
   flex-shrink: 0;
 }
@@ -1523,9 +1543,66 @@ button.icon-button {
   }
 }
 
+/* The grabber says "this can be pulled down" on the phone; centred sheets on
+   wider screens have nothing to pull, so it goes. */
+.gd-sheet-grabber {
+  flex-shrink: 0;
+  width: 36px;
+  height: 5px;
+  margin: -4px auto -6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 18%, transparent);
+}
+
+@media (min-width: 640px) {
+  .gd-sheet-grabber {
+    display: none;
+  }
+}
+
+.modal-card {
+  overscroll-behavior: contain;
+}
+
+/* In-app confirmation (useConfirm): the destructive choice is named, red and
+   on top; Cancel sits beneath it, the way an iOS action sheet orders them. */
+.gd-confirm-sheet h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.gd-confirm-sheet .muted {
+  margin: 0;
+}
+
+.gd-confirm-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.gd-confirm-actions button {
+  width: 100%;
+  padding: 13px;
+  border-radius: 14px;
+  font-size: 15px;
+}
+
+button.gd-confirm-destructive {
+  background: var(--danger);
+  color: #fff;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  button.gd-confirm-destructive:hover {
+    background: color-mix(in srgb, var(--danger) 88%, black);
+  }
+}
+
 /* Sheets slide up from the bottom edge they're attached to on the phone, and
    fade up slightly when centred on a wider screen. They mount on open, so
-   @starting-style plays the entrance with no JS; closing stays instant. */
+   @starting-style plays the entrance with no JS. Sheet.tsx runs the exit. */
 .modal-overlay {
   transition: opacity 200ms cubic-bezier(0.23, 1, 0.32, 1);
 }
@@ -1601,25 +1678,62 @@ button.icon-button {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
-  padding: 10px 12px;
-  touch-action: none;
-  user-select: none;
-  cursor: grab;
-}
-
-.gd-rearrange-row.gd-dragging {
-  opacity: 0.5;
+  padding: 8px 8px 8px 12px;
 }
 
 .gd-rearrange-row.gd-drop-target {
   border-color: var(--accent-solid);
-  background: var(--accent-wash);
 }
 
-.gd-rearrange-handle {
+/* The session you pick up and carry. Only the chip claims the finger
+   (touch-action: none), so the day labels beside it still scroll the sheet. */
+.gd-rearrange-chip {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-size: 13px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+}
+
+.gd-rearrange-chip .gd-icon {
+  color: var(--accent-solid);
+  font-size: 15px;
+}
+
+.gd-rearrange-chip.gd-lifted {
+  cursor: grabbing;
+  background: var(--surface);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.18),
+    0 0 0 1px var(--border);
+}
+
+.gd-rearrange-pin {
+  display: inline-flex;
   color: var(--text-faint);
-  font-size: 16px;
-  line-height: 1;
+  font-size: 12px;
+}
+
+.gd-rearrange-pin .gd-icon {
+  color: inherit;
+  font-size: inherit;
+}
+
+.gd-rearrange-grip {
+  flex-shrink: 0;
+  width: 8px;
+  height: 14px;
+  fill: var(--text-faint);
 }
 
 .gd-rearrange-info {
@@ -1641,8 +1755,9 @@ button.icon-button {
 
 .gd-rearrange-summary {
   flex: 1;
+  min-width: 0;
   font-size: 13px;
-  color: var(--text-dim);
+  color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1723,6 +1838,9 @@ button.icon-button {
   display: flex;
   gap: 10px;
   overflow-x: auto;
+  /* A flick lands on a day rather than wherever momentum ran out. */
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: 2px;
   padding: 2px 2px 4px;
   margin: 0 -2px 18px;
   scrollbar-width: none;
@@ -1735,6 +1853,7 @@ button.icon-button {
 button.gd-date-card {
   position: relative;
   flex-shrink: 0;
+  scroll-snap-align: start;
   width: 112px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1895,7 +2014,14 @@ button.gd-no-time-btn:disabled {
   padding: 16px 16px 4px;
 }
 
+.gd-icon {
+  display: inline-block;
+  flex-shrink: 0;
+  vertical-align: -0.14em;
+}
+
 .gd-suggest-icon {
+  color: var(--accent-solid);
   width: 38px;
   height: 38px;
   border-radius: 12px;
@@ -2034,6 +2160,7 @@ button.gd-why-btn {
 }
 
 .gd-suggest-rest .gd-rest-icon {
+  color: var(--accent-solid);
   font-size: 2.1rem;
   display: block;
   margin-bottom: 8px;
@@ -2381,6 +2508,7 @@ button.gd-dashed-fab {
 }
 
 .gd-activity-icon {
+  color: var(--accent-solid);
   width: 38px;
   height: 38px;
   border-radius: 11px;
@@ -4568,8 +4696,9 @@ button.gd-month-connect strong {
   color: var(--text);
 }
 
-button.gd-month-connect > span:first-child {
+button.gd-month-connect > .gd-icon {
   font-size: 20px;
+  color: var(--accent-solid);
 }
 
 .gd-month-error {

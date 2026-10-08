@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import type { Workout } from '../../api/types';
 import { formatDistance, formatDuration, formatRelativeDay } from '../../lib/format';
 import { TYPE_ICON, TYPE_LABEL } from '../../lib/workoutTypes';
+import Icon from '../Icon';
 
 export default function GradientActivityList({ workouts }: { workouts: Workout[] }) {
   if (workouts.length === 0) {
@@ -12,7 +13,9 @@ export default function GradientActivityList({ workouts }: { workouts: Workout[]
     <>
       {workouts.map((w) => (
         <Link key={w.id} to={`/workouts/${w.id}`} className="gd-activity-card">
-          <div className="gd-activity-icon">{TYPE_ICON[w.type]}</div>
+          <div className="gd-activity-icon">
+            <Icon name={TYPE_ICON[w.type]} />
+          </div>
           <div className="gd-activity-info">
             {/* The icon already says which discipline it was, so a named
                 activity spends the heading on its name instead. */}

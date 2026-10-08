@@ -8,9 +8,12 @@ import ProgressRing from '../components/ProgressRing';
 import GoalsCard from '../components/plan/GoalsCard';
 import SeasonOutlookCard from '../components/plan/SeasonOutlookCard';
 import GoalForecastCard from '../components/plan/GoalForecastCard';
+import Icon from '../components/Icon';
+import useConfirm from '../components/useConfirm';
 
 export default function Goals() {
   const [goals, setGoals] = useCachedState<Goal[] | null>('goals.list', null);
+  const [confirm, confirmSheet] = useConfirm();
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState('');
   const [targetValue, setTargetValue] = useState('');
@@ -74,7 +77,7 @@ export default function Goals() {
   }
 
   async function removeGoal(id: string) {
-    if (!confirm('Delete this goal?')) return;
+    if (!(await confirm({ title: 'Delete this goal?', confirmLabel: 'Delete goal' }))) return;
     await apiFetch(`/goals/${id}`, { method: 'DELETE' });
     await reload();
   }
@@ -106,7 +109,7 @@ export default function Goals() {
           </label>
           <div className="form-actions">
             <button type="submit" disabled={!searchQuery.trim()}>
-              🔍 Search
+              <Icon name="search" /> Search
             </button>
           </div>
           <p className="muted">Opens a web search in a new tab — bring back what you find and add it above.</p>
@@ -233,6 +236,7 @@ export default function Goals() {
           </button>
         )}
       </div>
+      {confirmSheet}
     </div>
   );
 }

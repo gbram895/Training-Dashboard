@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { apiFetch } from '../api/client';
 import type { TimeWindow, TrainingPlanConfig, TrainingWindows } from '../api/types';
 import TimeSlotsEditor, { slotIsValid } from './plan/TimeSlotsEditor';
+import Sheet, { type SheetDismiss } from './Sheet';
 
 const DAYS: { key: keyof Pick<TrainingPlanConfig, 'mondayHours' | 'tuesdayHours' | 'wednesdayHours' | 'thursdayHours' | 'fridayHours' | 'saturdayHours' | 'sundayHours'>; label: string; jsDay: number }[] = [
   { key: 'mondayHours', label: 'Monday', jsDay: 1 },
@@ -31,6 +32,7 @@ export default function NewPlanModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const sheet = useRef<SheetDismiss | null>(null);
   const [weeklyHours, setWeeklyHours] = useState(initialConfig?.weeklyHours ?? 5);
   const [dayHours, setDayHours] = useState<Record<string, number>>(() =>
     Object.fromEntries(DAYS.map((d) => [d.key, initialConfig?.[d.key] ?? 0])),
@@ -98,7 +100,9 @@ export default function NewPlanModal({
           ),
         }),
       });
-      onSaved();
+      // Slide the sheet away first, then hand the result back.
+      if (sheet.current) sheet.current(onSaved);
+      else onSaved();
     } catch {
       setError('Could not save your plan. Try again.');
     } finally {
@@ -107,104 +111,102 @@ export default function NewPlanModal({
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card card" onClick={(e) => e.stopPropagation()}>
-        <h2>New training plan</h2>
-        <p className="muted">
-          Set how much you want to train, and the app will pick a workout — or a rest day — for you each day based
-          on your fitness and recovery.
-        </p>
+    <Sheet onClose={onClose} dismissRef={sheet}>
+      <h2>New training plan</h2>
+      <p className="muted">
+        Set how much you want to train, and the app will pick a workout — or a rest day — for you each day based
+        on your fitness and recovery.
+      </p>
 
-        <label className="plan-slider-row">
-          <div className="plan-slider-label">
-            <span>Weekly hours target</span>
-            <span className="plan-slider-value">{formatHours(weeklyHours)}</span>
-          </div>
-          <input
-            type="range"
-            min={0}
-            max={20}
-            step={0.25}
-            value={weeklyHours}
-            onChange={(e) => setWeeklyHours(Number(e.target.value))}
-          />
-        </label>
-        <p className="muted plan-allocated-note">
-          {formatHours(allocated)} allocated across the days below{weeklyHours > 0 ? ` of your ${formatHours(weeklyHours)} target` : ''}
-        </p>
-
-        <p className="muted plan-allocated-note">
-          Add the times you can train on each day and the session is planned inside one of them, around anything in
-          your calendar. With no times, only the hours count.
-        </p>
-
-        <div className="plan-day-sliders">
-          {DAYS.map((d) => (
-            <div className="plan-slider-row" key={d.key}>
-              <label className="plan-slider-row">
-                <div className="plan-slider-label">
-                  <span>{d.label}</span>
-                  <span className="plan-slider-value">{formatHours(dayHours[d.key])}</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={4}
-                  step={0.25}
-                  value={dayHours[d.key]}
-                  onChange={(e) => setDayHours((prev) => ({ ...prev, [d.key]: Number(e.target.value) }))}
-                />
-              </label>
-              {dayHours[d.key] > 0 && (
-                <TimeSlotsEditor
-                  dayLabel={d.label}
-                  slots={windows[String(d.jsDay)] ?? []}
-                  onChange={(slots) => setSlots(d.jsDay, slots)}
-                  onCopyToOthers={() => copyToOthers(d.jsDay)}
-                />
-              )}
-            </div>
-          ))}
+      <label className="plan-slider-row">
+        <div className="plan-slider-label">
+          <span>Weekly hours target</span>
+          <span className="plan-slider-value">{formatHours(weeklyHours)}</span>
         </div>
+        <input
+          type="range"
+          min={0}
+          max={20}
+          step={0.25}
+          value={weeklyHours}
+          onChange={(e) => setWeeklyHours(Number(e.target.value))}
+        />
+      </label>
+      <p className="muted plan-allocated-note">
+        {formatHours(allocated)} allocated across the days below{weeklyHours > 0 ? ` of your ${formatHours(weeklyHours)} target` : ''}
+      </p>
 
-        <label className="plan-checkbox-row">
-          <input
-            type="checkbox"
-            checked={includeRunning}
-            onChange={(e) => setIncludeRunning(e.target.checked)}
-          />
-          Include running workouts
-        </label>
+      <p className="muted plan-allocated-note">
+        Add the times you can train on each day and the session is planned inside one of them, around anything in
+        your calendar. With no times, only the hours count.
+      </p>
 
-        {includeRunning && (
-          <div className="plan-run-days-panel">
-            <p className="muted">Which days should be runs? (the rest stay rides)</p>
-            <div className="plan-run-days-grid">
-              {DAYS.map((d) => (
-                <button
-                  type="button"
-                  key={d.key}
-                  className={`plan-run-day-chip${runDays.has(d.jsDay) ? ' plan-run-day-chip-active' : ''}`}
-                  onClick={() => toggleRunDay(d.jsDay)}
-                >
-                  {d.label.slice(0, 3)}
-                </button>
-              ))}
-            </div>
+      <div className="plan-day-sliders">
+        {DAYS.map((d) => (
+          <div className="plan-slider-row" key={d.key}>
+            <label className="plan-slider-row">
+              <div className="plan-slider-label">
+                <span>{d.label}</span>
+                <span className="plan-slider-value">{formatHours(dayHours[d.key])}</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={4}
+                step={0.25}
+                value={dayHours[d.key]}
+                onChange={(e) => setDayHours((prev) => ({ ...prev, [d.key]: Number(e.target.value) }))}
+              />
+            </label>
+            {dayHours[d.key] > 0 && (
+              <TimeSlotsEditor
+                dayLabel={d.label}
+                slots={windows[String(d.jsDay)] ?? []}
+                onChange={(slots) => setSlots(d.jsDay, slots)}
+                onCopyToOthers={() => copyToOthers(d.jsDay)}
+              />
+            )}
           </div>
-        )}
-
-        {error && <div className="alert">{error}</div>}
-
-        <div className="form-actions">
-          <button type="button" onClick={save} disabled={saving || invalidWindow}>
-            {saving ? 'Creating…' : 'Create plan'}
-          </button>
-          <button type="button" className="secondary" onClick={onClose} disabled={saving}>
-            Cancel
-          </button>
-        </div>
+        ))}
       </div>
-    </div>
+
+      <label className="plan-checkbox-row">
+        <input
+          type="checkbox"
+          checked={includeRunning}
+          onChange={(e) => setIncludeRunning(e.target.checked)}
+        />
+        Include running workouts
+      </label>
+
+      {includeRunning && (
+        <div className="plan-run-days-panel">
+          <p className="muted">Which days should be runs? (the rest stay rides)</p>
+          <div className="plan-run-days-grid">
+            {DAYS.map((d) => (
+              <button
+                type="button"
+                key={d.key}
+                className={`plan-run-day-chip${runDays.has(d.jsDay) ? ' plan-run-day-chip-active' : ''}`}
+                onClick={() => toggleRunDay(d.jsDay)}
+              >
+                {d.label.slice(0, 3)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {error && <div className="alert">{error}</div>}
+
+      <div className="form-actions">
+        <button type="button" onClick={save} disabled={saving || invalidWindow}>
+          {saving ? 'Creating…' : 'Create plan'}
+        </button>
+        <button type="button" className="secondary" onClick={() => sheet.current?.()} disabled={saving}>
+          Cancel
+        </button>
+      </div>
+    </Sheet>
   );
 }

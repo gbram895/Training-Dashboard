@@ -26,6 +26,8 @@ import CalendarsModal from '../components/plan/CalendarsModal';
 import { useCachedState } from '../lib/pageCache';
 import { useRefreshOnResume } from '../lib/useRefreshOnResume';
 import { configDisciplineForDate, weekdayLabel } from '../lib/planDates';
+import Icon, { type IconName } from '../components/Icon';
+import { disciplineIcon } from '../lib/workoutTypes';
 
 // What the periodisation made of the selected day. The goals themselves live
 // on the Goals tab; this is only the reason today's session is the size it is.
@@ -37,22 +39,22 @@ const PHASE_LABEL: Record<TrainingPhase, string> = {
   POST_RACE: 'Easy after a race',
 };
 
-const CATEGORY_INFO: { key: WorkoutCategory | 'OTHER'; label: string; icon: string; description: string }[] = [
-  { key: 'VO2MAX', label: 'VO2Max', icon: '💨', description: 'Short, maximal efforts that push your aerobic ceiling.' },
+const CATEGORY_INFO: { key: WorkoutCategory | 'OTHER'; label: string; icon: IconName; description: string }[] = [
+  { key: 'VO2MAX', label: 'VO2Max', icon: 'wind', description: 'Short, maximal efforts that push your aerobic ceiling.' },
   {
     key: 'THRESHOLD',
     label: 'Threshold',
-    icon: '🔄',
+    icon: 'gauge',
     description: 'Sustained efforts right at your functional threshold.',
   },
-  { key: 'TEMPO', label: 'Tempo', icon: '🔥', description: 'Comfortably hard efforts that build aerobic strength.' },
+  { key: 'TEMPO', label: 'Tempo', icon: 'flame', description: 'Comfortably hard efforts that build aerobic strength.' },
   {
     key: 'ENDURANCE',
     label: 'Endurance',
-    icon: '❤️',
+    icon: 'heart',
     description: 'Steady, easy-paced training that builds your aerobic base.',
   },
-  { key: 'OTHER', label: 'Other', icon: '📋', description: "Workouts without enough data to classify." },
+  { key: 'OTHER', label: 'Other', icon: 'clipboard', description: "Workouts without enough data to classify." },
 ];
 
 const CONFIG_HOUR_KEYS = [
@@ -336,7 +338,7 @@ export default function Plan() {
                       >
                         {day.manualOverride && (
                           <span className="gd-dc-pin" title="Manually rearranged">
-                            📌
+                            <Icon name="pin" />
                           </span>
                         )}
                         <span className="gd-dc-day">{name}</span>
@@ -366,7 +368,9 @@ export default function Plan() {
                 (selectedDay.isRestDay ? (
                   <div className="gd-suggest-card">
                     <div className="gd-suggest-rest">
-                      <span className="gd-rest-icon">😌</span>
+                      <span className="gd-rest-icon">
+                        <Icon name="rest" />
+                      </span>
                       <h3>Rest day</h3>
                       <p className="muted" style={{ margin: 0 }}>
                         {selectedDay.restReason ?? 'No training scheduled today.'}
@@ -384,7 +388,7 @@ export default function Plan() {
                             disabled={switchingDiscipline}
                             onClick={() => switchDiscipline(selectedDay, d)}
                           >
-                            {d === 'BIKE' ? '🚴 Bike' : '🏃 Run'}
+                            <Icon name={disciplineIcon(d)} /> {d === 'BIKE' ? 'Bike' : 'Run'}
                           </button>
                         ))}
                       </div>
@@ -394,7 +398,9 @@ export default function Plan() {
                   <div className="gd-suggest-card">
                     <div className="gd-suggest-panel">
                       <div className="gd-suggest-top">
-                        <div className="gd-suggest-icon">{selectedDay.discipline === 'RUN' ? '🏃' : '🚴'}</div>
+                        <div className="gd-suggest-icon">
+                        <Icon name={disciplineIcon(selectedDay.discipline)} />
+                      </div>
                         <button
                           type="button"
                           className="gd-refresh-btn"
@@ -460,7 +466,7 @@ export default function Plan() {
                             disabled={switchingDiscipline}
                             onClick={() => switchDiscipline(selectedDay, d)}
                           >
-                            {d === 'BIKE' ? '🚴 Bike' : '🏃 Run'}
+                            <Icon name={disciplineIcon(d)} /> {d === 'BIKE' ? 'Bike' : 'Run'}
                           </button>
                         ))}
                       </div>
@@ -673,7 +679,9 @@ export default function Plan() {
                     className="card plan-category-card"
                     onClick={() => setCategory(key)}
                   >
-                    <span className="plan-category-card-icon">{icon}</span>
+                    <span className="plan-category-card-icon">
+                      <Icon name={icon} />
+                    </span>
                     <span className="plan-category-card-body">
                       <span className="plan-category-card-title">
                         {label}
@@ -707,7 +715,7 @@ export default function Plan() {
                         <div className="workout-card-header">
                           <h2 className="workout-card-title">{w.name}</h2>
                           <span className={`discipline-pill discipline-${w.discipline.toLowerCase()}`}>
-                            {w.discipline === 'BIKE' ? '🚴 Bike' : '🏃 Run'}
+                            <Icon name={disciplineIcon(w.discipline)} /> {w.discipline === 'BIKE' ? 'Bike' : 'Run'}
                           </span>
                         </div>
                         <div className="workout-stat-tiles">

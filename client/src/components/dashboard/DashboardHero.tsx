@@ -3,8 +3,9 @@ import { apiFetch } from '../../api/client';
 import type { PlannedDay, SelectedWorkout } from '../../api/types';
 import { formatDuration } from '../../lib/format';
 import ProgressRing from '../ProgressRing';
+import Icon from '../Icon';
+import { disciplineIcon } from '../../lib/workoutTypes';
 
-const DISCIPLINE_EMOJI: Record<string, string> = { BIKE: '🚴', RUN: '🏃' };
 
 export default function DashboardHero({
   workout,
@@ -81,7 +82,6 @@ export default function DashboardHero({
   }
 
   const discipline = active.discipline ?? 'BIKE';
-  const emoji = DISCIPLINE_EMOJI[discipline] ?? '🚴';
   const disciplineLabel = discipline === 'RUN' ? 'Running' : 'Cycling';
 
   return (
@@ -96,7 +96,7 @@ export default function DashboardHero({
           <h2>{active.name ?? 'Workout'}</h2>
           <div className="gd-meta">
             <span>
-              {emoji} {disciplineLabel}
+              <Icon name={disciplineIcon(discipline)} /> {disciplineLabel}
             </span>
             {active.durationMin != null && (
               <>
