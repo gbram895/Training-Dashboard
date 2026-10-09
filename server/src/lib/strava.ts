@@ -223,6 +223,13 @@ async function clearTrainerWhenReady(accessToken: string, upload: StravaUpload):
   }
 }
 
+export interface TrainerFlagResult {
+  /** Strava's trainer flag after the last attempt, or null if it could not be read. */
+  trainer: boolean | null;
+  /** Strava's own words when it refused, for showing to the rider. */
+  error?: string;
+}
+
 /**
  * Strava hides the map and elevation of a trainer ride, and a route ride from
  * IndoorWarior has both. Strava flags such uploads as trainer rides even with
@@ -231,24 +238,41 @@ async function clearTrainerWhenReady(accessToken: string, upload: StravaUpload):
  * sets it back. Best effort: a failure here leaves a ride without its map,
  * not a failed upload.
  */
-export async function markNotTrainer(accessToken: string, activityId: number): Promise<void> {
+export async function markNotTrainer(accessToken: string, activityId: number, recheckMs = 20_000): Promise<TrainerFlagResult> {
   const headers = { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' };
   const url = `https://www.strava.com/api/v3/activities/${activityId}`;
+  let result: TrainerFlagResult = { trainer: null };
   try {
     for (let attempt = 1; attempt <= 3; attempt++) {
       const res = await fetch(url, { method: 'PUT', headers, body: JSON.stringify({ trainer: false }) });
       if (!res.ok) {
-        console.error(`[strava] could not clear trainer flag on ${activityId}: ${res.status} ${await res.text()}`);
-        return;
+        const error = `${res.status} ${await res.text()}`;
+        console.error(`[strava] could not clear trainer flag on ${activityId}: ${error}`);
+        return { trainer: null, error };
       }
-      await sleep(20_000);
+      const updated = (await res.json()) as { trainer?: boolean };
+      result = { trainer: updated.trainer ?? null };
+      await sleep(recheckMs);
       const check = await fetch(url, { headers });
-      if (!check.ok) return;
+      if (!check.ok) return result;
       const activity = (await check.json()) as { trainer?: boolean };
-      if (activity.trainer !== true) return;
+      result = { trainer: activity.trainer ?? null };
+      if (activity.trainer !== true) return result;
       console.warn(`[strava] ${activityId} still flagged as a trainer ride after attempt ${attempt}`);
     }
   } catch (err) {
     console.error(`[strava] could not clear trainer flag on ${activityId}:`, err);
+    return { ...result, error: err instanceof Error ? err.message : String(err) };
   }
+  return result;
+}
+
+/** The activity an upload became, waiting up to `waitMs` for Strava to finish it. */
+export async function uploadActivityId(accessToken: string, uploadId: number, waitMs: number): Promise<StravaUpload> {
+  let upload = await uploadRequest(accessToken, `/${uploadId}`);
+  for (const until = Date.now() + waitMs; !upload.activity_id && !upload.error && Date.now() < until; ) {
+    await sleep(2000);
+    upload = await uploadRequest(accessToken, `/${uploadId}`);
+  }
+  return upload;
 }
