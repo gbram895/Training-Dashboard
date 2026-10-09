@@ -390,6 +390,9 @@ const stravaUploadSchema = z.object({
   fitBase64: z.string().min(1),
   name: z.string().min(1).max(200),
   externalId: z.string().min(1).max(100),
+  // A ride on a virtual route carries GPS and elevation. Strava hides the
+  // map of any activity flagged as trainer, so such rides are sent unflagged.
+  trainer: z.boolean().optional(),
 });
 
 router.post('/strava/upload', requireAuth, async (req: AuthedRequest, res) => {
@@ -404,6 +407,7 @@ router.post('/strava/upload', requireAuth, async (req: AuthedRequest, res) => {
     const upload = await uploadFitActivity(accessToken, Buffer.from(parsed.data.fitBase64, 'base64'), {
       name: parsed.data.name,
       externalId: parsed.data.externalId,
+      trainer: parsed.data.trainer ?? true,
     });
     if (upload.error) {
       // Strava reports a ride it already has as an error; that is a success for us.
