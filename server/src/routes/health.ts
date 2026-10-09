@@ -414,7 +414,7 @@ router.post('/strava/upload', requireAuth, async (req: AuthedRequest, res) => {
       const duplicate = /duplicate of(?: activity)? (\d+)/i.exec(upload.error);
       if (duplicate) {
         // Re-sending a route ride Strava already has also fixes its trainer flag.
-        if (parsed.data.trainer === false) await markNotTrainer(accessToken, Number(duplicate[1]));
+        if (parsed.data.trainer === false) void markNotTrainer(accessToken, Number(duplicate[1]));
         return res.json({ activityId: Number(duplicate[1]), duplicate: true });
       }
       return res.status(422).json({ error: upload.error });
