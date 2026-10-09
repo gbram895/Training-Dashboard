@@ -9,7 +9,7 @@ import { buildAuthorizeUrl, dropboxConfigured, exchangeCodeForTokens } from '../
 import { completeGarminAccountConnect, connectGarminAccountAndSave, runGarminSyncForUser } from '../lib/garminSync.js';
 import { pushWorkoutToGarmin } from '../lib/garminWorkoutPush.js';
 import { friendlyGarminAuthError } from '../lib/garminAuth.js';
-import { buildAuthorizeUrl as buildStravaAuthorizeUrl, stravaConfigured, StravaUploadError, uploadFitActivity, markNotTrainer, uploadActivityId } from '../lib/strava.js';
+import { buildAuthorizeUrl as buildStravaAuthorizeUrl, stravaConfigured, StravaUploadError, uploadFitActivity, markNotTrainer, uploadActivityId, stravaExternalId } from '../lib/strava.js';
 import { connectStravaAccount, getValidAccessToken, runStravaSyncForUser } from '../lib/stravaSync.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -462,6 +462,51 @@ router.post('/strava/route-map', requireAuth, async (req: AuthedRequest, res) =>
   } catch (err) {
     console.error(`[strava] route map failed for user ${req.userId}:`, err);
     res.status(502).json({ error: err instanceof Error ? err.message : 'Strava did not answer' });
+  }
+});
+
+// How hard a ride felt, from IndoorWarior's Finish screen, onto the Gradient
+// workout that ride became. The ride is on Strava by then but may not have
+// been imported yet, so a missing workout triggers one Strava sync; a ride
+// that dedup filed under another source is found by its start time instead.
+const rideFeedbackSchema = z.object({
+  activityId: z.number().int().positive(),
+  startedAt: z.number().int().positive(), // unix seconds
+  rpe: z.number().int().min(1).max(10),
+  feedbackNotes: z.string().max(2000).nullable().optional(),
+});
+
+router.post('/strava/ride-feedback', requireAuth, async (req: AuthedRequest, res) => {
+  const parsed = rideFeedbackSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { activityId, startedAt, rpe, feedbackNotes } = parsed.data;
+  const userId = req.userId!;
+
+  const find = async () =>
+    (await prisma.workout.findFirst({ where: { userId, externalId: stravaExternalId(activityId) } })) ??
+    (await prisma.workout.findFirst({
+      where: {
+        userId,
+        date: { gte: new Date((startedAt - 300) * 1000), lte: new Date((startedAt + 300) * 1000) },
+      },
+      orderBy: { date: 'asc' },
+    }));
+
+  try {
+    let workout = await find();
+    if (!workout) {
+      await runStravaSyncForUser(userId, { force: true });
+      workout = await find();
+    }
+    if (!workout) return res.status(404).json({ error: 'Gradient has not imported this ride yet.' });
+    await prisma.workout.update({
+      where: { id: workout.id },
+      data: { rpe, ...(feedbackNotes !== undefined ? { feedbackNotes } : {}) },
+    });
+    res.json({ workoutId: workout.id, rpe });
+  } catch (err) {
+    console.error(`[strava] ride feedback failed for user ${userId}:`, err);
+    res.status(502).json({ error: err instanceof Error ? err.message : 'Could not save the feedback' });
   }
 });
 
