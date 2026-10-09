@@ -183,13 +183,13 @@ async function uploadRequest(accessToken: string, path: string, init?: RequestIn
 export async function uploadFitActivity(
   accessToken: string,
   file: Buffer,
-  opts: { name: string; externalId: string },
+  opts: { name: string; externalId: string; trainer?: boolean },
 ): Promise<StravaUpload> {
   const form = new FormData();
   form.append('file', new Blob([new Uint8Array(file)]), `${opts.externalId}.fit`);
   form.append('data_type', 'fit');
   form.append('name', opts.name);
-  form.append('trainer', '1');
+  form.append('trainer', opts.trainer === false ? '0' : '1');
   form.append('external_id', opts.externalId);
 
   let upload = await uploadRequest(accessToken, '', { method: 'POST', body: form });
