@@ -9,7 +9,7 @@ import { buildAuthorizeUrl, dropboxConfigured, exchangeCodeForTokens } from '../
 import { completeGarminAccountConnect, connectGarminAccountAndSave, runGarminSyncForUser } from '../lib/garminSync.js';
 import { pushWorkoutToGarmin } from '../lib/garminWorkoutPush.js';
 import { friendlyGarminAuthError } from '../lib/garminAuth.js';
-import { buildAuthorizeUrl as buildStravaAuthorizeUrl, stravaConfigured, StravaUploadError, uploadFitActivity, markNotTrainer } from '../lib/strava.js';
+import { buildAuthorizeUrl as buildStravaAuthorizeUrl, stravaConfigured, StravaUploadError, uploadFitActivity, markNotTrainer, uploadActivityId } from '../lib/strava.js';
 import { connectStravaAccount, getValidAccessToken, runStravaSyncForUser } from '../lib/stravaSync.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -419,7 +419,7 @@ router.post('/strava/upload', requireAuth, async (req: AuthedRequest, res) => {
       }
       return res.status(422).json({ error: upload.error });
     }
-    res.json({ activityId: upload.activity_id, status: upload.status });
+    res.json({ activityId: upload.activity_id, uploadId: upload.id, status: upload.status });
   } catch (err) {
     if (err instanceof StravaUploadError && (err.status === 401 || err.status === 403)) {
       return res.status(403).json({
@@ -429,6 +429,39 @@ router.post('/strava/upload', requireAuth, async (req: AuthedRequest, res) => {
     }
     console.error(`[strava] upload failed for user ${req.userId}:`, err);
     res.status(502).json({ error: err instanceof Error ? err.message : 'Strava upload failed' });
+  }
+});
+
+// Clears the trainer flag on a route ride and says what Strava answered, so
+// IndoorWarior can tell the rider whether the map will show. Takes the
+// activity, or the upload when Strava had not finished it yet.
+const stravaRouteMapSchema = z.object({
+  activityId: z.number().int().positive().optional(),
+  uploadId: z.number().int().positive().optional(),
+});
+
+router.post('/strava/route-map', requireAuth, async (req: AuthedRequest, res) => {
+  const parsed = stravaRouteMapSchema.safeParse(req.body);
+  if (!parsed.success || (!parsed.data.activityId && !parsed.data.uploadId)) {
+    return res.status(400).json({ error: 'Send the activityId or uploadId.' });
+  }
+  const config = await prisma.stravaSyncConfig.findUnique({ where: { userId: req.userId } });
+  if (!config) return res.status(409).json({ error: 'Strava is not connected in Gradient.', reconnect: true });
+
+  try {
+    const accessToken = await getValidAccessToken(req.userId!, config);
+    let activityId = parsed.data.activityId ?? null;
+    if (!activityId) {
+      const upload = await uploadActivityId(accessToken, parsed.data.uploadId!, 20_000);
+      if (upload.error) return res.status(422).json({ error: upload.error });
+      activityId = upload.activity_id;
+      if (!activityId) return res.json({ activityId: null, pending: true });
+    }
+    const result = await markNotTrainer(accessToken, activityId, 5_000);
+    res.json({ activityId, ...result });
+  } catch (err) {
+    console.error(`[strava] route map failed for user ${req.userId}:`, err);
+    res.status(502).json({ error: err instanceof Error ? err.message : 'Strava did not answer' });
   }
 });
 
