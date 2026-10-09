@@ -9,7 +9,7 @@ import { buildAuthorizeUrl, dropboxConfigured, exchangeCodeForTokens } from '../
 import { completeGarminAccountConnect, connectGarminAccountAndSave, runGarminSyncForUser } from '../lib/garminSync.js';
 import { pushWorkoutToGarmin } from '../lib/garminWorkoutPush.js';
 import { friendlyGarminAuthError } from '../lib/garminAuth.js';
-import { buildAuthorizeUrl as buildStravaAuthorizeUrl, stravaConfigured, StravaUploadError, uploadFitActivity } from '../lib/strava.js';
+import { buildAuthorizeUrl as buildStravaAuthorizeUrl, stravaConfigured, StravaUploadError, uploadFitActivity, markNotTrainer } from '../lib/strava.js';
 import { connectStravaAccount, getValidAccessToken, runStravaSyncForUser } from '../lib/stravaSync.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -412,7 +412,11 @@ router.post('/strava/upload', requireAuth, async (req: AuthedRequest, res) => {
     if (upload.error) {
       // Strava reports a ride it already has as an error; that is a success for us.
       const duplicate = /duplicate of(?: activity)? (\d+)/i.exec(upload.error);
-      if (duplicate) return res.json({ activityId: Number(duplicate[1]), duplicate: true });
+      if (duplicate) {
+        // Re-sending a route ride Strava already has also fixes its trainer flag.
+        if (parsed.data.trainer === false) await markNotTrainer(accessToken, Number(duplicate[1]));
+        return res.json({ activityId: Number(duplicate[1]), duplicate: true });
+      }
       return res.status(422).json({ error: upload.error });
     }
     res.json({ activityId: upload.activity_id, status: upload.status });
