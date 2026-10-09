@@ -189,7 +189,9 @@ export async function uploadFitActivity(
   form.append('file', new Blob([new Uint8Array(file)]), `${opts.externalId}.fit`);
   form.append('data_type', 'fit');
   form.append('name', opts.name);
-  form.append('trainer', opts.trainer === false ? '0' : '1');
+  // Only ever send trainer=1: a ride that is not a trainer ride leaves the
+  // field out, and is unflagged again below once Strava has made it.
+  if (opts.trainer !== false) form.append('trainer', '1');
   form.append('external_id', opts.externalId);
 
   let upload = await uploadRequest(accessToken, '', { method: 'POST', body: form });
@@ -197,5 +199,26 @@ export async function uploadFitActivity(
     await new Promise((resolve) => setTimeout(resolve, 1500));
     upload = await uploadRequest(accessToken, `/${upload.id}`);
   }
+  if (opts.trainer === false && upload.activity_id) await markNotTrainer(accessToken, upload.activity_id);
   return upload;
+}
+
+/**
+ * Strava hides the map and elevation of a trainer ride, and a route ride from
+ * IndoorWarior has both. Strava still flagged such uploads as trainer rides
+ * with the upload's trainer field left out, so the flag is cleared on the
+ * activity itself. Best effort: a failure here leaves a ride without its map,
+ * not a failed upload.
+ */
+export async function markNotTrainer(accessToken: string, activityId: number): Promise<void> {
+  try {
+    const res = await fetch(`https://www.strava.com/api/v3/activities/${activityId}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trainer: false }),
+    });
+    if (!res.ok) console.error(`[strava] could not clear trainer flag on ${activityId}: ${res.status} ${await res.text()}`);
+  } catch (err) {
+    console.error(`[strava] could not clear trainer flag on ${activityId}:`, err);
+  }
 }
