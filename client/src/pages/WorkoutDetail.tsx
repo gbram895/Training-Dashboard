@@ -6,6 +6,7 @@ import type { SessionReview, TssSource, Workout, WorkoutSample } from '../api/ty
 import { formatDateUTC, formatDistance, formatDuration, formatPace, formatSpeed } from '../lib/format';
 import WorkoutSampleChart from '../components/WorkoutSampleChart';
 import SessionReviewCard from '../components/SessionReviewCard';
+import RideMediaCard from '../components/RideMediaCard';
 
 // Training load is measured from power where it exists, pace where it doesn't,
 // and time-in-zone for everything else — worth saying, since the three are not
@@ -242,6 +243,8 @@ export default function WorkoutDetail() {
             </span>
           </button>
         </div>
+
+        <RideMediaCard workoutId={workout.id} />
 
         {showGraphs && !hasAnySampleData && (
           <p className="muted">No detailed heart-rate, speed, or power data available for this workout.</p>
