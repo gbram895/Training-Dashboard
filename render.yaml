@@ -28,3 +28,7 @@ services:
         sync: false
       - key: STRAVA_CLIENT_SECRET
         sync: false
+      # Emails IndoorWarior's ride screenshots and recordings. Render's free
+      # tier blocks SMTP, so mail goes out over Resend's HTTPS API instead.
+      - key: RESEND_API_KEY
+        sync: false

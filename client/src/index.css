@@ -2840,6 +2840,50 @@ button.gd-segmented-option.gd-on {
   box-shadow: var(--shadow);
 }
 
+/* IndoorWarior screenshots and recordings on a workout */
+
+.gd-media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.gd-media-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.gd-media-item img,
+.gd-media-blank {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  background: var(--surface-sunken);
+}
+
+.gd-media-video {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.gd-media-actions {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+}
+
+.gd-media-actions button {
+  flex: 1;
+  padding: 6px 0;
+  font-size: 13px;
+}
+
 .gd-set-group-label {
   font-size: 12px;
   font-weight: 700;

@@ -14,6 +14,7 @@ import trainingPlanRouter from './routes/trainingPlan.js';
 import pushRouter from './routes/push.js';
 import cronRouter from './routes/cron.js';
 import widgetRouter from './routes/widget.js';
+import mediaRouter, { mediaLinkRouter } from './routes/media.js';
 import calendarRouter, { calendarFeedRouter } from './routes/calendar.js';
 import { replanAllForCalendarChanges } from './lib/calendarReplan.js';
 import { dropboxConfigured } from './lib/dropbox.js';
@@ -65,6 +66,9 @@ app.use('/api/training-plan', trainingPlanRouter);
 app.use('/api/push', pushRouter);
 app.use('/api/cron', cronRouter);
 app.use('/api/widget', widgetRouter);
+app.use('/api/media', mediaRouter);
+// Download links in ride emails carry their own signed token, like the feed.
+app.use('/api/media-link', mediaLinkRouter);
 // The feed is fetched by the iPhone's Calendar app, which has no login of its
 // own; its secret URL is the credential, so it sits outside the auth router.
 app.use('/api/calendar/feed', calendarFeedRouter);

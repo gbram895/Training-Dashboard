@@ -29,6 +29,7 @@ model User {
   trainingTargets       TrainingTarget[]
   powerBests            WorkoutPowerBest[]
   calendarConnection    CalendarConnection?
+  rideMedia             RideMedia[]
 
   // Heart-rate zone thresholds (bpm) — upper bound of zones 1-4; zone 5 is everything above z4Max
   hrZone1Max Int @default(114)
@@ -602,4 +603,30 @@ model CalendarConnection {
   planFingerprint   String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
+}
+
+// Screenshots and screen recordings IndoorWarior takes during an indoor ride,
+// kept here so they can be downloaded from the workout they belong to. They
+// are tied to the ride by its start time rather than a workout id, because
+// the workout usually arrives from Strava after the media does; the workout
+// page finds them by the same ±5 minute window ride feedback uses. Stored in
+// Postgres as bytes, with the oldest pruned past a per-user total (see
+// routes/media.ts), so they never crowd out the training data.
+model RideMedia {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // When the ride started and when in it this was taken.
+  startedAt DateTime
+  takenAt   DateTime
+  kind      String // "photo" | "video"
+  mime      String
+  size      Int
+  data      Bytes
+  // Set once the file has gone out in a ride email, so a retry or a later
+  // upload for the same ride never sends it twice.
+  emailedAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, startedAt])
 }
