@@ -10,6 +10,7 @@ import {
   revertManualOverrides,
   ROLLING_WINDOW_DAYS,
   setDayAvailability,
+  setDayShuffle,
   setDayDiscipline,
   swapPlannedDays,
 } from '../lib/trainingPlan.js';
@@ -171,6 +172,29 @@ router.put('/day-discipline', async (req: AuthedRequest, res) => {
   }
 
   const updated = await setDayDiscipline(req.userId!, date, parsed.data.discipline);
+  if (!updated) return res.status(400).json({ error: 'Set up a training plan first' });
+  res.json(updated);
+});
+
+const dayShuffleSchema = z.object({ date: z.string().min(1) });
+
+// "Shuffle" on the Suggested Training card: a different workout for that day,
+// of the same type and fitted to the same time.
+router.put('/day-shuffle', async (req: AuthedRequest, res) => {
+  const parsed = dayShuffleSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const date = utcMidnight(new Date(parsed.data.date));
+  if (Number.isNaN(date.getTime())) return res.status(400).json({ error: 'Invalid date' });
+
+  const today = utcMidnight(new Date());
+  const maxDate = new Date(today);
+  maxDate.setUTCDate(maxDate.getUTCDate() + ROLLING_WINDOW_DAYS - 1);
+  if (date < today || date > maxDate) {
+    return res.status(400).json({ error: 'Date must be within the plan window' });
+  }
+
+  const updated = await setDayShuffle(req.userId!, date);
   if (!updated) return res.status(400).json({ error: 'Set up a training plan first' });
   res.json(updated);
 });

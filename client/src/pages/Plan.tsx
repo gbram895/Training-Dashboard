@@ -119,6 +119,7 @@ export default function Plan() {
   const [showRearrangeModal, setShowRearrangeModal] = useState(false);
   const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
   const [switchingDiscipline, setSwitchingDiscipline] = useState(false);
+  const [shufflingDay, setShufflingDay] = useState(false);
   const [refreshingPlan, setRefreshingPlan] = useState(false);
   // The week overview, expanded to the whole month in place. Remembered
   // across tab switches so it stays open while you go and look at something.
@@ -198,6 +199,26 @@ export default function Plan() {
       setError(err instanceof ApiError ? err.message : 'Failed to switch discipline');
     } finally {
       setSwitchingDiscipline(false);
+    }
+  }
+
+  // A different workout for one day, of the same type and length. The server
+  // remembers the shuffle, so the new pick survives the next rebuild.
+  async function shuffleDay(day: PlannedDay) {
+    setShufflingDay(true);
+    try {
+      const updated = await apiFetch<PlannedDay>('/training-plan/day-shuffle', {
+        method: 'PUT',
+        body: JSON.stringify({ date: day.date }),
+      });
+      // The rest of the window is rebuilt around the new pick, so take it all.
+      const week = await apiFetch<PlannedDay[]>('/training-plan/week');
+      setPlanWeek(week.map((d) => (d.id === updated.id ? updated : d)));
+      setError(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to shuffle the workout');
+    } finally {
+      setShufflingDay(false);
     }
   }
 
@@ -404,11 +425,12 @@ export default function Plan() {
                         <button
                           type="button"
                           className="gd-refresh-btn"
-                          onClick={() => loadPlan()}
-                          aria-label="Refresh plan"
-                          title="Refresh"
+                          onClick={() => shuffleDay(selectedDay)}
+                          disabled={shufflingDay}
+                          aria-label="Shuffle: a different workout for this day"
+                          title="Shuffle"
                         >
-                          ⟳
+                          <Icon name="shuffle" />
                         </button>
                       </div>
 

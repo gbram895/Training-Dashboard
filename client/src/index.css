@@ -2088,7 +2088,12 @@ button.gd-refresh-btn {
   justify-content: center;
   color: var(--text-dim);
   cursor: pointer;
-  font-size: 15px;
+  font-size: 16px;
+}
+
+button.gd-refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 @media (hover: hover) and (pointer: fine) {

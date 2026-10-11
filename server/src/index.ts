@@ -215,6 +215,12 @@ app.listen(PORT, () => {
 
   registerScheduledJobs();
 
+  // A deploy can change how sessions are picked, but the days already planned
+  // are stored rows: without this they kept the old picks until the 04:00
+  // rebuild, so a fix to the plan looked like it had done nothing. Picks are
+  // seeded by date, so rebuilding on an ordinary restart changes nothing.
+  void regenerateAllPlans();
+
   primeJobs()
     .then(() => {
       // Nothing this app schedules needs sub-minute precision (the tightest
