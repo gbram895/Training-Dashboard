@@ -1409,6 +1409,32 @@ export async function getPlannedWeek(userId: string) {
   });
 }
 
+/**
+ * Bump this whenever a change to how the plan picks sessions should reach
+ * plans that are already built. Plans built under an older version are rebuilt
+ * once, the next time the server starts; nothing else ever reads it.
+ */
+export const PLAN_LOGIC_VERSION = 1;
+
+/** Rebuilds only the plans built under older rules, then marks them current. */
+export async function rebuildOutdatedPlans(): Promise<void> {
+  const outdated = await prisma.trainingPlanConfig
+    .findMany({ where: { planLogicVersion: { lt: PLAN_LOGIC_VERSION } }, select: { userId: true } })
+    .catch((err) => {
+      console.error('[training-plan] could not check for outdated plans:', err);
+      return [];
+    });
+  for (const { userId } of outdated) {
+    try {
+      await generatePlanWindow(userId);
+      await prisma.trainingPlanConfig.update({ where: { userId }, data: { planLogicVersion: PLAN_LOGIC_VERSION } });
+      console.log(`[training-plan] rebuilt plan for user ${userId} under plan rules v${PLAN_LOGIC_VERSION}`);
+    } catch (err) {
+      console.error(`[training-plan] failed to rebuild plan for user ${userId}:`, err);
+    }
+  }
+}
+
 export async function regenerateAllPlans(): Promise<void> {
   const configs = await prisma.trainingPlanConfig.findMany({ select: { userId: true } });
   for (const { userId } of configs) {
