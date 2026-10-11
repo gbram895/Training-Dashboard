@@ -1,7 +1,13 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from './prisma.js';
 import { fetchWorkoutLibrary, type ParsedWorkoutFile, type PlannedDiscipline } from './workoutLibrary.js';
-import { CATEGORY_ORDER, estimatedTssForBucket, type WorkoutCategory } from './workoutIntensity.js';
+import {
+  CATEGORY_ORDER,
+  estimateIntensityAndStress,
+  estimatedTssForBucket,
+  type WorkoutCategory,
+  type WorkoutSegment,
+} from './workoutIntensity.js';
 import { judgeRamp, RAMP_WINDOW_DAYS, type RampBand } from './rampRate.js';
 import { computeFitnessSeries } from './fitness.js';
 import { sleepQualityScore } from './sleepAnalysis.js';
@@ -258,9 +264,22 @@ function rotateAmongClosest(
   pool: ParsedWorkoutFile[],
   targetMinutes: number,
   seed: number,
+  extendTo: number | null = null,
 ): ParsedWorkoutFile {
+  // A session that will be topped up with steady riding (see extendToFill)
+  // fits any day it isn't longer than, so among those length stops being a
+  // reason to prefer one over another. Without this the longest file of a type
+  // won every big day — and in a JOIN library the longest interval sessions
+  // are the "– Lang" race simulations, which is how a week with plenty of time
+  // turned into a race simulation every day.
+  const fitsByExtension = (w: ParsedWorkoutFile) =>
+    extendTo != null && w.durationMin != null && w.durationMin >= MIN_EXTENDABLE_MIN && w.durationMin <= extendTo;
   const distance = (w: ParsedWorkoutFile) =>
-    w.durationMin == null ? Number.POSITIVE_INFINITY : Math.abs(w.durationMin - targetMinutes);
+    w.durationMin == null
+      ? Number.POSITIVE_INFINITY
+      : fitsByExtension(w)
+        ? 0
+        : Math.abs(w.durationMin - targetMinutes);
   const best = pool.reduce((a, w) => (distance(w) < distance(a) ? w : a), pool[0]);
   const bestDistance = distance(best);
   if (!Number.isFinite(bestDistance)) return best;
@@ -271,6 +290,88 @@ function rotateAmongClosest(
     .filter((w) => distance(w) <= bestDistance + DURATION_TIE_MINUTES)
     .sort((a, b) => a.path.localeCompare(b.path));
   return equallyGood[seed % equallyGood.length] ?? best;
+}
+
+// A JOIN interval session is an hour to ninety minutes, and a day can have
+// three hours. Picking the closest length left that time unused (a 1h session
+// on a 3h day) or, where a longer file existed, always handed back the same
+// handful of long race simulations. JOIN's own "Middel" and "Lang" versions
+// are built exactly the way this does it: the same intervals with a long
+// block of steady riding added. So a session that is clearly shorter than the
+// day gets that block, sized to the time there is.
+const EXTEND_MIN_GAP_MIN = 20;
+// Below this a session is mostly warm-up, and topping it up to three hours
+// would turn it into an endurance ride with a few efforts in it.
+const MIN_EXTENDABLE_MIN = 45;
+// Running volume is what gets people hurt, so a run is only topped up to a
+// normal run's length, and to a long run's on the week's long day.
+const RUN_EXTEND_CAP_MIN = 90;
+const LONG_RUN_EXTEND_CAP_MIN = 150;
+// Steady endurance as a fraction of threshold, per how the session is
+// prescribed: JOIN's own "duur" riding is 65% of FTP; an easy run sits around
+// 80% of threshold speed or heart rate.
+const STEADY_FRACTION: Record<NonNullable<WorkoutSegment['targetMetric']>, number> = {
+  power: 0.65,
+  pace: 0.8,
+  hr: 0.8,
+};
+
+/** How long a session may be topped up to on this day, or null when it may not be. */
+function extendableTo(discipline: PlannedDiscipline, targetMinutes: number, isLongDay: boolean): number | null {
+  const cap = discipline === 'RUN' ? (isLongDay ? LONG_RUN_EXTEND_CAP_MIN : RUN_EXTEND_CAP_MIN) : targetMinutes;
+  const limit = Math.min(targetMinutes, cap);
+  return limit >= MIN_EXTENDABLE_MIN + EXTEND_MIN_GAP_MIN ? limit : null;
+}
+
+/**
+ * The workout with a block of steady riding (or running) added so it fills
+ * `extendTo` minutes, or null when it is already close enough or can't be
+ * extended. The block goes in before the cool-down, where JOIN puts it.
+ */
+function extendToFill(
+  workout: ParsedWorkoutFile,
+  extendTo: number,
+): { workout: ParsedWorkoutFile; addedMin: number } | null {
+  const segments = workout.segments;
+  if (workout.durationMin == null || !segments?.length) return null;
+  const addedMin = extendTo - workout.durationMin;
+  if (addedMin < EXTEND_MIN_GAP_MIN) return null;
+
+  const metric =
+    segments.find((s) => s.targetMetric != null)?.targetMetric ?? (workout.discipline === 'RUN' ? 'pace' : 'power');
+  const steady = STEADY_FRACTION[metric];
+  const band = metric === 'power' ? 0.05 : 0.03;
+
+  // The cool-down is the run of easy steps at the very end.
+  let insertAt = segments.length;
+  while (
+    insertAt > 0 &&
+    (segments[insertAt - 1].role === 'cooldown' ||
+      (segments[insertAt - 1].intensityFraction != null && segments[insertAt - 1].intensityFraction! < steady))
+  ) {
+    insertAt--;
+  }
+  // An all-easy session has no distinct cool-down; keep its last step last.
+  if (insertAt === 0) insertAt = Math.max(0, segments.length - 1);
+
+  const block: WorkoutSegment = {
+    durationSec: addedMin * 60,
+    intensityFraction: steady,
+    intensityLow: steady - band,
+    intensityHigh: steady + band,
+    targetMetric: metric,
+  };
+  const extended = [...segments.slice(0, insertAt), block, ...segments.slice(insertAt)];
+  return {
+    workout: {
+      ...workout,
+      segments: extended,
+      durationMin: workout.durationMin + addedMin,
+      // The session's character (its core effort) doesn't change, but its load does.
+      trainingStress: estimateIntensityAndStress(extended).trainingStress ?? workout.trainingStress,
+    },
+    addedMin,
+  };
 }
 
 /**
@@ -309,6 +410,7 @@ function pickWorkout(
   recent: RecentPick[],
   seed: number,
   hardMaxMinutes?: number,
+  extendTo: number | null = null,
 ): PickResult | null {
   const byDiscipline = library.filter((w) => w.discipline === discipline);
   if (byDiscipline.length === 0) return null;
@@ -340,7 +442,7 @@ function pickWorkout(
 
   const inCategory = ofCategory(category);
   const freshInCategory = inCategory.filter(isFresh);
-  if (freshInCategory.length > 0) return result(rotateAmongClosest(freshInCategory, targetMinutes, seed));
+  if (freshInCategory.length > 0) return result(rotateAmongClosest(freshInCategory, targetMinutes, seed, extendTo));
 
   if (inCategory.length > 0) {
     // Everything of this type that fits the day was used in the last few days.
@@ -360,8 +462,8 @@ function pickWorkout(
         const fresh = ofCategory(alternative).filter(isFresh);
         if (fresh.length > 0) {
           return result(
-            rotateAmongClosest(fresh, targetMinutes, seed),
-            `A ${alternative.toLowerCase()} session instead of ${category.toLowerCase()}: every ` +
+            rotateAmongClosest(fresh, targetMinutes, seed, extendTo),
+            `${alternative === 'ENDURANCE' ? 'An' : 'A'} ${alternative.toLowerCase()} session instead of ${category.toLowerCase()}: every ` +
               `${category.toLowerCase()} ${discipline === 'RUN' ? 'run' : 'ride'} in your library that fits ` +
               `${formatMinutes(targetMinutes)} was used in the last few days.`,
             alternative,
@@ -374,7 +476,7 @@ function pickWorkout(
     // corner of the library reads as a gap to fill rather than a broken plan.
     const fitting = new Set(inCategory.map((w) => workoutFamily(w.name))).size;
     return result(
-      rotateAmongClosest(inCategory, targetMinutes, seed),
+      rotateAmongClosest(inCategory, targetMinutes, seed, extendTo),
       `A repeat: your library has ${fitting === 1 ? 'only one' : `only ${fitting}`} ` +
         `${category.toLowerCase()} ${discipline === 'RUN' ? 'run' : 'ride'}${fitting === 1 ? '' : 's'} that ` +
         `fit${fitting === 1 ? 's' : ''} ${formatMinutes(targetMinutes)}. Adding a few more would give this day some variety.`,
@@ -387,7 +489,7 @@ function pickWorkout(
   const pickFrom = (pool: ParsedWorkoutFile[]) => {
     if (pool.length === 0) return null;
     const fresh = pool.filter(isFresh);
-    return result(rotateAmongClosest(fresh.length > 0 ? fresh : pool, targetMinutes, seed));
+    return result(rotateAmongClosest(fresh.length > 0 ? fresh : pool, targetMinutes, seed, extendTo));
   };
   const idx = CATEGORY_ORDER.indexOf(category);
   for (let radius = 1; radius < CATEGORY_ORDER.length; radius++) {
@@ -485,6 +587,7 @@ function decideDay(
   goal: GoalContext | null,
   disciplineOverride?: PlannedDiscipline,
   hardMaxMinutes?: number,
+  isLongDay = false,
 ): GeneratedDay {
   if (!targetHours || targetHours <= 0) {
     return { date, isRestDay: true, restReason: 'No training hours scheduled today' };
@@ -581,7 +684,19 @@ function decideDay(
   // Days apart rather than the raw timestamp, so the rotation advances by one
   // per day rather than jumping by 86,400,000.
   const seed = Math.floor(date.getTime() / 86_400_000);
-  let pick = pickWorkout(library, discipline, targetMinutes, category, ceiling, recentPicks, seed, hardMaxMinutes);
+  const pickFor = (d: PlannedDiscipline) =>
+    pickWorkout(
+      library,
+      d,
+      targetMinutes,
+      category,
+      ceiling,
+      recentPicks,
+      seed,
+      hardMaxMinutes,
+      extendableTo(d, targetMinutes, isLongDay),
+    );
+  let pick = pickFor(discipline);
 
   // A day the goal (rather than the athlete's own schedule) turned into a run
   // falls back to the configured discipline when the library has no run that
@@ -591,13 +706,27 @@ function decideDay(
   // for an explicit disciplineOverride: falling back would silently ignore
   // what the athlete just asked for, so it stays put and says what's missing.
   if (!pick && discipline !== configuredDiscipline && !disciplineOverride) {
-    pick = pickWorkout(library, configuredDiscipline, targetMinutes, category, ceiling, recentPicks, seed, hardMaxMinutes);
+    pick = pickFor(configuredDiscipline);
   }
 
   if (pick?.note) {
     // A swapped session type makes the goal's "why" line wrong, so the note
     // replaces it; a repeat keeps it and says why it is a repeat.
     focus = pick.category !== category ? pick.note : focus ? `${focus} ${pick.note}` : pick.note;
+  }
+
+  // Fill the day: a session clearly shorter than the time there is gets a
+  // block of steady riding or running, rather than leaving hours unused.
+  if (pick) {
+    const extendTo = extendableTo(pick.workout.discipline, targetMinutes, isLongDay);
+    const extended = extendTo != null ? extendToFill(pick.workout, extendTo) : null;
+    if (extended) {
+      pick = { ...pick, workout: extended.workout };
+      const note =
+        `Includes ${formatMinutes(extended.addedMin)} of steady ` +
+        `${pick.workout.discipline === 'RUN' ? 'running' : 'riding'} before the cool-down, to use the time you have.`;
+      focus = focus ? `${focus} ${note}` : note;
+    }
   }
 
   return pick
@@ -760,6 +889,7 @@ async function runProjection(
 
     // Which goal's demands this day trains for: normally the anchor, but a day
     // inside another goal's taper belongs to that goal instead.
+    const isLongDay = date.getUTCDay() === longDay.dayOfWeek && longDay.hours >= LONG_DAY_MIN_HOURS;
     const dayGoal = targets.length ? goalForDay(targets, periodization?.targetId ?? null, anchor) : null;
     const legs = dayGoal ? legsFor(dayGoal) : null;
     const goalContext: GoalContext | null =
@@ -768,7 +898,7 @@ async function runProjection(
             legs,
             goalName: dayGoal.name,
             emphasis: emphasisFor(periodization?.phase ?? null, periodization?.daysToEvent ?? Number.MAX_SAFE_INTEGER),
-            isLongDay: date.getUTCDay() === longDay.dayOfWeek && longDay.hours >= LONG_DAY_MIN_HOURS,
+            isLongDay,
             recentCategories: recent.all,
             recentByDiscipline: recent.byDiscipline,
             keySessionsSoFar,
@@ -837,6 +967,7 @@ async function runProjection(
           goalContext,
           disciplineOverrides?.get(date.getTime()),
           calendarBound ? slot.longestFreeMin : undefined,
+          isLongDay,
         ),
         periodization,
       };
