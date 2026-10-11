@@ -22,7 +22,7 @@ import { runAllSyncs } from './lib/healthSyncJob.js';
 import { runAllGarminSyncs } from './lib/garminSync.js';
 import { stravaConfigured } from './lib/strava.js';
 import { runAllStravaSyncs } from './lib/stravaSync.js';
-import { regenerateAllPlans } from './lib/trainingPlan.js';
+import { rebuildOutdatedPlans, regenerateAllPlans } from './lib/trainingPlan.js';
 import { pushConfigured, sendDailyWorkoutReminders, sendWeeklyAvailabilityCheckin } from './lib/webPush.js';
 import { notifyAllNewLibraryWorkouts } from './lib/newWorkoutNotifications.js';
 import { ALWAYS_CATCH_UP, primeJobs, registerJob, runDueJobs } from './lib/scheduler.js';
@@ -217,9 +217,10 @@ app.listen(PORT, () => {
 
   // A deploy can change how sessions are picked, but the days already planned
   // are stored rows: without this they kept the old picks until the 04:00
-  // rebuild, so a fix to the plan looked like it had done nothing. Picks are
-  // seeded by date, so rebuilding on an ordinary restart changes nothing.
-  void regenerateAllPlans();
+  // rebuild, so a fix to the plan looked like it had done nothing. Only plans
+  // built under older rules are rebuilt, so an ordinary restart (the free
+  // instance sleeps and wakes all day) never touches the plan.
+  void rebuildOutdatedPlans();
 
   primeJobs()
     .then(() => {

@@ -321,6 +321,11 @@ model TrainingPlanConfig {
   // a day's standing hours and are what the private calendar is subtracted
   // from. See lib/calendarAvailability.ts.
   trainingWindows Json?
+  // Which version of the plan-picking rules last built this athlete's plan
+  // (PLAN_LOGIC_VERSION in lib/trainingPlan.ts). A deploy that changes the
+  // rules rebuilds plans built under an older version once; an ordinary
+  // restart leaves the plan alone.
+  planLogicVersion Int @default(0)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
