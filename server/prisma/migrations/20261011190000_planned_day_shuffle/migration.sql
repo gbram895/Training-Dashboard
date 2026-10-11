@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "PlannedDay" ADD COLUMN "shuffle" INTEGER NOT NULL DEFAULT 0;

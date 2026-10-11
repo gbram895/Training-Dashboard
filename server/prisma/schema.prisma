@@ -462,6 +462,11 @@ model PlannedDay {
   // which specific workout, just constrained to this discipline. See
   // lib/trainingPlan.ts's setDayDiscipline.
   disciplineOverride     PlannedDiscipline?
+  // How many times the athlete has asked for a different workout on this day
+  // ("Shuffle" on the Suggested Training card). Each tap moves the pick on to
+  // another session of the same type that fits the day; kept across
+  // regenerations so the shuffled pick stays put. See setDayShuffle.
+  shuffle                Int                @default(0)
   // What the periodisation asked of this day, recorded so the Plan tab and the
   // weekly review can explain why a day is bigger or smaller than the standing
   // weekly hours. Null when the user has no TrainingTarget. See

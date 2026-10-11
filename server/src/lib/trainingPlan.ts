@@ -265,6 +265,7 @@ function rotateAmongClosest(
   targetMinutes: number,
   seed: number,
   extendTo: number | null = null,
+  shuffle = 0,
 ): ParsedWorkoutFile {
   // A session that will be topped up with steady riding (see extendToFill)
   // fits any day it isn't longer than, so among those length stops being a
@@ -289,8 +290,26 @@ function rotateAmongClosest(
   const equallyGood = pool
     .filter((w) => distance(w) <= bestDistance + DURATION_TIE_MINUTES)
     .sort((a, b) => a.path.localeCompare(b.path));
-  return equallyGood[seed % equallyGood.length] ?? best;
+  const unshuffled = equallyGood[seed % equallyGood.length] ?? best;
+  if (shuffle <= 0) return unshuffled;
+
+  // A shuffle never hands back the session it is replacing. Where only one
+  // session suits the day about equally well, the next-closest few are let
+  // in, so the button always has somewhere to go.
+  let choices = equallyGood;
+  if (choices.length < SHUFFLE_MIN_CHOICES) {
+    choices = pool
+      .filter((w) => Number.isFinite(distance(w)))
+      .sort((a, b) => distance(a) - distance(b) || a.path.localeCompare(b.path))
+      .slice(0, SHUFFLE_MIN_CHOICES)
+      .sort((a, b) => a.path.localeCompare(b.path));
+  }
+  const others = choices.filter((w) => w.path !== unshuffled.path);
+  return others.length ? others[(seed + shuffle - 1) % others.length] : unshuffled;
 }
+
+/** How many sessions a shuffle cycles through at least, when the library has them. */
+const SHUFFLE_MIN_CHOICES = 5;
 
 // A JOIN interval session is an hour to ninety minutes, and a day can have
 // three hours. Picking the closest length left that time unused (a 1h session
@@ -411,6 +430,7 @@ function pickWorkout(
   seed: number,
   hardMaxMinutes?: number,
   extendTo: number | null = null,
+  shuffle = 0,
 ): PickResult | null {
   const byDiscipline = library.filter((w) => w.discipline === discipline);
   if (byDiscipline.length === 0) return null;
@@ -442,7 +462,13 @@ function pickWorkout(
 
   const inCategory = ofCategory(category);
   const freshInCategory = inCategory.filter(isFresh);
-  if (freshInCategory.length > 0) return result(rotateAmongClosest(freshInCategory, targetMinutes, seed, extendTo));
+  // A shuffle on a day with only one session of its type that fits has
+  // nowhere to go inside that type, so it looks one type over, the same way an
+  // exhausted type does below. Otherwise the button would do nothing.
+  const nothingToShuffleTo = shuffle > 0 && freshInCategory.length === 1;
+  if (freshInCategory.length > 0 && !nothingToShuffleTo) {
+    return result(rotateAmongClosest(freshInCategory, targetMinutes, seed, extendTo, shuffle));
+  }
 
   if (inCategory.length > 0) {
     // Everything of this type that fits the day was used in the last few days.
@@ -462,21 +488,32 @@ function pickWorkout(
         const fresh = ofCategory(alternative).filter(isFresh);
         if (fresh.length > 0) {
           return result(
-            rotateAmongClosest(fresh, targetMinutes, seed, extendTo),
-            `${alternative === 'ENDURANCE' ? 'An' : 'A'} ${alternative.toLowerCase()} session instead of ${category.toLowerCase()}: every ` +
-              `${category.toLowerCase()} ${discipline === 'RUN' ? 'run' : 'ride'} in your library that fits ` +
-              `${formatMinutes(targetMinutes)} was used in the last few days.`,
+            rotateAmongClosest(fresh, targetMinutes, seed, extendTo, shuffle),
+            `${alternative === 'ENDURANCE' ? 'An' : 'A'} ${alternative.toLowerCase()} session instead of ${category.toLowerCase()}: ` +
+              (nothingToShuffleTo
+                ? `your library has only one ${category.toLowerCase()} ${discipline === 'RUN' ? 'run' : 'ride'} that fits ` +
+                  `${formatMinutes(targetMinutes)}, so the shuffle looked one type over.`
+                : `every ${category.toLowerCase()} ${discipline === 'RUN' ? 'run' : 'ride'} in your library that fits ` +
+                  `${formatMinutes(targetMinutes)} was used in the last few days.`),
             alternative,
           );
         }
       }
     }
 
+    if (nothingToShuffleTo) {
+      return result(
+        freshInCategory[0],
+        `Nothing to shuffle to: this is the only ${discipline === 'RUN' ? 'run' : 'ride'} in your library ` +
+          `that fits ${formatMinutes(targetMinutes)} today.`,
+      );
+    }
+
     // Nothing else fits either, so the repeat stands — but say so, so a thin
     // corner of the library reads as a gap to fill rather than a broken plan.
     const fitting = new Set(inCategory.map((w) => workoutFamily(w.name))).size;
     return result(
-      rotateAmongClosest(inCategory, targetMinutes, seed, extendTo),
+      rotateAmongClosest(inCategory, targetMinutes, seed, extendTo, shuffle),
       `A repeat: your library has ${fitting === 1 ? 'only one' : `only ${fitting}`} ` +
         `${category.toLowerCase()} ${discipline === 'RUN' ? 'run' : 'ride'}${fitting === 1 ? '' : 's'} that ` +
         `fit${fitting === 1 ? 's' : ''} ${formatMinutes(targetMinutes)}. Adding a few more would give this day some variety.`,
@@ -489,7 +526,7 @@ function pickWorkout(
   const pickFrom = (pool: ParsedWorkoutFile[]) => {
     if (pool.length === 0) return null;
     const fresh = pool.filter(isFresh);
-    return result(rotateAmongClosest(fresh.length > 0 ? fresh : pool, targetMinutes, seed, extendTo));
+    return result(rotateAmongClosest(fresh.length > 0 ? fresh : pool, targetMinutes, seed, extendTo, shuffle));
   };
   const idx = CATEGORY_ORDER.indexOf(category);
   for (let radius = 1; radius < CATEGORY_ORDER.length; radius++) {
@@ -588,6 +625,7 @@ function decideDay(
   disciplineOverride?: PlannedDiscipline,
   hardMaxMinutes?: number,
   isLongDay = false,
+  shuffle = 0,
 ): GeneratedDay {
   if (!targetHours || targetHours <= 0) {
     return { date, isRestDay: true, restReason: 'No training hours scheduled today' };
@@ -695,6 +733,7 @@ function decideDay(
       seed,
       hardMaxMinutes,
       extendableTo(d, targetMinutes, isLongDay),
+      shuffle,
     );
   let pick = pickFor(discipline);
 
@@ -828,6 +867,7 @@ async function runProjection(
   manualOverrides?: Map<number, ManualOverrideRow>,
   disciplineOverrides?: Map<number, PlannedDiscipline>,
   slots?: Map<number, DaySlot>,
+  shuffles?: Map<number, number>,
 ): Promise<GeneratedDay[]> {
   const fitness = await computeFitnessSeries(userId);
   let ctl = fitness.length ? fitness[fitness.length - 1].ctl : 0;
@@ -968,6 +1008,7 @@ async function runProjection(
           disciplineOverrides?.get(date.getTime()),
           calendarBound ? slot.longestFreeMin : undefined,
           isLongDay,
+          shuffles?.get(date.getTime()) ?? 0,
         ),
         periodization,
       };
@@ -1151,11 +1192,13 @@ export async function generatePlanWindow(userId: string, days = ROLLING_WINDOW_D
       manualOverride: true,
       availableHoursOverride: true,
       disciplineOverride: true,
+      shuffle: true,
     },
   });
   const manualOverrides = new Map<number, ManualOverrideRow>();
   const hourOverrides = new Map<number, number>();
   const disciplineOverrides = new Map<number, PlannedDiscipline>();
+  const shuffles = new Map<number, number>();
   for (const row of existingRows) {
     if (row.manualOverride) {
       manualOverrides.set(row.date.getTime(), {
@@ -1167,6 +1210,7 @@ export async function generatePlanWindow(userId: string, days = ROLLING_WINDOW_D
     }
     if (row.availableHoursOverride != null) hourOverrides.set(row.date.getTime(), row.availableHoursOverride);
     if (row.disciplineOverride != null) disciplineOverrides.set(row.date.getTime(), row.disciplineOverride);
+    if (row.shuffle > 0) shuffles.set(row.date.getTime(), row.shuffle);
   }
 
   const slots = await daySlots(userId, dates, config.trainingWindows);
@@ -1179,6 +1223,7 @@ export async function generatePlanWindow(userId: string, days = ROLLING_WINDOW_D
     manualOverrides,
     disciplineOverrides,
     slots,
+    shuffles,
   );
   for (const generated of generatedDays) {
     if (generated.skipUpsert) continue;
@@ -1300,6 +1345,35 @@ export async function setDayDiscipline(userId: string, date: Date, discipline: P
   if (!existing) return null;
 
   await prisma.plannedDay.update({ where: { id: existing.id }, data: { disciplineOverride: discipline } });
+  await generatePlanWindow(userId);
+
+  return prisma.plannedDay.findUnique({ where: { userId_date: { userId, date: day } } });
+}
+
+/**
+ * "Shuffle" on the Suggested Training card: a different workout for one day,
+ * of the same type and fitted to the same time. The count is kept on the row,
+ * so later regenerations keep the shuffled pick rather than undoing it. A day
+ * the athlete had rearranged by hand goes back to the algorithm, since asking
+ * for something else is asking the algorithm to choose.
+ */
+export async function setDayShuffle(userId: string, date: Date) {
+  const config = await prisma.trainingPlanConfig.findUnique({ where: { userId } });
+  if (!config) return null;
+
+  await ensureWindowGenerated(userId);
+
+  const day = utcMidnight(date);
+  const today = utcMidnight(new Date());
+  if (day < today) return null;
+
+  const existing = await prisma.plannedDay.findUnique({ where: { userId_date: { userId, date: day } } });
+  if (!existing) return null;
+
+  await prisma.plannedDay.update({
+    where: { id: existing.id },
+    data: { shuffle: { increment: 1 }, manualOverride: false },
+  });
   await generatePlanWindow(userId);
 
   return prisma.plannedDay.findUnique({ where: { userId_date: { userId, date: day } } });
