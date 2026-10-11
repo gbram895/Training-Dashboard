@@ -14,8 +14,9 @@ export function buildAuthorizeUrl(redirectUri: string, state: string): string {
     response_type: 'code',
     redirect_uri: redirectUri,
     approval_prompt: 'auto',
-    // activity:write lets IndoorWarior's indoor rides be uploaded through Gradient.
-    scope: 'activity:read_all,activity:write',
+    // activity:write lets IndoorWarior's indoor rides be uploaded through Gradient;
+    // read and read_all let it list and ride the athlete's routes, private ones included.
+    scope: 'read,read_all,activity:read_all,activity:write',
     state,
   });
   return `https://www.strava.com/oauth/authorize?${params.toString()}`;
@@ -76,6 +77,40 @@ export async function listActivities(accessToken: string, page: number, perPage:
   });
   if (!res.ok) throw new Error(`Strava list activities failed: ${res.status} ${await res.text()}`);
   return res.json() as Promise<StravaActivity[]>;
+}
+
+// ---- Routes, for IndoorWarior to ride. Route ids outgrow a JS number, so
+// they travel as id_str.
+export class StravaScopeError extends Error {
+  constructor(public status: number, message: string) { super(message); }
+}
+
+export interface StravaRoute {
+  id_str: string;
+  name: string;
+  distance: number; // m
+  elevation_gain: number; // m
+  type: number; // 1 ride, 2 run
+  sub_type: number; // 1 road, 2 mountain bike, 3 cross, 4 trail, 5 mixed
+  starred: boolean;
+  updated_at: string;
+}
+
+async function stravaGet(accessToken: string, path: string): Promise<globalThis.Response> {
+  const res = await fetch(`https://www.strava.com/api/v3${path}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (res.status === 401 || res.status === 403) throw new StravaScopeError(res.status, await res.text());
+  if (!res.ok) throw new Error(`Strava ${path} failed: ${res.status} ${await res.text()}`);
+  return res;
+}
+
+export async function listRoutes(accessToken: string, page: number, perPage: number): Promise<StravaRoute[]> {
+  const athlete = (await (await stravaGet(accessToken, '/athlete')).json()) as { id: number };
+  const params = new URLSearchParams({ page: String(page), per_page: String(perPage) });
+  return (await stravaGet(accessToken, `/athletes/${athlete.id}/routes?${params.toString()}`)).json() as Promise<StravaRoute[]>;
+}
+
+export async function routeGpx(accessToken: string, routeId: string): Promise<string> {
+  return (await stravaGet(accessToken, `/routes/${routeId}/export_gpx`)).text();
 }
 
 interface StravaStreamSet {

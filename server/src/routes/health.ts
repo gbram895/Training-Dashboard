@@ -9,7 +9,7 @@ import { buildAuthorizeUrl, dropboxConfigured, exchangeCodeForTokens } from '../
 import { completeGarminAccountConnect, connectGarminAccountAndSave, runGarminSyncForUser } from '../lib/garminSync.js';
 import { pushWorkoutToGarmin } from '../lib/garminWorkoutPush.js';
 import { friendlyGarminAuthError } from '../lib/garminAuth.js';
-import { buildAuthorizeUrl as buildStravaAuthorizeUrl, stravaConfigured, StravaUploadError, uploadFitActivity, markNotTrainer, uploadActivityId, stravaExternalId } from '../lib/strava.js';
+import { buildAuthorizeUrl as buildStravaAuthorizeUrl, stravaConfigured, StravaUploadError, uploadFitActivity, markNotTrainer, uploadActivityId, stravaExternalId, listRoutes, routeGpx, StravaScopeError } from '../lib/strava.js';
 import { connectStravaAccount, getValidAccessToken, runStravaSyncForUser } from '../lib/stravaSync.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -429,6 +429,51 @@ router.post('/strava/upload', requireAuth, async (req: AuthedRequest, res) => {
     }
     console.error(`[strava] upload failed for user ${req.userId}:`, err);
     res.status(502).json({ error: err instanceof Error ? err.message : 'Strava upload failed' });
+  }
+});
+
+// The athlete's Strava routes, and one as GPX, for IndoorWarior to ride.
+// Tokens from before routes were asked for lack the read scopes; the answer
+// then says to reconnect, like an upload without permission does.
+const routeReconnect = (res: Response) => res.status(403).json({
+  error: 'Strava has not given Gradient permission to read your routes. Reconnect Strava to allow it.',
+  reconnect: true,
+});
+
+router.get('/strava/routes', requireAuth, async (req: AuthedRequest, res) => {
+  const config = await prisma.stravaSyncConfig.findUnique({ where: { userId: req.userId } });
+  if (!config) return res.status(409).json({ error: 'Strava is not connected in Gradient.', reconnect: true });
+  const page = Math.max(1, Math.min(20, Number(req.query.page) || 1));
+  try {
+    const accessToken = await getValidAccessToken(req.userId!, config);
+    const routes = await listRoutes(accessToken, page, 50);
+    res.json({
+      routes: routes.map(r => ({
+        id: r.id_str, name: r.name, distance: r.distance, elevationGain: r.elevation_gain,
+        sport: r.type === 2 ? 'run' : 'ride', surface: ({ 1: 'road', 2: 'mtb', 3: 'cx', 4: 'trail', 5: 'mixed' } as Record<number, string>)[r.sub_type] ?? null,
+        starred: r.starred, updatedAt: r.updated_at,
+      })),
+      more: routes.length === 50,
+    });
+  } catch (err) {
+    if (err instanceof StravaScopeError) return routeReconnect(res);
+    console.error(`[strava] routes failed for user ${req.userId}:`, err);
+    res.status(502).json({ error: err instanceof Error ? err.message : 'Strava did not answer' });
+  }
+});
+
+router.get('/strava/routes/:id/gpx', requireAuth, async (req: AuthedRequest, res) => {
+  const id = String(req.params.id);
+  if (!/^\d{1,25}$/.test(id)) return res.status(400).json({ error: 'Not a route id.' });
+  const config = await prisma.stravaSyncConfig.findUnique({ where: { userId: req.userId } });
+  if (!config) return res.status(409).json({ error: 'Strava is not connected in Gradient.', reconnect: true });
+  try {
+    const accessToken = await getValidAccessToken(req.userId!, config);
+    res.type('application/gpx+xml').send(await routeGpx(accessToken, id));
+  } catch (err) {
+    if (err instanceof StravaScopeError) return routeReconnect(res);
+    console.error(`[strava] route gpx failed for user ${req.userId}:`, err);
+    res.status(502).json({ error: err instanceof Error ? err.message : 'Strava did not answer' });
   }
 });
 
