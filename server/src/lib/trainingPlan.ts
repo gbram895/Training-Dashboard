@@ -444,7 +444,14 @@ function pickWorkout(
   // the hour between work and dinner does not stretch to 80 minutes, so there
   // the tolerance stops at the gap, and a workout of unknown length can't be
   // trusted to fit it.
-  const maxAllowedMinutes = Math.min(Math.max(targetMinutes * 1.5, targetMinutes + 20), hardMaxMinutes ?? Infinity);
+  //
+  // An hour is never "wildly longer", though. JOIN sessions start at about an
+  // hour, so without that floor a 35-minute recovery-week day had nothing to
+  // pick from and became a rest day.
+  const maxAllowedMinutes = Math.min(
+    Math.max(targetMinutes * 1.5, targetMinutes + 20, SHORT_DAY_FLOOR_MIN),
+    hardMaxMinutes ?? Infinity,
+  );
   const withinTolerance = byDiscipline.filter((w) =>
     w.durationMin == null ? hardMaxMinutes == null : w.durationMin <= maxAllowedMinutes,
   );
@@ -1162,12 +1169,26 @@ async function daySlots(userId: string, dates: Date[], storedWindows: Prisma.Jso
   return slots;
 }
 
+/** Without a calendar gap capping the day, a session up to this long is always allowed. */
+const SHORT_DAY_FLOOR_MIN = 60;
+
+/** A warm-up for a race or test, which the plan never schedules as a session on its own. */
+export function isWarmUpOnly(name: string): boolean {
+  return /warming[\s-]?up|warm[\s-]?up|opwarm/i.test(name);
+}
+
 /** (Re)generates today through the next `days` days for a user with an active plan config. */
 export async function generatePlanWindow(userId: string, days = ROLLING_WINDOW_DAYS): Promise<void> {
   const config = await prisma.trainingPlanConfig.findUnique({ where: { userId } });
   if (!config) return;
 
-  const library = await fetchWorkoutLibrary(userId).catch(() => [] as ParsedWorkoutFile[]);
+  // Race-day warm-ups stay in the library for picking by hand, but they are
+  // preparation for an event, not a day's training. Left in, a 20-minute
+  // "Race-/test warming-up" was the closest fit for every short day (a
+  // recovery week halves the standing hours) and came back day after day.
+  const library = (await fetchWorkoutLibrary(userId).catch(() => [] as ParsedWorkoutFile[])).filter(
+    (w) => !isWarmUpOnly(w.name),
+  );
 
   const today = utcMidnight(new Date());
   const dates: Date[] = [];
@@ -1414,7 +1435,7 @@ export async function getPlannedWeek(userId: string) {
  * plans that are already built. Plans built under an older version are rebuilt
  * once, the next time the server starts; nothing else ever reads it.
  */
-export const PLAN_LOGIC_VERSION = 1;
+export const PLAN_LOGIC_VERSION = 2;
 
 /** Rebuilds only the plans built under older rules, then marks them current. */
 export async function rebuildOutdatedPlans(): Promise<void> {
