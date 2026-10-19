@@ -29,6 +29,16 @@ import {
   type GoalLegs,
 } from './goalSpecificity.js';
 import {
+  decideRulebookDay,
+  goalFavours,
+  RECOVERY_SPLIT,
+  rulebookStyle,
+  zoneMinutes,
+  type Confidence,
+  type RulebookDayHistory,
+  type RulebookStyle,
+} from './rulebook.js';
+import {
   describeFree,
   localInstant,
   MIN_SESSION_MIN,
@@ -82,6 +92,21 @@ function categoryFromTsb(tsb: number): WorkoutCategory {
   if (tsb < -5) return 'ENDURANCE';
   if (tsb < 10) return 'TEMPO';
   if (tsb < 25) return 'THRESHOLD';
+  return 'VO2MAX';
+}
+
+/**
+ * The same ceiling read for a rulebook day. The bands above only allow VO2max
+ * work at a Form of +25, which a normal training week never reaches: run
+ * against the rulebook they let no interval session through at all, so the
+ * under-6-hour bands, which are built on intervals, came out entirely easy.
+ * Here ordinary Form allows the rulebook's session, and only real fatigue
+ * holds it back. Every other signal (HRV, sleep, RPE, a missed session, the
+ * ramp) still takes its step off exactly as before.
+ */
+function categoryFromTsbForRulebook(tsb: number): WorkoutCategory {
+  if (tsb < -20) return 'ENDURANCE';
+  if (tsb < -10) return 'TEMPO';
   return 'VO2MAX';
 }
 
@@ -224,8 +249,9 @@ function readinessCeiling(
   tsb: number | null,
   readiness: ReadinessModifiers,
   ramp: RampBand,
+  baseFor: (tsb: number) => WorkoutCategory = categoryFromTsb,
 ): { category: WorkoutCategory; rampLimited: boolean } {
-  const base = tsb != null ? categoryFromTsb(tsb) : 'TEMPO';
+  const base = tsb != null ? baseFor(tsb) : 'TEMPO';
 
   let downgradeSteps = 0;
   if (readiness.hrvRatio != null && readiness.hrvRatio < 0.8) downgradeSteps += 1;
@@ -561,6 +587,10 @@ interface GeneratedDay {
   category?: WorkoutCategory;
   /** One line on why this session, when a typed goal drove the choice. */
   focus?: string | null;
+  /** The rulebook template this session is, and the rulebook's confidence in the day. */
+  templateId?: string | null;
+  confidence?: Confidence | null;
+  confidenceNote?: string | null;
   /** When in the day it goes, when the athlete's windows or calendar say. */
   plannedStart?: Date | null;
   // Where this day sits across all of the athlete's goals, and what that did to
@@ -618,6 +648,19 @@ interface GoalContext {
   weekIndex: number;
 }
 
+/**
+ * What the training rulebook needs to decide a bike day (see lib/rulebook.ts).
+ * Null leaves the day to the goal mix, as before the rulebook existed.
+ */
+interface RulebookContext {
+  style: RulebookStyle;
+  /** The day is in a recovery week or straight after a race, which keeps its easy mix. */
+  recovering: boolean;
+  /** Bike days before this one, real plan history then this window. */
+  history: RulebookDayHistory[];
+  ftpWatts: number;
+}
+
 /** Picks a rest day or a specific workout for one day, given its target hours and projected Form. */
 function decideDay(
   date: Date,
@@ -633,6 +676,7 @@ function decideDay(
   hardMaxMinutes?: number,
   isLongDay = false,
   shuffle = 0,
+  rulebook: RulebookContext | null = null,
 ): GeneratedDay {
   if (!targetHours || targetHours <= 0) {
     return { date, isRestDay: true, restReason: 'No training hours scheduled today' };
@@ -653,6 +697,28 @@ function decideDay(
   // What the athlete's own weekly schedule says this day is, before any goal
   // gets a say.
   const configuredDiscipline: PlannedDiscipline = config.includeRunning && scheduledAsRun ? 'RUN' : 'BIKE';
+
+  // The rulebook covers cycling only, so it plans bike days and leaves runs
+  // to the logic below (Bram, 2026-10-19: runs keep today's logic). A goal
+  // contested on foot, or in both disciplines, keeps the goal mix too, since
+  // that is where its runs are decided.
+  const runGoal = goal != null && (goal.legs.composed || goal.legs.run != null);
+  if (rulebook && configuredDiscipline === 'BIKE' && disciplineOverride !== 'RUN' && !runGoal) {
+    const rulebookCeiling = readinessCeiling(tsb, readiness, ramp, categoryFromTsbForRulebook);
+    return decideRulebookBikeDay(
+      date,
+      targetHours,
+      rulebookCeiling.category,
+      rulebookCeiling.rampLimited,
+      library,
+      recentPicks,
+      goal,
+      rulebook,
+      hardMaxMinutes,
+      isLongDay,
+      shuffle,
+    );
+  }
 
   let category = ceiling;
   let discipline = configuredDiscipline;
@@ -785,6 +851,109 @@ function decideDay(
 }
 
 /**
+ * A bike day decided by the training rulebook: the zone the week's time split
+ * owes, the template that fills it (a matching JOIN file first, else built),
+ * and the confidence note the rulebook asks every session to carry. The
+ * fatigue ceiling, the ramp note and the fill-the-day block work exactly as
+ * they do for any other day.
+ */
+function decideRulebookBikeDay(
+  date: Date,
+  targetHours: number,
+  ceiling: WorkoutCategory,
+  rampLimited: boolean,
+  library: ParsedWorkoutFile[],
+  recentPicks: RecentPick[],
+  goal: GoalContext | null,
+  rulebook: RulebookContext,
+  hardMaxMinutes: number | undefined,
+  isLongDay: boolean,
+  shuffle: number,
+): GeneratedDay {
+  const recentPaths = new Set(recentPicks.map((r) => r.path));
+  const recentFamilies = new Set(recentPicks.map((r) => r.family));
+  const goalKind = goal?.legs.bike?.kind ?? null;
+  const targetMinutes = Math.round(targetHours * 60);
+
+  const pick = decideRulebookDay({
+    date,
+    style: rulebook.style,
+    split: rulebook.recovering ? RECOVERY_SPLIT : rulebook.style.split,
+    history: rulebook.history,
+    ceiling,
+    targetMinutes,
+    hardMaxMinutes,
+    goalKind,
+    longDayForGoal: isLongDay && (goal?.legs.bike?.longSessionMatters ?? false),
+    library: library.filter((w) => w.discipline === 'BIKE'),
+    isFresh: (w) => !recentPaths.has(w.path) && !recentFamilies.has(workoutFamily(w.name)),
+    ftpWatts: rulebook.ftpWatts,
+    seed: Math.floor(date.getTime() / 86_400_000),
+    shuffle,
+  });
+
+  const notes: string[] = [];
+  if (rampLimited) {
+    notes.push('Eased off: your load has climbed sharply against what you have been absorbing.');
+  }
+  notes.push(pick.reason);
+  if (goal && pick.template && goalKind && goalFavours(goalKind, pick.template.id)) {
+    notes.push(`${pick.template.id} is picked with ${goal.goalName} in mind.`);
+  }
+
+  // A built session gets the date in its path, so the .fit download of a
+  // given day finds that day's steps rather than another day's version.
+  let workout = pick.fromLibrary
+    ? pick.workout
+    : { ...pick.workout, path: `${pick.workout.path}@${date.toISOString().slice(0, 10)}` };
+  // A built endurance ride is already the length of the day, so only a
+  // template or a library ride can come up short of it.
+  const extendTo = extendableTo('BIKE', targetMinutes, isLongDay);
+  const extended = extendTo != null ? extendToFill(workout, extendTo) : null;
+  if (extended) {
+    workout = extended.workout;
+    notes.push(`Includes ${formatMinutes(extended.addedMin)} of steady riding before the cool-down, to use the time you have.`);
+  }
+
+  return {
+    date,
+    isRestDay: false,
+    workout,
+    category: workout.category ?? 'ENDURANCE',
+    focus: notes.join(' '),
+    templateId: pick.template?.id ?? null,
+    confidence: pick.confidence,
+    confidenceNote: pick.confidenceNote,
+  };
+}
+
+/** The weekly hours the rulebook's band is read from: the athlete's standing schedule. */
+export function standingWeeklyHours(config: PlanConfigHours & { weeklyHours: number }): number {
+  const scheduled = DAY_KEYS.reduce((sum, key) => sum + (config[key] ?? 0), 0);
+  return scheduled > 0 ? scheduled : config.weeklyHours;
+}
+
+/** The bike days just before `today`, as the rulebook measures its week against. */
+async function recentRulebookHistory(userId: string, today: Date): Promise<RulebookDayHistory[]> {
+  const since = new Date(today);
+  since.setUTCDate(since.getUTCDate() - 7);
+  const rows = await prisma.plannedDay.findMany({
+    where: { userId, date: { gte: since, lt: today }, isRestDay: false, discipline: 'BIKE' },
+    orderBy: { date: 'asc' },
+    select: { date: true, segments: true, durationMin: true, category: true, templateId: true },
+  });
+  return rows.map((r) => {
+    const category = CATEGORY_ORDER.includes(r.category as WorkoutCategory) ? (r.category as WorkoutCategory) : null;
+    return {
+      date: r.date,
+      minutes: zoneMinutes(r.segments as WorkoutSegment[] | null, r.durationMin, category),
+      category,
+      templateId: r.templateId,
+    };
+  });
+}
+
+/**
  * The day of the week the athlete has set aside the most time for, which is
  * the only day a genuinely long session can go. Ties go to the later day, so
  * a Saturday/Sunday pair puts the long one on Sunday rather than Saturday.
@@ -879,14 +1048,20 @@ async function runProjection(
   const today = utcMidnight(new Date());
   // Everything the projection starts from, read side by side: each is its own
   // query and none needs another's answer.
-  const [fitness, readiness, targets, tssPerHour, plannedPicks, recent] = await Promise.all([
+  const [fitness, readiness, targets, tssPerHour, plannedPicks, recent, athlete, rulebookHistory] = await Promise.all([
     computeFitnessSeries(userId),
     getReadinessModifiers(userId),
     prisma.trainingTarget.findMany({ where: { userId }, orderBy: { date: 'asc' } }),
     measureTssPerHour(userId),
     recentPlannedPicks(userId, today),
     recentPlannedCategories(userId, today),
+    prisma.user.findUnique({ where: { id: userId }, select: { trainingLevel: true, ftpWatts: true } }),
+    recentRulebookHistory(userId, today),
   ]);
+  // The rulebook picks its band from the standing weekly schedule, not from
+  // each week's hours: a recovery week or a taper is shorter, not a different
+  // way of training. See lib/rulebook.ts.
+  const style = rulebookStyle(standingWeeklyHours(config), athlete?.trainingLevel ?? 'RECREATIONAL');
   let ctl = fitness.length ? fitness[fitness.length - 1].ctl : 0;
   let atl = fitness.length ? fitness[fitness.length - 1].atl : 0;
   // The real CTL curve, extended day by day as the window is projected, so the
@@ -1022,6 +1197,12 @@ async function runProjection(
           calendarBound ? slot.longestFreeMin : undefined,
           isLongDay,
           shuffles?.get(date.getTime()) ?? 0,
+          {
+            style,
+            recovering: periodization?.phase === 'RECOVERY' || periodization?.phase === 'POST_RACE',
+            history: rulebookHistory,
+            ftpWatts: athlete?.ftpWatts ?? 200,
+          },
         ),
         periodization,
       };
@@ -1051,6 +1232,14 @@ async function runProjection(
     // Feed this day back into the mix the next one is measured against, so the
     // window converges on the goal's target shares rather than each day being
     // decided in isolation.
+    if (!generated.isRestDay && generated.workout?.discipline === 'BIKE') {
+      rulebookHistory.push({
+        date,
+        minutes: zoneMinutes(generated.workout.segments, generated.workout.durationMin, generated.category),
+        category: generated.category ?? null,
+        templateId: generated.templateId ?? null,
+      });
+    }
     if (!generated.isRestDay && generated.category) {
       recent.all.push(generated.category);
       const placedDiscipline = generated.workout?.discipline;
@@ -1117,6 +1306,9 @@ async function upsertPlannedDay(
         segments: Prisma.DbNull,
         category: null,
         focus: null,
+        templateId: null,
+        confidence: null,
+        confidenceNote: null,
         plannedStart: null,
         generatedAt: new Date(),
       }
@@ -1133,6 +1325,9 @@ async function upsertPlannedDay(
         segments: (generated.workout!.segments as Prisma.InputJsonValue | undefined) ?? Prisma.DbNull,
         category: generated.category,
         focus: generated.focus ?? null,
+        templateId: generated.templateId ?? null,
+        confidence: generated.confidence ?? null,
+        confidenceNote: generated.confidenceNote ?? null,
         plannedStart: generated.plannedStart ?? null,
         generatedAt: new Date(),
       };
@@ -1326,6 +1521,9 @@ export async function swapPlannedDays(userId: string, dateA: Date, dateB: Date) 
     segments: row.segments ?? Prisma.DbNull,
     category: row.category,
     focus: row.focus,
+    templateId: row.templateId,
+    confidence: row.confidence,
+    confidenceNote: row.confidenceNote,
     // A time picked for the other day's calendar means nothing on this one.
     plannedStart: null,
   });
@@ -1476,7 +1674,7 @@ export async function getPlannedWeek(userId: string) {
  * plans that are already built. Plans built under an older version are rebuilt
  * once, the next time the server starts; nothing else ever reads it.
  */
-export const PLAN_LOGIC_VERSION = 2;
+export const PLAN_LOGIC_VERSION = 3;
 
 /** Rebuilds only the plans built under older rules, then marks them current. */
 export async function rebuildOutdatedPlans(): Promise<void> {

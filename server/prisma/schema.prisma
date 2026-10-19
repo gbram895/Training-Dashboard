@@ -40,6 +40,15 @@ model User {
   // Used to estimate intensity/training-stress for .fit and .zwo workout library files
   ftpWatts              Int @default(200)
   thresholdPaceSecPerKm Int @default(300)
+
+  // Which side of the training rulebook the athlete is on. At 6-9 hours a week
+  // it decides between a pyramidal and a polarized week. See lib/rulebook.ts.
+  trainingLevel TrainingLevel @default(RECREATIONAL)
+}
+
+enum TrainingLevel {
+  RECREATIONAL
+  COMPETITIVE
 }
 
 // How a workout's `tss` was arrived at, so the UI can be honest about
@@ -484,6 +493,14 @@ model PlannedDay {
   // no typed goal, in which case the pick is purely fitness-and-recovery
   // driven and the Plan tab says so instead. See lib/goalSpecificity.ts.
   focus                  String?
+  // Which rulebook template this session is (VO-3, TH-1, OU-2...), whether
+  // generated or a JOIN file that matched one; null for a library pick made
+  // without one. Read back to cap and vary the templates week by week.
+  templateId             String?
+  // The rulebook's confidence in this day (HIGH / MODERATE / PROVISIONAL) and
+  // the one-line reason, which every planned session has to carry.
+  confidence             String?
+  confidenceNote         String?
   generatedAt            DateTime           @default(now())
   // Set once a day's content is rearranged by hand (calendar drag-and-drop) —
   // the nightly/rolling regeneration in lib/trainingPlan.ts leaves a

@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { apiFetch, ApiError } from '../api/client';
 import LoadingScreen from '../components/LoadingScreen';
-import type { HrZoneSettings, ThresholdSettings } from '../api/types';
+import type { HrZoneSettings, ThresholdSettings, TrainingLevel } from '../api/types';
 import ApiTokenCard from '../components/settings/ApiTokenCard';
 import CalibrationCard from '../components/settings/CalibrationCard';
 import WidgetTokenCard from '../components/settings/WidgetTokenCard';
@@ -10,6 +10,11 @@ import { useAuth } from '../context/AuthContext';
 import { useCachedState } from '../lib/pageCache';
 import { getStoredTheme, setTheme, type Theme } from '../lib/theme';
 import { getExistingSubscription, pushSupported, sendTestPush, subscribeToPush, unsubscribeFromPush } from '../lib/push';
+
+const LEVEL_OPTIONS: { key: TrainingLevel; label: string }[] = [
+  { key: 'RECREATIONAL', label: 'Recreational' },
+  { key: 'COMPETITIVE', label: 'Competitive' },
+];
 
 const THEME_OPTIONS: { key: Theme; label: string }[] = [
   { key: 'light', label: 'Light' },
@@ -43,6 +48,10 @@ export default function Settings() {
   const [thresholdSaved, setThresholdSaved] = useState(false);
   const [thresholdError, setThresholdError] = useState<string | null>(null);
 
+  const [level, setLevel] = useCachedState<TrainingLevel | null>('settings.level', null);
+  const [levelSaving, setLevelSaving] = useState(false);
+  const [levelError, setLevelError] = useState<string | null>(null);
+
   const [pushSubscribed, setPushSubscribed] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushError, setPushError] = useState<string | null>(null);
@@ -54,8 +63,25 @@ export default function Settings() {
       setThresholds(t);
       setPaceInput(paceToString(t.thresholdPaceSecPerKm));
     });
+    apiFetch<{ trainingLevel: TrainingLevel }>('/settings/training-level').then((r) => setLevel(r.trainingLevel));
     getExistingSubscription().then((sub) => setPushSubscribed(!!sub));
   }, []);
+
+  async function changeLevel(next: TrainingLevel) {
+    if (next === level) return;
+    const previous = level;
+    setLevel(next);
+    setLevelSaving(true);
+    setLevelError(null);
+    try {
+      await apiFetch('/settings/training-level', { method: 'PUT', body: JSON.stringify({ trainingLevel: next }) });
+    } catch (err) {
+      setLevel(previous);
+      setLevelError(err instanceof ApiError ? err.message : 'Failed to save');
+    } finally {
+      setLevelSaving(false);
+    }
+  }
 
   async function togglePushReminder() {
     setPushBusy(true);
@@ -161,6 +187,28 @@ export default function Settings() {
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="gd-set-group">
+          <p className="gd-set-group-label">Training level</p>
+          <div className="gd-segmented">
+            {LEVEL_OPTIONS.map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                className={`gd-segmented-option${level === opt.key ? ' gd-on' : ''}`}
+                disabled={levelSaving || level == null}
+                onClick={() => changeLevel(opt.key)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <p className="gd-set-note">
+            Your training rulebook plans 6 to 9 hours a week (and more) pyramidal for recreational riders and polarized for
+            competitive ones. Changing it rebuilds your plan.
+          </p>
+          {levelError && <p className="gd-set-note gd-set-danger">{levelError}</p>}
         </div>
 
         {pushSupported() && (

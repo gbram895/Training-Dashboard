@@ -146,6 +146,36 @@ export interface PlannedDay {
   loadMultiplier?: number | null;
   /** When in the day the session is planned for; null when the plan only knows the day. */
   plannedStart?: string | null;
+  /** The training-rulebook template this session is (VO-3, TH-1...), when it is one. */
+  templateId?: string | null;
+  /** How well the evidence backs this day, and why, as the rulebook asks every session to say. */
+  confidence?: RulebookConfidence | null;
+  confidenceNote?: string | null;
+}
+
+export type TrainingLevel = 'RECREATIONAL' | 'COMPETITIVE';
+export type RulebookConfidence = 'HIGH' | 'MODERATE' | 'PROVISIONAL';
+
+export interface ZoneSplit {
+  LOW: number;
+  MODERATE: number;
+  HIGH: number;
+}
+
+/** Which part of the training rulebook the plan follows. See server/src/lib/rulebook.ts. */
+export interface RulebookSummary {
+  weeklyHours: number;
+  bandLabel: string;
+  level: TrainingLevel;
+  modelLabel: string;
+  /** Target share of time per zone; null where the rulebook reports none (under 6 h). */
+  split: ZoneSplit | null;
+  highSessionsPerWeek: number;
+  confidence: RulebookConfidence;
+  note: string;
+  /** How the next seven days' bike time actually splits. */
+  planned: ZoneSplit | null;
+  plannedHighSessions: number;
 }
 
 /**
