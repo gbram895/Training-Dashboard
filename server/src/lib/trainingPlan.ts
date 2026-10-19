@@ -39,9 +39,7 @@ import {
   type RulebookStyle,
 } from './rulebook.js';
 import {
-  describeFree,
   localInstant,
-  MIN_SESSION_MIN,
   parseTrainingWindows,
   placeSession,
   readCalendar,
@@ -1148,20 +1146,13 @@ async function runProjection(
     // they actually have that day, so the periodisation multiplier is applied
     // to the standing weekly hours only — never to an answer they gave us.
     const explicitHours = hourOverrides?.get(date.getTime());
-    let targetHours =
+    const targetHours =
       explicitHours != null ? explicitHours : config[dayKeyFor(date)] * (periodization?.loadMultiplier ?? 1);
 
-    // The athlete's training windows and their own calendar cap the standing
-    // hours: two free hours is two hours however many the week asked for. An
-    // explicit "I have X hours today" is newer news than the calendar (the
-    // meeting may well have been cancelled), so it is taken as given.
+    // The day is sized by the hours the athlete set for it, never by their
+    // calendar or training windows (Bram's call, 2026-10-19): those only
+    // suggest when in the day the session goes.
     const slot = slots?.get(date.getTime());
-    const calendarBound = slot != null && explicitHours == null && targetHours > 0;
-    let calendarShortened = false;
-    if (calendarBound && slot.longestFreeMin < targetHours * 60) {
-      targetHours = Math.floor(slot.longestFreeMin / 15) / 4;
-      calendarShortened = true;
-    }
 
     // A manually rearranged day (calendar drag-and-drop) keeps its own
     // content — still fed into the fitness projection below, exactly like a
@@ -1177,19 +1168,6 @@ async function runProjection(
         restReason: `${periodization.targetName} — today's the day. Nothing else is planned.`,
         periodization,
       };
-    } else if (calendarShortened && slot!.longestFreeMin < MIN_SESSION_MIN) {
-      generated = {
-        date,
-        isRestDay: true,
-        restReason: !slot!.conflicts.length
-          ? `Your training window today is too short for a session, so it's a rest day.`
-          : slot!.hasOwnWindows
-            ? `Your calendar fills your training time today${
-                slot!.free.length ? ` (free: ${describeFree(slot!)})` : ''
-              }, so it's a rest day.`
-            : `Your calendar has no gap long enough for a session today, so it's a rest day.`,
-        periodization,
-      };
     } else {
       generated = {
         ...decideDay(
@@ -1203,7 +1181,7 @@ async function runProjection(
           recentPicks,
           goalContext,
           disciplineOverrides?.get(date.getTime()),
-          calendarBound ? slot.longestFreeMin : undefined,
+          undefined,
           isLongDay,
           shuffles?.get(date.getTime()) ?? 0,
           {
@@ -1215,25 +1193,12 @@ async function runProjection(
         ),
         periodization,
       };
-      if (generated.isRestDay && calendarShortened) {
-        // The library had nothing short enough for the gap the calendar left;
-        // say it was the calendar, not that the day had no hours.
-        generated.restReason =
-          `Your ${slot!.conflicts.length ? 'calendar' : 'training window'} leaves only ${describeFree(slot!)} today, ` +
-          `and nothing in your library fits that, so it's a rest day.`;
-      }
       if (!generated.isRestDay && slot) {
         const minutes = generated.workout?.durationMin ?? Math.round(targetHours * 60);
         // Only a day the athlete gave hours for gets a time: on a day with
         // no windows of its own the any-time default would put everything at
         // six in the morning, which nobody asked for.
         if (slot.hasOwnWindows) generated.plannedStart = placeSession(slot, minutes);
-        if (calendarShortened) {
-          const note = slot.conflicts.length
-            ? `Shorter than usual to fit your calendar (free ${describeFree(slot)}).`
-            : `Shorter than usual to fit your training window (${describeFree(slot)}).`;
-          generated.focus = generated.focus ? `${note} ${generated.focus}` : note;
-        }
       }
     }
     results.push(generated);
@@ -1685,7 +1650,7 @@ export async function getPlannedWeek(userId: string) {
  * plans that are already built. Plans built under an older version are rebuilt
  * once, the next time the server starts; nothing else ever reads it.
  */
-export const PLAN_LOGIC_VERSION = 4;
+export const PLAN_LOGIC_VERSION = 5;
 
 /** Rebuilds only the plans built under older rules, then marks them current. */
 export async function rebuildOutdatedPlans(): Promise<void> {

@@ -92,7 +92,7 @@ export default function CalendarsModal({ onClose, onChanged }: { onClose: () => 
     <Sheet onClose={onClose} dismissRef={sheet} className="gd-calendars-modal">
       <h2>Calendars</h2>
       <p className="muted">
-        Your own events show on the month view, and the plan fits your training around anything marked busy.
+        Your own events show on the month view, and the plan picks a start time around anything marked busy. How long you train always follows the hours you set for the day.
         All-day events and events shown as free don't block training.
       </p>
 
