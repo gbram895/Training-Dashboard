@@ -870,8 +870,15 @@ function decideRulebookBikeDay(
   isLongDay: boolean,
   shuffle: number,
 ): GeneratedDay {
-  const recentPaths = new Set(recentPicks.map((r) => r.path));
-  const recentFamilies = new Set(recentPicks.map((r) => r.family));
+  // A JOIN ride already planned in the last seven days stays out, on top of
+  // the usual repeat memory, so the day gets a built session instead.
+  const weekAgo = date.getTime() - 6 * 86_400_000;
+  const thisWeek = rulebook.history.filter((h) => h.date.getTime() >= weekAgo && h.date.getTime() < date.getTime());
+  const recentPaths = new Set([...recentPicks.map((r) => r.path), ...thisWeek.flatMap((h) => (h.path ? [h.path] : []))]);
+  const recentFamilies = new Set([
+    ...recentPicks.map((r) => r.family),
+    ...thisWeek.flatMap((h) => (h.path && !h.path.startsWith('rulebook:') ? [workoutFamily(h.name ?? h.path)] : [])),
+  ]);
   const goalKind = goal?.legs.bike?.kind ?? null;
   const targetMinutes = Math.round(targetHours * 60);
 
@@ -940,7 +947,7 @@ async function recentRulebookHistory(userId: string, today: Date): Promise<Ruleb
   const rows = await prisma.plannedDay.findMany({
     where: { userId, date: { gte: since, lt: today }, isRestDay: false, discipline: 'BIKE' },
     orderBy: { date: 'asc' },
-    select: { date: true, segments: true, durationMin: true, category: true, templateId: true },
+    select: { date: true, segments: true, durationMin: true, category: true, templateId: true, sourcePath: true, name: true },
   });
   return rows.map((r) => {
     const category = CATEGORY_ORDER.includes(r.category as WorkoutCategory) ? (r.category as WorkoutCategory) : null;
@@ -949,6 +956,8 @@ async function recentRulebookHistory(userId: string, today: Date): Promise<Ruleb
       minutes: zoneMinutes(r.segments as WorkoutSegment[] | null, r.durationMin, category),
       category,
       templateId: r.templateId,
+      path: r.sourcePath,
+      name: r.name,
     };
   });
 }
@@ -1238,6 +1247,8 @@ async function runProjection(
         minutes: zoneMinutes(generated.workout.segments, generated.workout.durationMin, generated.category),
         category: generated.category ?? null,
         templateId: generated.templateId ?? null,
+        path: generated.workout.path,
+        name: generated.workout.name,
       });
     }
     if (!generated.isRestDay && generated.category) {

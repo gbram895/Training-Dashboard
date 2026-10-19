@@ -690,6 +690,9 @@ export interface RulebookDayHistory {
   /** The session's category, null on a rest day. */
   category: WorkoutCategory | null;
   templateId: string | null;
+  /** The planned session's file and name, so a JOIN ride isn't planned twice in a week. */
+  path: string | null;
+  name: string | null;
 }
 
 export interface RulebookDayInput {
