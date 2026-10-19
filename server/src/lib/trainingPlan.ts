@@ -1674,7 +1674,7 @@ export async function getPlannedWeek(userId: string) {
  * plans that are already built. Plans built under an older version are rebuilt
  * once, the next time the server starts; nothing else ever reads it.
  */
-export const PLAN_LOGIC_VERSION = 3;
+export const PLAN_LOGIC_VERSION = 4;
 
 /** Rebuilds only the plans built under older rules, then marks them current. */
 export async function rebuildOutdatedPlans(): Promise<void> {

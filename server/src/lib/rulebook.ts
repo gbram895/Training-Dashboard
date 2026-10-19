@@ -451,24 +451,54 @@ export function buildTemplateWorkout(t: RulebookTemplate, ftpWatts: number): Par
 const STEADY = 0.65;
 
 /** A steady low-intensity ride filling `minutes`, for a low day the library has nothing fresh for. */
-export function buildEnduranceRide(minutes: number): ParsedWorkoutFile {
+/**
+ * The built easy rides, so a shuffle on an easy day always has somewhere to
+ * go. Every one stays below 75% of FTP, so all of it counts as low.
+ */
+export const ENDURANCE_VARIANTS = ['STEADY', 'ROLLING', 'PROGRESSIVE'] as const;
+export type EnduranceVariant = (typeof ENDURANCE_VARIANTS)[number];
+
+export function buildEnduranceRide(minutes: number, variant: EnduranceVariant = 'STEADY'): ParsedWorkoutFile {
   const total = Math.max(30, Math.round(minutes / 5) * 5);
+  const main = (total - 15) * 60;
+  const body: WorkoutSegment[] = [];
+  let label = 'Endurance ride';
+  let profile = 'Steady at about 65% of FTP: zone 2, just below your first threshold. Conversational the whole way.';
+  if (variant === 'ROLLING' && main >= 20 * 60) {
+    // 10 minutes easy, 10 minutes at the top of zone 2, repeated.
+    label = 'Rolling endurance';
+    profile = 'Alternating 10 minutes at about 60% and 10 minutes at about 72% of FTP. All of it zone 2; the higher blocks should still feel conversational.';
+    for (let left = main, i = 0; left > 0; i++) {
+      const sec = Math.min(600, left);
+      body.push(work(sec, i % 2 === 0 ? 0.6 : 0.72, 0.03));
+      left -= sec;
+    }
+  } else if (variant === 'PROGRESSIVE' && main >= 15 * 60) {
+    // Three equal thirds, each a little firmer, finishing at the top of zone 2.
+    label = 'Progressive endurance';
+    profile = 'Three equal parts at about 60%, 66% and 72% of FTP. Starts very easy and finishes at the top of zone 2, never above it.';
+    const third = Math.round(main / 3);
+    body.push(work(third, 0.6, 0.03), work(third, 0.66, 0.03), work(main - 2 * third, 0.72, 0.03));
+  } else {
+    body.push(work(main, STEADY, 0.05));
+  }
   const segments: WorkoutSegment[] = [
     { ...work(600, 0.55, 0.05), role: 'warmup' },
-    work((total - 15) * 60, STEADY, 0.05),
+    ...body,
     { ...work(300, 0.5, 0.05), role: 'cooldown' },
   ];
   const { intensity, trainingStress } = estimateIntensityAndStress(segments);
   const h = Math.floor(total / 60);
   const m = total % 60;
+  const built = label === 'Endurance ride' ? 'STEADY' : variant;
   return {
-    path: `rulebook:LOW-${total}`,
-    name: `Endurance ride · ${h > 0 ? `${h}h${m ? String(m).padStart(2, '0') : ''}` : `${m} min`}`,
+    path: built === 'STEADY' ? `rulebook:LOW-${total}` : `rulebook:LOW-${built}-${total}`,
+    name: `${label} · ${h > 0 ? `${h}h${m ? String(m).padStart(2, '0') : ''}` : `${m} min`}`,
     discipline: 'BIKE',
     durationMin: total,
     intensity,
     trainingStress,
-    profile: 'Steady at about 65% of FTP: zone 2, just below your first threshold. Conversational the whole way.',
+    profile,
     segments,
     category: 'ENDURANCE',
   };
@@ -799,13 +829,24 @@ function candidatesFor(zone: Exclude<Zone, 'LOW'>, input: RulebookDayInput, week
   return out;
 }
 
+/**
+ * Whether a library ride is easy all the way through. The library's category
+ * ignores steps under 20 seconds, so sprint sessions such as "10-50's" are
+ * filed as endurance; for an easy day nothing may go above zone 2.
+ */
+function isSteadyRide(w: ParsedWorkoutFile): boolean {
+  if (!w.segments?.length) return false;
+  return w.segments.every(
+    (s) => s.intensityFraction == null || bandingTarget(s as WorkoutSegment & { intensityFraction: number }) <= 0.8,
+  );
+}
+
 function lowDay(input: RulebookDayInput): ParsedWorkoutFile {
-  const { library, isFresh, targetMinutes, hardMaxMinutes, seed } = input;
+  const { library, isFresh, targetMinutes, hardMaxMinutes, seed, shuffle } = input;
   const minutes = Math.min(targetMinutes, hardMaxMinutes ?? Infinity);
-  // "Both" holds for easy days too: a fresh JOIN endurance ride of about the
-  // right length goes first, and a steady ride is built when there isn't one.
-  // The library has very few short endurance rides, which is what kept
-  // repeating the same one before.
+  // "Both" holds for easy days too: fresh JOIN rides of about the right length
+  // that stay easy throughout, alongside the built rides. The built ones are
+  // always in the list, so a shuffle always has another ride to move to.
   const fitting = library
     .filter(
       (w) =>
@@ -813,10 +854,18 @@ function lowDay(input: RulebookDayInput): ParsedWorkoutFile {
         w.durationMin != null &&
         w.durationMin <= minutes + 10 &&
         w.durationMin >= minutes - 30 &&
-        isFresh(w),
+        isFresh(w) &&
+        isSteadyRide(w),
     )
     .sort((a, b) => a.path.localeCompare(b.path));
-  return fitting.length ? fitting[(seed + input.shuffle) % fitting.length] : buildEnduranceRide(minutes);
+  const options: Array<() => ParsedWorkoutFile> = [
+    ...fitting.map((w) => () => w),
+    ...ENDURANCE_VARIANTS.map((v) => () => buildEnduranceRide(minutes, v)),
+  ];
+  // Unshuffled, a library ride goes first when there is one; the seed only
+  // rotates among those. A shuffle then steps through every option in turn.
+  const start = seed % (fitting.length || ENDURANCE_VARIANTS.length);
+  return options[(start + shuffle) % options.length]();
 }
 
 /** Whether a planned session was built from the rulebook rather than taken from the library. */
