@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, AuthedRequest } from '../middleware/auth.js';
 import { fetchWorkoutLibrary } from '../lib/workoutLibrary.js';
+import { localDayKey } from '../lib/calendarAvailability.js';
 import { buildFitWorkoutFile } from '../lib/garminFitWorkout.js';
 import { loadAthleteSpeedThresholds, type GarminPushSegment } from '../lib/garminWorkoutPush.js';
 
@@ -33,8 +34,16 @@ router.get('/', async (req: AuthedRequest, res) => {
   }
 });
 
+// "Set as today's workout" holds for the day it was set on. Kept past that,
+// a pick from last week sat on the dashboard in place of every day's plan
+// since, so an earlier day's pick is cleared the first time it is asked for.
 router.get('/selected', async (req: AuthedRequest, res) => {
-  const selected = await prisma.selectedWorkout.findUnique({ where: { userId: req.userId } });
+  const userId = req.userId!;
+  const selected = await prisma.selectedWorkout.findUnique({ where: { userId } });
+  if (selected && localDayKey(selected.selectedAt).getTime() < localDayKey(new Date()).getTime()) {
+    await prisma.selectedWorkout.deleteMany({ where: { userId, selectedAt: selected.selectedAt } });
+    return res.json(null);
+  }
   res.json(selected);
 });
 

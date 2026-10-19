@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from './prisma.js';
-import { fetchWorkoutLibrary, type ParsedWorkoutFile, type PlannedDiscipline } from './workoutLibrary.js';
+import { cachedWorkoutLibrary, fetchWorkoutLibrary, type ParsedWorkoutFile, type PlannedDiscipline } from './workoutLibrary.js';
 import {
   CATEGORY_ORDER,
   estimateIntensityAndStress,
@@ -876,44 +876,50 @@ async function runProjection(
   slots?: Map<number, DaySlot>,
   shuffles?: Map<number, number>,
 ): Promise<GeneratedDay[]> {
-  const fitness = await computeFitnessSeries(userId);
+  const today = utcMidnight(new Date());
+  // Everything the projection starts from, read side by side: each is its own
+  // query and none needs another's answer.
+  const [fitness, readiness, targets, tssPerHour, plannedPicks, recent] = await Promise.all([
+    computeFitnessSeries(userId),
+    getReadinessModifiers(userId),
+    prisma.trainingTarget.findMany({ where: { userId }, orderBy: { date: 'asc' } }),
+    measureTssPerHour(userId),
+    recentPlannedPicks(userId, today),
+    recentPlannedCategories(userId, today),
+  ]);
   let ctl = fitness.length ? fitness[fitness.length - 1].ctl : 0;
   let atl = fitness.length ? fitness[fitness.length - 1].atl : 0;
   // The real CTL curve, extended day by day as the window is projected, so the
   // ramp rate the plan reacts to is measured over a real seven days rather than
   // over however much of the window has been generated so far.
   const ctlTrail: number[] = fitness.map((p) => p.ctl);
-  const readiness = await getReadinessModifiers(userId);
 
   // Every goal the athlete has is periodised together, not one at a time — the
   // ramp aims at the season's anchor while any of them can claim a given day
   // for its taper, its race or its recovery. The ramp is re-anchored to the
   // athlete's real, current fitness on every regeneration — see
   // lib/periodization.ts on why both of those matter.
-  const targets = await prisma.trainingTarget.findMany({ where: { userId }, orderBy: { date: 'asc' } });
   const periodizationCtx: PeriodizationContext | null = targets.length
     ? {
         targets,
         currentCtl: ctl,
-        tssPerHour: await measureTssPerHour(userId),
+        tssPerHour,
         weeklyHours: config.weeklyHours,
       }
     : null;
 
-  const today = utcMidnight(new Date());
   const pickMemory = recentPicksMemory(library.length);
   // Seeded with the days just behind the window, which is what today's own
   // pick is judged against. Without this, today was always picked with an
   // empty memory — and so, on any day with only a few fitting workouts, was
   // the same session it had been yesterday and the day before.
-  const recentPicks: RecentPick[] = (await recentPlannedPicks(userId, today)).slice(-pickMemory);
+  const recentPicks: RecentPick[] = plannedPicks.slice(-pickMemory);
   const results: GeneratedDay[] = [];
 
   // Which goal the ramp points at, and the mix of sessions already behind the
   // athlete — both needed before the first day so the window continues the
   // training that came before it rather than restarting it.
   const anchor = targets.length ? pickAnchor(targets, today) : null;
-  const recent = await recentPlannedCategories(userId, today);
   const longDay = longestScheduledDay(config);
   let keySessionsSoFar = 0;
   let disciplineTurns = 0;
@@ -1153,13 +1159,20 @@ export const ROLLING_WINDOW_DAYS = 14;
  * window), otherwise only the weekdays they gave windows for. Empty when
  * neither exists, which leaves the plan exactly as it was before.
  */
-async function daySlots(userId: string, dates: Date[], storedWindows: Prisma.JsonValue | null): Promise<Map<number, DaySlot>> {
+async function daySlots(
+  userId: string,
+  dates: Date[],
+  storedWindows: Prisma.JsonValue | null,
+  calendarMaxAgeMs?: number,
+): Promise<Map<number, DaySlot>> {
   const slots = new Map<number, DaySlot>();
   if (dates.length === 0) return slots;
   const windows = parseTrainingWindows(storedWindows);
   const end = new Date(dates[dates.length - 1]);
   end.setUTCDate(end.getUTCDate() + 1);
-  const calendar = await readCalendar(userId, localInstant(dates[0], '00:00'), localInstant(end, '00:00'));
+  const calendar = await readCalendar(userId, localInstant(dates[0], '00:00'), localInstant(end, '00:00'), {
+    maxAgeMs: calendarMaxAgeMs,
+  });
 
   for (const date of dates) {
     const own = windows?.[String(date.getUTCDay())];
@@ -1177,18 +1190,28 @@ export function isWarmUpOnly(name: string): boolean {
   return /warming[\s-]?up|warm[\s-]?up|opwarm/i.test(name);
 }
 
-/** (Re)generates today through the next `days` days for a user with an active plan config. */
-export async function generatePlanWindow(userId: string, days = ROLLING_WINDOW_DAYS): Promise<void> {
+/**
+ * How old a calendar read a quick rebuild will still plan around. The
+ * calendar-replan job reads the calendar fresh every 15 minutes and rebuilds
+ * the plan itself when anything moved, so a read inside this window is never
+ * more than one of its runs behind.
+ */
+const QUICK_CALENDAR_MAX_AGE_MS = 20 * 60_000;
+
+/**
+ * (Re)generates the rolling window for a user with an active plan config.
+ *
+ * `quick` is for a tap on one day (shuffle, bike/run, that day's hours), where
+ * the athlete is waiting on the answer: the library and the calendar are taken
+ * as last read rather than fetched from Dropbox and iCloud again. Those two
+ * round trips were most of the wait, and the scheduled checks keep both
+ * current, so nothing the plan picks from differs. Every other rebuild reads
+ * both afresh, as before.
+ */
+export async function generatePlanWindow(userId: string, { quick = false }: { quick?: boolean } = {}): Promise<void> {
   const config = await prisma.trainingPlanConfig.findUnique({ where: { userId } });
   if (!config) return;
-
-  // Race-day warm-ups stay in the library for picking by hand, but they are
-  // preparation for an event, not a day's training. Left in, a 20-minute
-  // "Race-/test warming-up" was the closest fit for every short day (a
-  // recovery week halves the standing hours) and came back day after day.
-  const library = (await fetchWorkoutLibrary(userId).catch(() => [] as ParsedWorkoutFile[])).filter(
-    (w) => !isWarmUpOnly(w.name),
-  );
+  const days = ROLLING_WINDOW_DAYS;
 
   const today = utcMidnight(new Date());
   const dates: Date[] = [];
@@ -1198,24 +1221,38 @@ export async function generatePlanWindow(userId: string, days = ROLLING_WINDOW_D
     dates.push(date);
   }
 
-  // A day's own one-off availableHoursOverride/disciplineOverride (see
-  // setDayAvailability/setDayDiscipline) or manualOverride flag (see
-  // swapPlannedDays) survives regeneration — read whatever's already on each
-  // row before rebuilding the window around it.
-  const existingRows = await prisma.plannedDay.findMany({
-    where: { userId, date: { in: dates } },
-    select: {
-      date: true,
-      isRestDay: true,
-      trainingStress: true,
-      sourcePath: true,
-      name: true,
-      manualOverride: true,
-      availableHoursOverride: true,
-      disciplineOverride: true,
-      shuffle: true,
-    },
-  });
+  // The library, the calendar and the days already planned don't depend on
+  // each other, so they are read side by side rather than one after another.
+  const readLibrary = quick ? cachedWorkoutLibrary : fetchWorkoutLibrary;
+  const [fullLibrary, existingRows, slots] = await Promise.all([
+    readLibrary(userId).catch(() => [] as ParsedWorkoutFile[]),
+    // A day's own one-off availableHoursOverride/disciplineOverride (see
+    // setDayAvailability/setDayDiscipline) or manualOverride flag (see
+    // swapPlannedDays) survives regeneration — read whatever's already on each
+    // row before rebuilding the window around it.
+    prisma.plannedDay.findMany({
+      where: { userId, date: { in: dates } },
+      select: {
+        date: true,
+        isRestDay: true,
+        trainingStress: true,
+        sourcePath: true,
+        name: true,
+        manualOverride: true,
+        availableHoursOverride: true,
+        disciplineOverride: true,
+        shuffle: true,
+      },
+    }),
+    daySlots(userId, dates, config.trainingWindows, quick ? QUICK_CALENDAR_MAX_AGE_MS : undefined),
+  ]);
+
+  // Race-day warm-ups stay in the library for picking by hand, but they are
+  // preparation for an event, not a day's training. Left in, a 20-minute
+  // "Race-/test warming-up" was the closest fit for every short day (a
+  // recovery week halves the standing hours) and came back day after day.
+  const library = fullLibrary.filter((w) => !isWarmUpOnly(w.name));
+
   const manualOverrides = new Map<number, ManualOverrideRow>();
   const hourOverrides = new Map<number, number>();
   const disciplineOverrides = new Map<number, PlannedDiscipline>();
@@ -1234,7 +1271,6 @@ export async function generatePlanWindow(userId: string, days = ROLLING_WINDOW_D
     if (row.shuffle > 0) shuffles.set(row.date.getTime(), row.shuffle);
   }
 
-  const slots = await daySlots(userId, dates, config.trainingWindows);
   const generatedDays = await runProjection(
     userId,
     dates,
@@ -1246,15 +1282,20 @@ export async function generatePlanWindow(userId: string, days = ROLLING_WINDOW_D
     slots,
     shuffles,
   );
-  for (const generated of generatedDays) {
-    if (generated.skipUpsert) continue;
-    await upsertPlannedDay(
-      userId,
-      generated,
-      hourOverrides.get(generated.date.getTime()),
-      disciplineOverrides.get(generated.date.getTime()),
-    );
-  }
+  // Each day is its own row, so the writes go out together rather than as
+  // fourteen round trips to the database one after another.
+  await Promise.all(
+    generatedDays
+      .filter((generated) => !generated.skipUpsert)
+      .map((generated) =>
+        upsertPlannedDay(
+          userId,
+          generated,
+          hourOverrides.get(generated.date.getTime()),
+          disciplineOverrides.get(generated.date.getTime()),
+        ),
+      ),
+  );
 }
 
 /**
@@ -1339,7 +1380,7 @@ export async function setDayAvailability(userId: string, date: Date, hours: numb
   if (!existing) return null;
 
   await prisma.plannedDay.update({ where: { id: existing.id }, data: { availableHoursOverride: hours } });
-  await generatePlanWindow(userId);
+  await generatePlanWindow(userId, { quick: true });
 
   return prisma.plannedDay.findUnique({ where: { userId_date: { userId, date: day } } });
 }
@@ -1366,7 +1407,7 @@ export async function setDayDiscipline(userId: string, date: Date, discipline: P
   if (!existing) return null;
 
   await prisma.plannedDay.update({ where: { id: existing.id }, data: { disciplineOverride: discipline } });
-  await generatePlanWindow(userId);
+  await generatePlanWindow(userId, { quick: true });
 
   return prisma.plannedDay.findUnique({ where: { userId_date: { userId, date: day } } });
 }
@@ -1395,7 +1436,7 @@ export async function setDayShuffle(userId: string, date: Date) {
     where: { id: existing.id },
     data: { shuffle: { increment: 1 }, manualOverride: false },
   });
-  await generatePlanWindow(userId);
+  await generatePlanWindow(userId, { quick: true });
 
   return prisma.plannedDay.findUnique({ where: { userId_date: { userId, date: day } } });
 }
