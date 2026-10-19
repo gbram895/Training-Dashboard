@@ -6,6 +6,7 @@ import type {
   LibraryWorkout,
   PlannedDay,
   PlannedDiscipline,
+  RulebookSummary,
   SelectedWorkout,
   ThresholdSettings,
   TrainingPhase,
@@ -23,6 +24,8 @@ import PageHead from '../components/PageHead';
 import WeeklyReviewCard from '../components/plan/WeeklyReviewCard';
 import MonthCalendar from '../components/plan/MonthCalendar';
 import CalendarsModal from '../components/plan/CalendarsModal';
+import RulebookCard from '../components/plan/RulebookCard';
+import { CONFIDENCE_LABEL } from '../lib/rulebook';
 import { useCachedState } from '../lib/pageCache';
 import { useRefreshOnResume } from '../lib/useRefreshOnResume';
 import { configDisciplineForDate, weekdayLabel } from '../lib/planDates';
@@ -110,6 +113,7 @@ export default function Plan() {
 
   const [planConfig, setPlanConfig] = useCachedState<TrainingPlanConfig | null | undefined>('plan.config', undefined);
   const [planWeek, setPlanWeek] = useCachedState<PlannedDay[]>('plan.week', []);
+  const [rulebook, setRulebook] = useCachedState<RulebookSummary | null>('plan.rulebook', null);
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [previewDay, setPreviewDay] = useState<PlannedDay | null>(null);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
@@ -156,6 +160,17 @@ export default function Plan() {
 
   useEffect(load, []);
   useRefreshOnResume(load);
+
+  // The next seven days' split is read off the planned week, so it follows
+  // every change to the week: a shuffle, a switch to run, new hours.
+  const weekKey = planWeek.map((d) => `${d.id}:${d.sourcePath ?? 'rest'}`).join('|');
+  useEffect(() => {
+    if (!planConfig) return;
+    apiFetch<RulebookSummary | null>('/training-plan/rulebook')
+      .then(setRulebook)
+      .catch(() => setRulebook(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekKey, planConfig]);
 
   // Deep link from the Sunday-evening push notification.
   useEffect(() => {
@@ -511,6 +526,16 @@ export default function Plan() {
                             ? `Picked as a ${selectedDay.category.toLowerCase()} session based on your current fitness and recovery. `
                             : ''}
                         {selectedDay.profile ?? ''}
+                        {selectedDay.confidence && (
+                          <span className="gd-plan-confidence">
+                            <span
+                              className={`gd-confidence gd-confidence-${selectedDay.confidence.toLowerCase()}`}
+                            >
+                              {CONFIDENCE_LABEL[selectedDay.confidence]}
+                            </span>{' '}
+                            {selectedDay.confidenceNote}
+                          </span>
+                        )}
                       </p>
                     )}
                   </div>
@@ -534,6 +559,8 @@ export default function Plan() {
                   <span>is why {selectedDayIndex === 0 ? 'today' : 'that day'} is the size it is</span>
                 </p>
               )}
+
+              {rulebook && <RulebookCard summary={rulebook} />}
 
               {/* Kept to two tight lines: the hours and the "no time" shortcut
                   share the label's row rather than each taking one of their own. */}

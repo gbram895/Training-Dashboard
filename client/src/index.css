@@ -3364,6 +3364,94 @@ button.gd-cal-apply {
 /* The Plan tab's one-line note naming the phase the plan put today in. The
    goals that produced it live on the Goals tab; this is only the reason
    today's session is the size it is. */
+/* The training rulebook on the Plan tab: which split the plan follows, how
+   the next seven days measure up, and how much evidence is behind it. */
+.gd-rulebook-card {
+  margin: 14px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.gd-rulebook-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+  margin: 0 0 10px;
+}
+
+.gd-rulebook-title {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.gd-rulebook-rows {
+  display: grid;
+  gap: 6px;
+}
+
+.gd-rulebook-row {
+  display: grid;
+  grid-template-columns: 76px 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.gd-rulebook-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--surface-sunken);
+}
+
+.gd-rulebook-low {
+  background: var(--chart-z2);
+}
+
+.gd-rulebook-moderate {
+  background: var(--chart-z4);
+}
+
+.gd-rulebook-high {
+  background: var(--chart-z5);
+}
+
+.gd-rulebook-nums {
+  font-size: 11.5px;
+}
+
+.gd-rulebook-legend,
+.gd-rulebook-note {
+  margin: 8px 0 0;
+}
+
+.gd-confidence {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  background: var(--surface-sunken);
+  color: var(--text);
+}
+
+.gd-confidence-provisional {
+  background: var(--warn-wash);
+  color: var(--warn);
+}
+
+.gd-plan-confidence {
+  display: block;
+  margin-top: 8px;
+}
+
 .gd-plan-phase {
   display: flex;
   align-items: center;

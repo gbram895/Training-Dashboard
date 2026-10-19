@@ -85,6 +85,29 @@ async function applyThresholdChange(userId: string): Promise<number> {
   return recomputed;
 }
 
+router.get('/training-level', async (req: AuthedRequest, res) => {
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: req.userId }, select: { trainingLevel: true } });
+  res.json(user);
+});
+
+const trainingLevelSchema = z.object({ trainingLevel: z.enum(['RECREATIONAL', 'COMPETITIVE']) });
+
+// The rulebook's level: at 6-9 hours a week it decides between a pyramidal
+// and a polarized week, so the plan is rebuilt straight away.
+router.put('/training-level', async (req: AuthedRequest, res) => {
+  const parsed = trainingLevelSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const user = await prisma.user.update({
+    where: { id: req.userId },
+    data: parsed.data,
+    select: { trainingLevel: true },
+  });
+  await generatePlanWindow(req.userId!).catch((err) =>
+    console.error('[settings] plan regeneration after level change failed:', err),
+  );
+  res.json(user);
+});
+
 // What the athlete's own data says their thresholds should be. Read-only —
 // nothing is written until they accept a suggestion below.
 router.get('/calibration', async (req: AuthedRequest, res) => {

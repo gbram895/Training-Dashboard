@@ -12,8 +12,19 @@ import {
   setDayAvailability,
   setDayShuffle,
   setDayDiscipline,
+  standingWeeklyHours,
   swapPlannedDays,
 } from '../lib/trainingPlan.js';
+import {
+  addMinutes,
+  emptyMinutes,
+  HOUR_BAND_LABEL,
+  MODEL_LABEL,
+  rulebookStyle,
+  sharesOf,
+  zoneMinutes,
+} from '../lib/rulebook.js';
+import type { WorkoutCategory, WorkoutSegment } from '../lib/workoutIntensity.js';
 import { buildWeeklyReview } from '../lib/weeklyReview.js';
 import { computeFitnessSeries } from '../lib/fitness.js';
 import {
@@ -113,6 +124,43 @@ router.delete('/config', async (req: AuthedRequest, res) => {
 router.get('/week', async (req: AuthedRequest, res) => {
   const week = await getPlannedWeek(req.userId!);
   res.json(week);
+});
+
+// Which part of the training rulebook the plan is following, and how the next
+// seven days' bike time actually splits against it, so the Plan tab can carry
+// the confidence note the rulebook asks every plan to show.
+router.get('/rulebook', async (req: AuthedRequest, res) => {
+  const userId = req.userId!;
+  const [config, user] = await Promise.all([
+    prisma.trainingPlanConfig.findUnique({ where: { userId } }),
+    prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { trainingLevel: true } }),
+  ]);
+  if (!config) return res.json(null);
+
+  const hours = standingWeeklyHours(config);
+  const style = rulebookStyle(hours, user.trainingLevel);
+  const week = await getPlannedWeek(userId);
+  const bikeDays = week.filter((d) => !d.isRestDay && d.discipline === 'BIKE');
+  const minutes = bikeDays.reduce(
+    (sum, d) =>
+      addMinutes(sum, zoneMinutes(d.segments as WorkoutSegment[] | null, d.durationMin, d.category as WorkoutCategory | null)),
+    emptyMinutes(),
+  );
+
+  res.json({
+    weeklyHours: hours,
+    band: style.band,
+    bandLabel: HOUR_BAND_LABEL[style.band],
+    level: style.level,
+    model: style.model,
+    modelLabel: MODEL_LABEL[style.model],
+    split: style.split,
+    highSessionsPerWeek: style.highSessionsPerWeek,
+    confidence: style.confidence,
+    note: style.note,
+    planned: sharesOf(minutes),
+    plannedHighSessions: bikeDays.filter((d) => d.category === 'VO2MAX').length,
+  });
 });
 
 const availabilitySchema = z.object({ hours: hoursSchema });

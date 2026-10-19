@@ -169,7 +169,7 @@ const VO2MAX_MIN_SHARE_OF_THRESHOLD = 0.5;
  * top of its range, because a bpm window's midpoint undersells a
  * supra-threshold rep (see normalizeHeartRate in workoutFormats.ts).
  */
-function bandingTarget(s: WorkoutSegment & { intensityFraction: number }): number {
+export function bandingTarget(s: WorkoutSegment & { intensityFraction: number }): number {
   return s.targetMetric === 'hr' ? (s.intensityHigh ?? s.intensityFraction) : s.intensityFraction;
 }
 

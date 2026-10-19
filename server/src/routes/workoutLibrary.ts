@@ -7,6 +7,7 @@ import { fetchWorkoutLibrary } from '../lib/workoutLibrary.js';
 import { localDayKey } from '../lib/calendarAvailability.js';
 import { buildFitWorkoutFile } from '../lib/garminFitWorkout.js';
 import { loadAthleteSpeedThresholds, type GarminPushSegment } from '../lib/garminWorkoutPush.js';
+import type { WorkoutSegment } from '../lib/workoutIntensity.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -17,7 +18,19 @@ router.get('/', async (req: AuthedRequest, res) => {
 
     if (req.query.format === 'fit') {
       const path = typeof req.query.path === 'string' ? req.query.path : '';
-      const workout = workouts.find((w) => w.path === path);
+      // A session the rulebook built has no file in Dropbox; its steps live on
+      // the planned day it was built for.
+      const planned = path.startsWith('rulebook:')
+        ? await prisma.plannedDay.findFirst({
+            where: { userId: req.userId!, sourcePath: path },
+            orderBy: { date: 'desc' },
+            select: { name: true, discipline: true, segments: true },
+          })
+        : null;
+      const workout =
+        planned && planned.name && planned.discipline && Array.isArray(planned.segments)
+          ? { name: planned.name, discipline: planned.discipline, segments: planned.segments as unknown as WorkoutSegment[] }
+          : workouts.find((w) => w.path === path);
       if (!workout || workout.discipline !== 'BIKE' || !workout.segments?.length) {
         return res.status(404).json({ error: 'No bike workout found at that path' });
       }
