@@ -696,28 +696,6 @@ function decideDay(
   // gets a say.
   const configuredDiscipline: PlannedDiscipline = config.includeRunning && scheduledAsRun ? 'RUN' : 'BIKE';
 
-  // The rulebook covers cycling only, so it plans bike days and leaves runs
-  // to the logic below (Bram, 2026-10-19: runs keep today's logic). A goal
-  // contested on foot, or in both disciplines, keeps the goal mix too, since
-  // that is where its runs are decided.
-  const runGoal = goal != null && (goal.legs.composed || goal.legs.run != null);
-  if (rulebook && configuredDiscipline === 'BIKE' && disciplineOverride !== 'RUN' && !runGoal) {
-    const rulebookCeiling = readinessCeiling(tsb, readiness, ramp, categoryFromTsbForRulebook);
-    return decideRulebookBikeDay(
-      date,
-      targetHours,
-      rulebookCeiling.category,
-      rulebookCeiling.rampLimited,
-      library,
-      recentPicks,
-      goal,
-      rulebook,
-      hardMaxMinutes,
-      isLongDay,
-      shuffle,
-    );
-  }
-
   let category = ceiling;
   let discipline = configuredDiscipline;
   let focus: string | null = null;
@@ -788,6 +766,27 @@ function decideDay(
   // from the Suggested Training card, not the algorithm — wins over whatever
   // the schedule or a goal would otherwise have picked.
   if (disciplineOverride) discipline = disciplineOverride;
+
+  // The rulebook covers cycling only, so it plans every bike day and leaves
+  // runs to the logic below (Bram, 2026-10-19: runs keep today's logic). A
+  // goal contested on foot, or in both disciplines, still decides which days
+  // are runs above; once a day is a ride, the rulebook picks the session.
+  if (rulebook && discipline === 'BIKE') {
+    const rulebookCeiling = readinessCeiling(tsb, readiness, ramp, categoryFromTsbForRulebook);
+    return decideRulebookBikeDay(
+      date,
+      targetHours,
+      rulebookCeiling.category,
+      rulebookCeiling.rampLimited,
+      library,
+      recentPicks,
+      goal,
+      rulebook,
+      hardMaxMinutes,
+      isLongDay,
+      shuffle,
+    );
+  }
 
   const targetMinutes = Math.round(targetHours * 60);
   // Days apart rather than the raw timestamp, so the rotation advances by one
@@ -1650,7 +1649,7 @@ export async function getPlannedWeek(userId: string) {
  * plans that are already built. Plans built under an older version are rebuilt
  * once, the next time the server starts; nothing else ever reads it.
  */
-export const PLAN_LOGIC_VERSION = 5;
+export const PLAN_LOGIC_VERSION = 6;
 
 /** Rebuilds only the plans built under older rules, then marks them current. */
 export async function rebuildOutdatedPlans(): Promise<void> {
