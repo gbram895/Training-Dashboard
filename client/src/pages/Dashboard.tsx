@@ -173,7 +173,13 @@ export default function Dashboard() {
               onRetry={retrySyncs}
             />
 
-            <DashboardHero workout={todaysWorkout} plannedToday={plannedToday} readiness={readiness} onCleared={load} />
+            <DashboardHero
+              workout={todaysWorkout}
+              plannedToday={plannedToday}
+              recentWorkouts={recent}
+              readiness={readiness}
+              onCleared={load}
+            />
 
             {sessionReview && <SessionReviewCard review={sessionReview} compact />}
 

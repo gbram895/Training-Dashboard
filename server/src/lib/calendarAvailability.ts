@@ -210,14 +210,19 @@ export interface CalendarRead {
 }
 
 /** The athlete's events in [from, to), from every enabled calendar. Never throws. */
-export async function readCalendar(userId: string, from: Date, to: Date, opts: { fresh?: boolean } = {}): Promise<CalendarRead> {
+export async function readCalendar(
+  userId: string,
+  from: Date,
+  to: Date,
+  opts: { fresh?: boolean; maxAgeMs?: number } = {},
+): Promise<CalendarRead> {
   const connection = await prisma.calendarConnection.findUnique({ where: { userId } });
   const calendars = storedCalendars(connection?.calendars).filter((c) => c.enabled);
   if (!connection || calendars.length === 0) return { connected: false, events: [], error: null };
 
   const key = `${userId}|${from.toISOString()}|${to.toISOString()}`;
   const hit = cache.get(key);
-  if (!opts.fresh && hit && Date.now() - hit.at < CACHE_MS) return { connected: true, events: hit.events, error: null };
+  if (!opts.fresh && hit && Date.now() - hit.at < (opts.maxAgeMs ?? CACHE_MS)) return { connected: true, events: hit.events, error: null };
 
   const password = connection.appPasswordSealed ? unseal(connection.appPasswordSealed) : null;
   const account = connection.appleId && password ? { appleId: connection.appleId, password } : null;

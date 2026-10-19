@@ -1,20 +1,33 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../api/client';
-import type { PlannedDay, SelectedWorkout } from '../../api/types';
+import type { PlannedDay, SelectedWorkout, Workout } from '../../api/types';
 import { formatDuration } from '../../lib/format';
 import ProgressRing from '../ProgressRing';
 import Icon from '../Icon';
-import { disciplineIcon } from '../../lib/workoutTypes';
+import { disciplineIcon, TYPE_ICON, TYPE_LABEL } from '../../lib/workoutTypes';
+
+/**
+ * The training logged today, latest first. Walks are left out: the watch
+ * records the walk to the shops as a workout, and that is not the session.
+ */
+function trainedToday(workouts: Workout[]): Workout[] {
+  const today = new Date().toDateString();
+  return workouts
+    .filter((w) => w.type !== 'WALK' && new Date(w.date).toDateString() === today)
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+}
 
 
 export default function DashboardHero({
   workout,
   plannedToday,
+  recentWorkouts,
   readiness,
   onCleared,
 }: {
   workout: SelectedWorkout | null;
   plannedToday: PlannedDay | null;
+  recentWorkouts: Workout[];
   readiness: number | null;
   onCleared: () => void;
 }) {
@@ -40,6 +53,54 @@ export default function DashboardHero({
         <span className="gd-unit">—</span>
       </ProgressRing>
     );
+
+  // Once something is logged today the card shows what was done rather than
+  // what was planned: a different session from the plan's (or a pick made by
+  // hand) is still today's training, and "Start workout" no longer applies.
+  const done = trainedToday(recentWorkouts);
+  if (done.length > 0) {
+    const latest = done[0];
+    const intended = workout ?? (plannedToday && !plannedToday.isRestDay ? plannedToday : null);
+    const title = latest.title?.trim() || TYPE_LABEL[latest.type];
+    const footnote = [
+      done.length > 1 ? `+${done.length - 1} more today` : null,
+      intended?.name && intended.name !== title ? `Planned: ${intended.name}` : null,
+    ].filter(Boolean);
+    return (
+      <div className="gd-hero" onClick={() => navigate(`/workouts/${latest.id}`)} style={{ cursor: 'pointer' }}>
+        <div className="gd-hero-top">
+          <span className="gd-hero-label">Today's session</span>
+          <span className="gd-hero-tag">Done</span>
+        </div>
+        <div className="gd-hero-body">
+          {ring}
+          <div className="gd-hero-info">
+            <h2>{title}</h2>
+            <div className="gd-meta">
+              <span>
+                <Icon name={TYPE_ICON[latest.type]} /> {TYPE_LABEL[latest.type]}
+              </span>
+              <span className="gd-dot" />
+              <span>
+                <b>{formatDuration(latest.durationMin)}</b>
+              </span>
+              {latest.tss != null && (
+                <>
+                  <span className="gd-dot" />
+                  <span>{Math.round(latest.tss)} TSS</span>
+                </>
+              )}
+            </div>
+            {footnote.length > 0 && (
+              <div className="gd-meta" style={{ marginTop: 4 }}>
+                <span>{footnote.join(' · ')}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (isRestDay) {
     return (
@@ -88,7 +149,7 @@ export default function DashboardHero({
     <div className="gd-hero" onClick={() => navigate('/plan/today')} style={{ cursor: 'pointer' }}>
       <div className="gd-hero-top">
         <span className="gd-hero-label">Today's session</span>
-        <span className="gd-hero-tag">On plan</span>
+        <span className="gd-hero-tag">{'selectedAt' in active ? 'Your pick' : 'On plan'}</span>
       </div>
       <div className="gd-hero-body">
         {ring}

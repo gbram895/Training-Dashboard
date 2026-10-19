@@ -195,10 +195,7 @@ function dropDuplicateFiles(entries: DropboxFileEntry[]): DropboxFileEntry[] {
   return kept;
 }
 
-export async function fetchWorkoutLibrary(userId: string): Promise<ParsedWorkoutFile[]> {
-  const config = await prisma.healthSyncConfig.findUnique({ where: { userId } });
-  if (!config) throw new Error('Connect Dropbox first (from the dashboard) to load your workout library.');
-
+async function loadThresholds(userId: string): Promise<{ thresholds: AthleteThresholds; thresholdsKey: string }> {
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: userId },
     select: { ftpWatts: true, thresholdPaceSecPerKm: true, hrZone4Max: true },
@@ -215,7 +212,19 @@ export async function fetchWorkoutLibrary(userId: string): Promise<ParsedWorkout
   // haven't changed — otherwise it's stale in exactly the way an edited source
   // file would be.
   const thresholdsKey = `${PARSER_VERSION}:${user.ftpWatts}:${user.thresholdPaceSecPerKm}:${user.hrZone4Max}`;
+  return { thresholds, thresholdsKey };
+}
 
+function byDurationThenName(a: ParsedWorkoutFile, b: ParsedWorkoutFile): number {
+  const durationDiff = (a.durationMin ?? Infinity) - (b.durationMin ?? Infinity);
+  return durationDiff !== 0 ? durationDiff : a.name.localeCompare(b.name);
+}
+
+export async function fetchWorkoutLibrary(userId: string): Promise<ParsedWorkoutFile[]> {
+  const config = await prisma.healthSyncConfig.findUnique({ where: { userId } });
+  if (!config) throw new Error('Connect Dropbox first (from the dashboard) to load your workout library.');
+
+  const { thresholds, thresholdsKey } = await loadThresholds(userId);
   const accessToken = await refreshAccessToken(config.dropboxRefreshToken);
 
   let entries;
@@ -302,8 +311,22 @@ export async function fetchWorkoutLibrary(userId: string): Promise<ParsedWorkout
   // best-effort, but a failure here shouldn't fail the actual library fetch.
   await Promise.all(cacheWrites).catch((err) => console.error('[workout-library] cache write failed:', err));
 
-  return fresh.sort((a, b) => {
-    const durationDiff = (a.durationMin ?? Infinity) - (b.durationMin ?? Infinity);
-    return durationDiff !== 0 ? durationDiff : a.name.localeCompare(b.name);
-  });
+  return fresh.sort(byDurationThenName);
+}
+
+/**
+ * The library as it was last read from Dropbox, without asking Dropbox again.
+ * The half-hourly new-workout check re-reads the folder and keeps this cache
+ * current, so a tap on one day of the plan (shuffle, bike/run, hours) can
+ * plan from it instead of spending a token refresh and a folder listing on
+ * every press. Falls back to a full read when the cache is empty or was
+ * parsed under thresholds that have since changed.
+ */
+export async function cachedWorkoutLibrary(userId: string): Promise<ParsedWorkoutFile[]> {
+  const [{ thresholdsKey }, rows] = await Promise.all([
+    loadThresholds(userId),
+    prisma.cachedLibraryWorkout.findMany({ where: { userId }, select: { thresholdsKey: true, parsed: true } }),
+  ]);
+  if (rows.length === 0 || rows.some((r) => r.thresholdsKey !== thresholdsKey)) return fetchWorkoutLibrary(userId);
+  return rows.map((r) => r.parsed as unknown as ParsedWorkoutFile).sort(byDurationThenName);
 }
