@@ -91,6 +91,7 @@ model Workout {
   exercises   ExerciseEntry[]
   samples     WorkoutSample[]
   powerBests  WorkoutPowerBest[]
+  plannedDays PlannedDay[]
 
   // Calories are sourced from Garmin/Strava/Apple Health directly (we have no way
   // to estimate them ourselves). Kilojoules and TSS are derived by us from the
@@ -513,6 +514,11 @@ model PlannedDay {
   // null means "some time today", which is all a day ever was before. See
   // lib/calendarAvailability.ts.
   plannedStart           DateTime?
+  // The ride the athlete says was this day's session, on a day with several.
+  // NULL judges every workout of the day together, as one session. Never set
+  // by the plan itself, so regenerating a day leaves it alone.
+  workoutId              String?
+  workout                Workout?           @relation(fields: [workoutId], references: [id], onDelete: SetNull)
 
   @@unique([userId, date])
 }

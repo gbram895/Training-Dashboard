@@ -113,6 +113,18 @@ export interface SessionReview {
   /** Caveats and observations that colour the verdict without being graded: what the load did, what the RPE said, how the effort was measured. */
   notes: string[];
   load: { plannedTss: number | null; actualTss: number | null };
+  /** Everything logged that day, so a day with several rides can be told which one was the session. */
+  dayWorkouts: DayWorkout[];
+  /** The workout the athlete picked as the session; null judges the whole day together. */
+  chosenWorkoutId: string | null;
+}
+
+export interface DayWorkout {
+  id: string;
+  type: string;
+  title: string | null;
+  date: string;
+  durationMin: number;
 }
 
 // Garmin, Strava and Apple Health all stream at roughly 1 Hz, so a 30-sample
@@ -587,6 +599,8 @@ export function judgeSession({ date, planned, workouts, thresholds }: SessionInp
     structure: null as StructureReview | null,
     notes: [] as string[],
     load: { plannedTss: null as number | null, actualTss: actual.tss },
+    dayWorkouts: [] as DayWorkout[],
+    chosenWorkoutId: null as string | null,
   };
 
   if (!planned) {
@@ -891,11 +905,18 @@ export async function reviewSessionOn(userId: string, date: Date): Promise<Sessi
   ]);
   if (!user || workouts.length === 0) return null;
 
+  // On a day with several rides the athlete can say which one was the
+  // session; the others still count as training, they just aren't what the
+  // plan is judged against. A pick that no longer falls on this day (a
+  // re-import moved it) is ignored rather than trusted.
+  const chosen = planned?.workoutId ? workouts.find((w) => w.id === planned.workoutId) : undefined;
+  const judged = chosen ? [chosen] : workouts;
+
   // One samples query per workout rather than one join across all of them —
   // a day of per-second data is tens of thousands of rows and this runs against
   // a free-tier Postgres. Same reasoning as recomputeAllTrainingLoad.
   const reviewWorkouts: ReviewWorkout[] = await Promise.all(
-    workouts.map(async (w) => ({
+    judged.map(async (w) => ({
       id: w.id,
       type: w.type,
       durationMin: w.durationMin,
@@ -910,7 +931,7 @@ export async function reviewSessionOn(userId: string, date: Date): Promise<Sessi
     })),
   );
 
-  return judgeSession({
+  const review = judgeSession({
     date: day,
     planned: planned
       ? {
@@ -928,6 +949,37 @@ export async function reviewSessionOn(userId: string, date: Date): Promise<Sessi
     workouts: reviewWorkouts,
     thresholds: user,
   });
+  if (!review) return null;
+  return {
+    ...review,
+    dayWorkouts: workouts.map((w) => ({
+      id: w.id,
+      type: w.type,
+      title: w.title,
+      date: w.date.toISOString(),
+      durationMin: w.durationMin,
+    })),
+    chosenWorkoutId: chosen?.id ?? null,
+  };
+}
+
+/**
+ * Records which workout was the planned session on its day (`chosen`), or
+ * hands the day back to being judged as a whole. Null when the workout isn't
+ * the athlete's or nothing was planned that day.
+ */
+export async function choosePlannedWorkout(
+  userId: string,
+  workoutId: string,
+  chosen: boolean,
+): Promise<SessionReview | null> {
+  const workout = await prisma.workout.findFirst({ where: { id: workoutId, userId }, select: { date: true } });
+  if (!workout) return null;
+  const day = utcMidnight(workout.date);
+  const planned = await prisma.plannedDay.findUnique({ where: { userId_date: { userId, date: day } } });
+  if (!planned) return null;
+  await prisma.plannedDay.update({ where: { id: planned.id }, data: { workoutId: chosen ? workoutId : null } });
+  return reviewSessionOn(userId, day);
 }
 
 /** The review for one logged workout — which is the review of the day it was done on. */

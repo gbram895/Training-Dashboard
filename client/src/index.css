@@ -4147,6 +4147,54 @@ button.gd-cal-apply {
   color: var(--text-dim);
 }
 
+.gd-sr-pick {
+  margin-top: 12px;
+}
+
+.gd-sr-pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: var(--surface-sunken);
+  border-radius: 12px;
+  padding: 3px;
+}
+
+button.gd-sr-pick-option {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 40px;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 9px;
+  background: none;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.gd-sr-pick-option.gd-on {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.gd-sr-pick-name {
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.gd-sr-pick-meta {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
 .gd-sr-checks {
   list-style: none;
   margin: 12px 0 0;
