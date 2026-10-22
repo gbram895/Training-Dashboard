@@ -607,6 +607,22 @@ interface ManualOverrideRow {
   name: string | null;
 }
 
+/**
+ * Today's planned row once the athlete has trained today. The day is over as
+ * far as the plan is concerned: it keeps what was asked for (the "Against the
+ * plan" review reads it) and the rest of the window is planned around it.
+ */
+interface CompletedDayRow {
+  isRestDay: boolean;
+  sourcePath: string | null;
+  name: string | null;
+  discipline: PlannedDiscipline | null;
+  durationMin: number | null;
+  category: string | null;
+  templateId: string | null;
+  segments: Prisma.JsonValue;
+}
+
 const CTL_DECAY = 1 - Math.exp(-1 / 42);
 const ATL_DECAY = 1 - Math.exp(-1 / 7);
 
@@ -1050,6 +1066,7 @@ async function runProjection(
   disciplineOverrides?: Map<number, PlannedDiscipline>,
   slots?: Map<number, DaySlot>,
   shuffles?: Map<number, number>,
+  completedToday?: CompletedDayRow | null,
 ): Promise<GeneratedDay[]> {
   const today = utcMidnight(new Date());
   // Everything the projection starts from, read side by side: each is its own
@@ -1140,6 +1157,45 @@ async function runProjection(
             weekIndex: Math.floor(i / 7),
           }
         : null;
+
+    // Already trained today: the day stays as it was planned. Re-deciding it
+    // would judge today against a Form that already has today's ride in it,
+    // which lands on a different (usually easier) session, and the plan then
+    // offered that as the workout still to do. The ride is in the fitness
+    // series' last point already, so the projection isn't advanced for it a
+    // second time; the session still counts in the mix the next days follow.
+    if (i === 0 && completedToday) {
+      results.push({ date, isRestDay: completedToday.isRestDay, skipUpsert: true, periodization });
+      if (!completedToday.isRestDay) {
+        const category = CATEGORY_ORDER.includes(completedToday.category as WorkoutCategory)
+          ? (completedToday.category as WorkoutCategory)
+          : null;
+        if (completedToday.discipline === 'BIKE') {
+          rulebookHistory.push({
+            date,
+            minutes: zoneMinutes(completedToday.segments as WorkoutSegment[] | null, completedToday.durationMin, category),
+            category,
+            templateId: completedToday.templateId,
+            path: completedToday.sourcePath,
+            name: completedToday.name,
+          });
+        }
+        if (category) {
+          recent.all.push(category);
+          if (completedToday.discipline) recent.byDiscipline[completedToday.discipline].push(category);
+          if (category === 'THRESHOLD' || category === 'VO2MAX') keySessionsSoFar++;
+          if (goalContext) disciplineTurns++;
+        }
+        if (completedToday.sourcePath) {
+          recentPicks.push({
+            path: completedToday.sourcePath,
+            family: workoutFamily(completedToday.name ?? completedToday.sourcePath),
+          });
+          if (recentPicks.length > pickMemory) recentPicks.shift();
+        }
+      }
+      continue;
+    }
 
     // A one-off availability override is the athlete telling us how much time
     // they actually have that day, so the periodisation multiplier is applied
@@ -1355,6 +1411,25 @@ async function daySlots(
 /** Without a calendar gap capping the day, a session up to this long is always allowed. */
 const SHORT_DAY_FLOOR_MIN = 60;
 
+/**
+ * Whether anything was logged on this (local) day, the same test the
+ * dashboard uses to show today's session as done. Walks don't count: the
+ * watch records the walk to the shops, and that isn't the session.
+ */
+export async function hasTrainedOn(userId: string, day: Date): Promise<boolean> {
+  const next = new Date(day);
+  next.setUTCDate(next.getUTCDate() + 1);
+  const workout = await prisma.workout.findFirst({
+    where: {
+      userId,
+      type: { not: 'WALK' },
+      date: { gte: localInstant(day, '00:00'), lt: localInstant(next, '00:00') },
+    },
+    select: { id: true },
+  });
+  return workout != null;
+}
+
 /** A warm-up for a race or test, which the plan never schedules as a session on its own. */
 export function isWarmUpOnly(name: string): boolean {
   return /warming[\s-]?up|warm[\s-]?up|opwarm/i.test(name);
@@ -1394,7 +1469,7 @@ export async function generatePlanWindow(userId: string, { quick = false }: { qu
   // The library, the calendar and the days already planned don't depend on
   // each other, so they are read side by side rather than one after another.
   const readLibrary = quick ? cachedWorkoutLibrary : fetchWorkoutLibrary;
-  const [fullLibrary, existingRows, slots] = await Promise.all([
+  const [fullLibrary, existingRows, slots, trainedToday] = await Promise.all([
     readLibrary(userId).catch(() => [] as ParsedWorkoutFile[]),
     // A day's own one-off availableHoursOverride/disciplineOverride (see
     // setDayAvailability/setDayDiscipline) or manualOverride flag (see
@@ -1412,10 +1487,18 @@ export async function generatePlanWindow(userId: string, { quick = false }: { qu
         availableHoursOverride: true,
         disciplineOverride: true,
         shuffle: true,
+        discipline: true,
+        durationMin: true,
+        category: true,
+        templateId: true,
+        segments: true,
       },
     }),
     daySlots(userId, dates, config.trainingWindows, quick ? QUICK_CALENDAR_MAX_AGE_MS : undefined),
+    hasTrainedOn(userId, today),
   ]);
+  const todayRow = existingRows.find((row) => row.date.getTime() === today.getTime());
+  const completedToday = trainedToday && todayRow ? todayRow : null;
 
   // Race-day warm-ups stay in the library for picking by hand, but they are
   // preparation for an event, not a day's training. Left in, a 20-minute
@@ -1451,6 +1534,7 @@ export async function generatePlanWindow(userId: string, { quick = false }: { qu
     disciplineOverrides,
     slots,
     shuffles,
+    completedToday,
   );
   // Each day is its own row, so the writes go out together rather than as
   // fourteen round trips to the database one after another.

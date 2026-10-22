@@ -7,7 +7,7 @@ import { asString } from '../lib/params.js';
 import { recomputeTrainingLoad, recomputeAllTrainingLoad } from '../lib/trainingLoad.js';
 import { computeFitnessSeries } from '../lib/fitness.js';
 import { getRampStatus } from '../lib/rampRate.js';
-import { latestSessionReview, reviewSessionForWorkout } from '../lib/sessionReview.js';
+import { choosePlannedWorkout, latestSessionReview, reviewSessionForWorkout } from '../lib/sessionReview.js';
 import { backfillGarminCalories, backfillGarminTitles } from '../lib/garminSync.js';
 import { backfillStravaCalories, backfillStravaTitles } from '../lib/stravaSync.js';
 import { buildPowerCurve, rebuildPowerBests } from '../lib/powerCurve.js';
@@ -243,6 +243,16 @@ router.get('/plan-review/latest', async (req: AuthedRequest, res) => {
 router.get('/:id/plan-review', async (req: AuthedRequest, res) => {
   const review = await reviewSessionForWorkout(req.userId!, asString(req.params.id));
   if (!review) return res.status(404).json({ error: 'Workout not found' });
+  res.json(review);
+});
+
+// On a day with several rides: "this one was the workout" (chosen: true), or
+// back to judging the whole day together (chosen: false).
+router.put('/:id/plan-session', async (req: AuthedRequest, res) => {
+  const parsed = z.object({ chosen: z.boolean() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const review = await choosePlannedWorkout(req.userId!, asString(req.params.id), parsed.data.chosen);
+  if (!review) return res.status(404).json({ error: 'Nothing was planned on the day of this workout' });
   res.json(review);
 });
 

@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma.js';
 import { requireAuth, AuthedRequest } from '../middleware/auth.js';
 import {
   generatePlanWindow,
+  hasTrainedOn,
   getPlannedDay,
   getPlannedWeek,
   revertManualOverrides,
@@ -165,9 +166,21 @@ router.get('/rulebook', async (req: AuthedRequest, res) => {
 
 const availabilitySchema = z.object({ hours: hoursSchema });
 
+// Once today has a workout logged the plan keeps today as it was (see
+// generatePlanWindow), so a change to today would do nothing. Saying so beats
+// a button that silently does nothing.
+const TRAINED_TODAY_ERROR = "You've already trained today, so today's session stays as it was planned.";
+
+async function isTrainedToday(userId: string, date: Date): Promise<boolean> {
+  const today = utcMidnight(new Date());
+  return date.getTime() === today.getTime() && (await hasTrainedOn(userId, today));
+}
+
 router.put('/today/availability', async (req: AuthedRequest, res) => {
   const parsed = availabilitySchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  if (await isTrainedToday(req.userId!, utcMidnight(new Date()))) return res.status(409).json({ error: TRAINED_TODAY_ERROR });
 
   const updated = await setDayAvailability(req.userId!, new Date(), parsed.data.hours);
   if (!updated) return res.status(400).json({ error: 'Set up a training plan first' });
@@ -191,6 +204,8 @@ router.put('/day-availability', async (req: AuthedRequest, res) => {
   if (date < today || date > maxDate) {
     return res.status(400).json({ error: 'Date must be within the plan window' });
   }
+
+  if (await isTrainedToday(req.userId!, date)) return res.status(409).json({ error: TRAINED_TODAY_ERROR });
 
   const updated = await setDayAvailability(req.userId!, date, parsed.data.hours);
   if (!updated) return res.status(400).json({ error: 'Set up a training plan first' });
@@ -219,6 +234,8 @@ router.put('/day-discipline', async (req: AuthedRequest, res) => {
     return res.status(400).json({ error: 'Date must be within the plan window' });
   }
 
+  if (await isTrainedToday(req.userId!, date)) return res.status(409).json({ error: TRAINED_TODAY_ERROR });
+
   const updated = await setDayDiscipline(req.userId!, date, parsed.data.discipline);
   if (!updated) return res.status(400).json({ error: 'Set up a training plan first' });
   res.json(updated);
@@ -241,6 +258,8 @@ router.put('/day-shuffle', async (req: AuthedRequest, res) => {
   if (date < today || date > maxDate) {
     return res.status(400).json({ error: 'Date must be within the plan window' });
   }
+
+  if (await isTrainedToday(req.userId!, date)) return res.status(409).json({ error: TRAINED_TODAY_ERROR });
 
   const updated = await setDayShuffle(req.userId!, date);
   if (!updated) return res.status(400).json({ error: 'Set up a training plan first' });

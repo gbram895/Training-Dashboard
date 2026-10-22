@@ -47,6 +47,7 @@ export default function WorkoutDetail() {
   const [workout, setWorkout] = useState<Workout | null>(null);
   const [samples, setSamples] = useState<WorkoutSample[]>([]);
   const [review, setReview] = useState<SessionReview | null>(null);
+  const [choosingSession, setChoosingSession] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const [rpe, setRpe] = useState<number | null>(null);
@@ -76,6 +77,23 @@ export default function WorkoutDetail() {
       .then(setReview)
       .catch(() => setReview(null));
   }, [id]);
+
+  // On a day with several rides: which one the plan is judged against. The
+  // request goes to the ride being picked, or to this one to un-pick.
+  async function choosePlannedWorkout(workoutId: string | null) {
+    setChoosingSession(true);
+    try {
+      const updated = await apiFetch<SessionReview>(`/workouts/${workoutId ?? id}/plan-session`, {
+        method: 'PUT',
+        body: JSON.stringify({ chosen: workoutId != null }),
+      });
+      setReview(updated);
+    } catch {
+      // The card keeps showing what it had; nothing was changed.
+    } finally {
+      setChoosingSession(false);
+    }
+  }
 
   async function saveFeedback() {
     setFeedbackSaving(true);
@@ -212,7 +230,7 @@ export default function WorkoutDetail() {
 
         {workout.notes && workout.type !== 'OTHER' && <p className="muted">{workout.notes}</p>}
 
-        {review && <SessionReviewCard review={review} />}
+        {review && <SessionReviewCard review={review} onChoose={choosePlannedWorkout} choosing={choosingSession} />}
 
         <div className="gd-set-group">
           <p className="gd-set-group-label">How did it feel?</p>

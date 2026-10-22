@@ -1,4 +1,6 @@
 import { Link } from 'react-router-dom';
+import { formatClockTime, formatDuration } from '../lib/format';
+import { TYPE_LABEL } from '../lib/workoutTypes';
 import type { CheckVerdict, RepIntensity, RepVerdict, SessionGrade, SessionReview, WorkoutCategory } from '../api/types';
 
 /**
@@ -54,7 +56,18 @@ function mins(value: number): string {
   return m === 0 ? `${h} h` : `${h} h ${m}`;
 }
 
-export default function SessionReviewCard({ review, compact }: { review: SessionReview; compact?: boolean }) {
+export default function SessionReviewCard({
+  review,
+  compact,
+  onChoose,
+  choosing,
+}: {
+  review: SessionReview;
+  compact?: boolean;
+  /** Picks which of the day's workouts was the session (null: the whole day together). */
+  onChoose?: (workoutId: string | null) => void;
+  choosing?: boolean;
+}) {
   // Nothing planned means nothing to compare against — no card rather than an
   // empty one saying so.
   if (!review.planned) return null;
@@ -117,6 +130,41 @@ export default function SessionReviewCard({ review, compact }: { review: Session
         The plan asked for <strong>{plannedName}</strong>
         {review.planned.durationMin ? `, ${mins(review.planned.durationMin)}` : ''}.
       </p>
+
+      {onChoose && !review.planned.isRestDay && review.dayWorkouts.length > 1 && (
+        <div className="gd-sr-pick">
+          <p className="gd-sr-bands-title">Which one was the workout?</p>
+          <div className="gd-sr-pick-list" role="radiogroup" aria-label="Which one was the workout?">
+            {review.dayWorkouts.map((w) => (
+              <button
+                key={w.id}
+                type="button"
+                role="radio"
+                aria-checked={review.chosenWorkoutId === w.id}
+                className={`gd-sr-pick-option${review.chosenWorkoutId === w.id ? ' gd-on' : ''}`}
+                disabled={choosing}
+                onClick={() => onChoose(w.id)}
+              >
+                <span className="gd-sr-pick-name">{w.title?.trim() || TYPE_LABEL[w.type]}</span>
+                <span className="gd-sr-pick-meta mono">
+                  {formatClockTime(w.date)} · {formatDuration(w.durationMin)}
+                </span>
+              </button>
+            ))}
+            <button
+              type="button"
+              role="radio"
+              aria-checked={review.chosenWorkoutId == null}
+              className={`gd-sr-pick-option${review.chosenWorkoutId == null ? ' gd-on' : ''}`}
+              disabled={choosing}
+              onClick={() => onChoose(null)}
+            >
+              <span className="gd-sr-pick-name">All of them, as one session</span>
+            </button>
+          </div>
+          <p className="gd-sr-legend">The others still count toward your training load.</p>
+        </div>
+      )}
 
       {review.checks.length > 0 && (
         <ul className="gd-sr-checks">

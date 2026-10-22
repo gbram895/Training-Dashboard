@@ -146,6 +146,8 @@ export interface PlannedDay {
   loadMultiplier?: number | null;
   /** When in the day the session is planned for; null when the plan only knows the day. */
   plannedStart?: string | null;
+  /** The ride picked as this day's session, on a day with several. */
+  workoutId?: string | null;
   /** The training-rulebook template this session is (VO-3, TH-1...), when it is one. */
   templateId?: string | null;
   /** How well the evidence backs this day, and why, as the rulebook asks every session to say. */
@@ -252,6 +254,10 @@ export interface SessionReview {
   effortSource: EffortSource;
   notes: string[];
   load: { plannedTss: number | null; actualTss: number | null };
+  /** Everything logged that day, so a day with several rides can be told which one was the session. */
+  dayWorkouts: { id: string; type: WorkoutType; title: string | null; date: string; durationMin: number }[];
+  /** The workout picked as the session; null judges the whole day together. */
+  chosenWorkoutId: string | null;
 }
 
 export type TrainingPhase = 'BUILD' | 'RECOVERY' | 'TAPER' | 'EVENT' | 'POST_RACE';

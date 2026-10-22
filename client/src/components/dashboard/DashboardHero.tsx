@@ -59,7 +59,8 @@ export default function DashboardHero({
   // hand) is still today's training, and "Start workout" no longer applies.
   const done = trainedToday(recentWorkouts);
   if (done.length > 0) {
-    const latest = done[0];
+    // On a day with several rides, the one picked as the session leads.
+    const latest = done.find((w) => w.id === plannedToday?.workoutId) ?? done[0];
     const intended = workout ?? (plannedToday && !plannedToday.isRestDay ? plannedToday : null);
     const title = latest.title?.trim() || TYPE_LABEL[latest.type];
     const footnote = [
