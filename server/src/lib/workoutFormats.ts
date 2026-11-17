@@ -154,7 +154,7 @@ export const VO2MAX_FRACTION_AT_MAX_HR = 1.2;
  * bpmForHrFraction below inverts to push a segment back
  * out at (approximately) its original bpm target.
  */
-function normalizeHeartRate(raw: number | undefined, thresholdHrBpm: number): number | undefined {
+export function normalizeHeartRate(raw: number | undefined, thresholdHrBpm: number): number | undefined {
   if (raw == null || thresholdHrBpm <= 0) return undefined;
   const maxHrBpm = thresholdHrBpm / THRESHOLD_HR_AS_FRACTION_OF_MAX;
   const bpm = raw > 100 ? raw - 100 : (raw / 100) * maxHrBpm;

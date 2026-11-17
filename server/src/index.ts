@@ -16,6 +16,8 @@ import cronRouter from './routes/cron.js';
 import widgetRouter from './routes/widget.js';
 import mediaRouter, { mediaLinkRouter } from './routes/media.js';
 import calendarRouter, { calendarFeedRouter } from './routes/calendar.js';
+import intervalsRouter from './routes/intervals.js';
+import { importAllIntervalsPlans } from './lib/intervalsPlan.js';
 import { replanAllForCalendarChanges } from './lib/calendarReplan.js';
 import { dropboxConfigured } from './lib/dropbox.js';
 import { runAllSyncs } from './lib/healthSyncJob.js';
@@ -73,6 +75,7 @@ app.use('/api/media-link', mediaLinkRouter);
 // own; its secret URL is the credential, so it sits outside the auth router.
 app.use('/api/calendar/feed', calendarFeedRouter);
 app.use('/api/calendar', calendarRouter);
+app.use('/api/intervals', intervalsRouter);
 
 if (process.env.NODE_ENV === 'production') {
   const clientDist = path.resolve(__dirname, '../../client/dist');
@@ -150,6 +153,20 @@ function registerScheduledJobs() {
     // up and a backlog of them is not.
     catchUpWindowMinutes: 60,
     firstRun: 'next',
+  });
+
+  // Follows a plan someone else builds (Rest or Train, via Intervals.icu):
+  // re-reads it so a session moved or added there shows up within half an
+  // hour, and re-judges today's readiness warning as the morning's HRV and
+  // sleep arrive. Does nothing for an athlete on Gradient's own plan.
+  registerJob({
+    name: 'intervals-plan-import',
+    schedule: process.env.INTERVALS_IMPORT_CRON ?? '*/30 * * * *',
+    timezone: SYNC_TZ,
+    run: importAllIntervalsPlans,
+    // Only ever about the plan as it is now.
+    catchUpWindowMinutes: 60,
+    firstRun: 'now',
   });
 
   if (pushConfigured()) {

@@ -268,6 +268,61 @@ function readinessCeiling(
   return { category, rampLimited: rampSpike && category !== withoutRamp };
 }
 
+/**
+ * For a plan Gradient follows rather than builds (Rest or Train's, imported
+ * from Intervals.icu): whether today's planned session is harder than today's
+ * readiness allows, and why, in one line. Null when it fits.
+ *
+ * The same signals that cost a Gradient-built day a step (HRV, sleep, a hard
+ * RPE, a missed key session, the ramp) are read here, against the rulebook's
+ * Form bands rather than the strict ones: those only let VO2max work through
+ * at a Form of +25, so they would flag nearly every interval session another
+ * coach plans. Bram chose (2026-11-17) to follow that coach's plan as sent and
+ * only be warned, so this never changes the day.
+ */
+export async function readinessWarningFor(userId: string, category: WorkoutCategory | null | undefined): Promise<string | null> {
+  if (!category) return null;
+  const [fitness, readiness] = await Promise.all([computeFitnessSeries(userId), getReadinessModifiers(userId)]);
+  const last = fitness.length ? fitness[fitness.length - 1] : null;
+  const tsb = last ? last.ctl - last.atl : null;
+  const { band: ramp } = last
+    ? judgeRamp({
+        ctl: last.ctl,
+        atl: last.atl,
+        ctlWeekAgo: fitness.length > RAMP_WINDOW_DAYS ? fitness[fitness.length - 1 - RAMP_WINDOW_DAYS].ctl : null,
+      })
+    : { band: 'UNKNOWN' as RampBand };
+
+  const reasons: string[] = [];
+  if (tsb != null && tsb < FORCED_REST_TSB) reasons.push(`your Form is very low (${Math.round(tsb)})`);
+  else if (tsb != null && tsb < -10) reasons.push(`your Form is low (${Math.round(tsb)})`);
+  if (readiness.hrvRatio != null && readiness.hrvRatio < 0.8) {
+    reasons.push(`HRV is ${Math.round((1 - readiness.hrvRatio) * 100)}% below your baseline`);
+  }
+  if (readiness.sleepHours != null && readiness.sleepHours < 6) {
+    reasons.push(`you slept ${readiness.sleepHours.toFixed(1)} h`);
+  } else if (readiness.sleepQuality != null && readiness.sleepQuality < POOR_SLEEP_QUALITY) {
+    reasons.push('last night\'s sleep was poor');
+  }
+  if (readiness.lastRpe != null && readiness.lastRpe >= HIGH_RPE_THRESHOLD) {
+    reasons.push(`you rated your last session RPE ${readiness.lastRpe}`);
+  }
+  if (readiness.missedHardSessionYesterday) reasons.push('yesterday\'s hard session wasn\'t logged');
+  if (ramp === 'SPIKE') reasons.push('your load has climbed sharply');
+
+  const forcedRest = tsb != null && tsb < FORCED_REST_TSB;
+  const { category: ceiling } = readinessCeiling(tsb, readiness, ramp, categoryFromTsbForRulebook);
+  if (!forcedRest && CATEGORY_ORDER.indexOf(category) <= CATEGORY_ORDER.indexOf(ceiling)) return null;
+  if (reasons.length === 0) return null;
+
+  const list = reasons.length === 1 ? reasons[0] : `${reasons.slice(0, -1).join(', ')} and ${reasons[reasons.length - 1]}`;
+  const advice = forcedRest
+    ? 'Consider resting today.'
+    : `Consider keeping it to ${ceiling === 'ENDURANCE' ? 'an easy' : `a ${ceiling.toLowerCase()}`} session.`;
+  const sentence = `${list.charAt(0).toUpperCase()}${list.slice(1)}.`;
+  return `${sentence} ${advice}`;
+}
+
 // Workouts this close together in length fit a given day about equally well,
 // so there is no reason to always hand back the same one. Picking strictly
 // the closest match is what made a stable weekly schedule produce a stable
@@ -1456,6 +1511,13 @@ const QUICK_CALENDAR_MAX_AGE_MS = 20 * 60_000;
 export async function generatePlanWindow(userId: string, { quick = false }: { quick?: boolean } = {}): Promise<void> {
   const config = await prisma.trainingPlanConfig.findUnique({ where: { userId } });
   if (!config) return;
+  // Another coach's plan, read from Intervals.icu: every day is taken as
+  // planned there, so there is nothing for the picker below to do. Loaded
+  // lazily because that module reads readiness from this one.
+  if (config.planSource === 'INTERVALS') {
+    const { importIntervalsPlan } = await import('./intervalsPlan.js');
+    if (await importIntervalsPlan(userId)) return;
+  }
   const days = ROLLING_WINDOW_DAYS;
 
   const today = utcMidnight(new Date());

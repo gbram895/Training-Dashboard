@@ -92,7 +92,7 @@ function intensityBucket(avgIntensityFactor: number): number {
   return 5;
 }
 
-function stressBucket(tss: number): number {
+export function stressBucket(tss: number): number {
   if (tss < 40) return 1;
   if (tss < 70) return 2;
   if (tss < 100) return 3;

@@ -30,6 +30,7 @@ model User {
   powerBests            WorkoutPowerBest[]
   calendarConnection    CalendarConnection?
   rideMedia             RideMedia[]
+  intervalsConnection   IntervalsConnection?
 
   // Heart-rate zone thresholds (bpm) — upper bound of zones 1-4; zone 5 is everything above z4Max
   hrZone1Max Int @default(114)
@@ -336,6 +337,11 @@ model TrainingPlanConfig {
   // rules rebuilds plans built under an older version once; an ordinary
   // restart leaves the plan alone.
   planLogicVersion Int @default(0)
+  // Who builds the plan. GRADIENT picks every day itself, as it always has.
+  // INTERVALS takes each day as planned on the athlete's Intervals.icu
+  // calendar (where Rest or Train sends its workouts) and only warns when
+  // readiness says the day is too hard. See lib/intervalsPlan.ts.
+  planSource      PlanSource @default(GRADIENT)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
@@ -451,6 +457,32 @@ model TrainingTarget {
 // One row per calendar day: either a rest day, or a specific workout picked
 // from the Dropbox workout library for that day. Regenerated daily on a
 // rolling basis from the TrainingPlanConfig plus the user's current fitness.
+enum PlanSource {
+  GRADIENT
+  INTERVALS
+}
+
+// The athlete's Intervals.icu account, read for the planned workouts another
+// coach (Rest or Train) puts on its calendar. A personal API key, not OAuth:
+// Intervals.icu gives every athlete one under Settings > Developer.
+model IntervalsConnection {
+  id              String    @id @default(uuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // "0" means "the athlete this key belongs to", which Intervals.icu accepts
+  // anywhere an athlete id goes.
+  athleteId       String    @default("0")
+  // AES-GCM sealed, never returned. See lib/secretBox.ts.
+  apiKeySealed    String
+  lastSyncedAt    DateTime?
+  lastAttemptedAt DateTime?
+  lastSyncError   String?
+  // How many workouts the last import found in the plan window.
+  lastEventCount  Int?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
 model PlannedDay {
   id                     String             @id @default(uuid())
   userId                 String
@@ -519,6 +551,13 @@ model PlannedDay {
   // by the plan itself, so regenerating a day leaves it alone.
   workoutId              String?
   workout                Workout?           @relation(fields: [workoutId], references: [id], onDelete: SetNull)
+  // Set on a day imported from Intervals.icu: that calendar event's id, so a
+  // day can be traced back to what was planned there.
+  externalId             String?
+  // Today's session is harder than readiness allows, in one line ("HRV is 22%
+  // below your baseline"). Only written on imported plans, which Gradient
+  // follows as planned rather than downgrading itself.
+  readinessWarning       String?
 
   @@unique([userId, date])
 }

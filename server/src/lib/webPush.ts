@@ -66,7 +66,16 @@ export async function sendDailyWorkoutReminders(): Promise<void> {
       const payload = today
         ? today.isRestDay
           ? { title: 'Gradient', body: today.restReason ?? 'Rest day — no training scheduled today.', url: '/' }
-          : { title: 'Gradient', body: `Today's session: ${today.name ?? 'a workout'} is ready.`, url: '/plan' }
+          : {
+              title: 'Gradient',
+              // A plan Gradient follows rather than builds is never eased off
+              // by it, so the morning push is where a readiness warning has
+              // to be said.
+              body: today.readinessWarning
+                ? `Today's session: ${today.name ?? 'a workout'}. ${today.readinessWarning}`
+                : `Today's session: ${today.name ?? 'a workout'} is ready.`,
+              url: '/plan',
+            }
         : { title: 'Gradient', body: 'Open the app to plan today’s training.', url: '/plan' };
       await sendToUser(userId, payload);
     } catch (err) {

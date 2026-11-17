@@ -181,6 +181,10 @@ export default function Plan() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [planWeek.length]);
 
+  // Rest or Train's plan, read from Intervals.icu: shown as planned, so none
+  // of the controls that ask Gradient to pick something else apply.
+  const followsRestOrTrain = planConfig?.planSource === 'INTERVALS';
+
   const todayIndex = planWeek.findIndex((d) => weekdayLabel(d.date).isToday);
   const todayPlanned = todayIndex >= 0 ? planWeek[todayIndex] : null;
 
@@ -411,6 +415,7 @@ export default function Plan() {
                       <p className="muted" style={{ margin: 0 }}>
                         {selectedDay.restReason ?? 'No training scheduled today.'}
                       </p>
+                      {!followsRestOrTrain && (
                       <div className="gd-segmented gd-discipline-switch">
                         {(['BIKE', 'RUN'] as const).map((d) => (
                           <button
@@ -428,6 +433,7 @@ export default function Plan() {
                           </button>
                         ))}
                       </div>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -437,16 +443,20 @@ export default function Plan() {
                         <div className="gd-suggest-icon">
                         <Icon name={disciplineIcon(selectedDay.discipline)} />
                       </div>
-                        <button
-                          type="button"
-                          className="gd-refresh-btn"
-                          onClick={() => shuffleDay(selectedDay)}
-                          disabled={shufflingDay}
-                          aria-label="Shuffle: a different workout for this day"
-                          title="Shuffle"
-                        >
-                          <Icon name="shuffle" />
-                        </button>
+                        {followsRestOrTrain ? (
+                          <span className="gd-plan-source">Rest or Train</span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="gd-refresh-btn"
+                            onClick={() => shuffleDay(selectedDay)}
+                            disabled={shufflingDay}
+                            aria-label="Shuffle: a different workout for this day"
+                            title="Shuffle"
+                          >
+                            <Icon name="shuffle" />
+                          </button>
+                        )}
                       </div>
 
                       {selectedDay.segments && selectedDay.segments.length > 0 && (
@@ -456,6 +466,11 @@ export default function Plan() {
 
                     <div className="gd-suggest-body">
                       <p className="gd-sb-title">{selectedDay.name}</p>
+                      {selectedDay.readinessWarning && (
+                        <p className="gd-readiness-warning" role="status">
+                          {selectedDay.readinessWarning}
+                        </p>
+                      )}
                       {selectedDay.plannedStart && (
                         <p className="gd-sb-when">
                           Planned for{' '}
@@ -494,25 +509,27 @@ export default function Plan() {
                         </div>
                       </div>
 
-                      <div className="gd-segmented gd-discipline-switch">
-                        {(['BIKE', 'RUN'] as const).map((d) => (
-                          <button
-                            key={d}
-                            type="button"
-                            className={`gd-segmented-option${selectedDay.discipline === d ? ' gd-on' : ''}`}
-                            disabled={switchingDiscipline}
-                            onClick={() => switchDiscipline(selectedDay, d)}
-                          >
-                            <Icon name={disciplineIcon(d)} /> {d === 'BIKE' ? 'Bike' : 'Run'}
-                          </button>
-                        ))}
-                      </div>
+                      {!followsRestOrTrain && (
+                        <div className="gd-segmented gd-discipline-switch">
+                          {(['BIKE', 'RUN'] as const).map((d) => (
+                            <button
+                              key={d}
+                              type="button"
+                              className={`gd-segmented-option${selectedDay.discipline === d ? ' gd-on' : ''}`}
+                              disabled={switchingDiscipline}
+                              onClick={() => switchDiscipline(selectedDay, d)}
+                            >
+                              <Icon name={disciplineIcon(d)} /> {d === 'BIKE' ? 'Bike' : 'Run'}
+                            </button>
+                          ))}
+                        </div>
+                      )}
 
                       <button type="button" className="gd-feedback-cta" onClick={() => openPlanDay(selectedDay)}>
                         View workout
                       </button>
                       <button type="button" className="gd-why-btn" onClick={() => setShowWhy((w) => !w)}>
-                        Why this workout?
+                        {followsRestOrTrain ? 'About this workout' : 'Why this workout?'}
                       </button>
                     </div>
                     {showWhy && (
@@ -541,73 +558,83 @@ export default function Plan() {
                   </div>
                 ))}
 
-              <button type="button" className="gd-why-btn" onClick={() => setShowRearrangeModal(true)}>
-                Rearrange days
-              </button>
-              <button type="button" className="gd-why-btn" onClick={() => setShowAvailabilityModal(true)}>
-                Set next week's availability
-              </button>
-
-              {selectedDay?.phase && (
-                <p className="gd-plan-phase">
-                  <span className={`gd-phase-pill gd-phase-${selectedDay.phase.toLowerCase().replace('_', '-')}`}>
-                    {PHASE_LABEL[selectedDay.phase]}
-                    {selectedDay.phase === 'BUILD' && selectedDay.phaseWeek ? ` ${selectedDay.phaseWeek}` : ''}
-                  </span>
-                  {/* The day tabs above mean this can be any day in the window,
-                      not just today — say which day it is talking about. */}
-                  <span>is why {selectedDayIndex === 0 ? 'today' : 'that day'} is the size it is</span>
+              {followsRestOrTrain ? (
+                <p className="gd-plan-note">
+                  Rest or Train builds this plan and Gradient follows it as planned, checking Intervals.icu every half
+                  hour. Change sessions in Rest or Train, or switch back to Gradient&apos;s own plan in{' '}
+                  <a href="/settings">Settings</a>.
                 </p>
-              )}
+              ) : (
+                <>
+                  <button type="button" className="gd-why-btn" onClick={() => setShowRearrangeModal(true)}>
+                    Rearrange days
+                  </button>
+                  <button type="button" className="gd-why-btn" onClick={() => setShowAvailabilityModal(true)}>
+                    Set next week's availability
+                  </button>
 
-              {rulebook && <RulebookCard summary={rulebook} />}
-
-              {/* Kept to two tight lines: the hours and the "no time" shortcut
-                  share the label's row rather than each taking one of their own. */}
-              <div className="gd-availability-card">
-                <div className="gd-availability-row">
-                  <span className="gd-availability-label">Today's availability</span>
-                  <span className="gd-availability-value mono">{formatHours(availability)}</span>
-                  {availability > 0 && (
-                    <button
-                      type="button"
-                      className="gd-no-time-btn"
-                      disabled={!todayPlanned || savingAvailability}
-                      title="I don't have time today"
-                      aria-label="I don't have time today"
-                      onClick={() => {
-                        setAvailability(0);
-                        commitAvailability(0);
-                      }}
-                    >
-                      No time
-                    </button>
+                  {selectedDay?.phase && (
+                    <p className="gd-plan-phase">
+                      <span className={`gd-phase-pill gd-phase-${selectedDay.phase.toLowerCase().replace('_', '-')}`}>
+                        {PHASE_LABEL[selectedDay.phase]}
+                        {selectedDay.phase === 'BUILD' && selectedDay.phaseWeek ? ` ${selectedDay.phaseWeek}` : ''}
+                      </span>
+                      {/* The day tabs above mean this can be any day in the window,
+                          not just today — say which day it is talking about. */}
+                      <span>is why {selectedDayIndex === 0 ? 'today' : 'that day'} is the size it is</span>
+                    </p>
                   )}
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={4}
-                  step={0.25}
-                  value={availability}
-                  disabled={!todayPlanned || savingAvailability}
-                  onChange={(e) => setAvailability(Number(e.target.value))}
-                  onMouseUp={(e) => commitAvailability(Number((e.target as HTMLInputElement).value))}
-                  onTouchEnd={(e) => commitAvailability(Number((e.target as HTMLInputElement).value))}
-                  aria-label="Today's availability in hours"
-                />
-              </div>
 
-              <p className="gd-plan-note">
-                Want a different rhythm? Adjust your weekly hours or discipline mix and Gradient will regenerate your
-                plan around it.
-              </p>
-              <button type="button" className="gd-dashed-fab" onClick={() => setShowPlanModal(true)}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-                Edit plan
-              </button>
+                  {rulebook && <RulebookCard summary={rulebook} />}
+
+                  {/* Kept to two tight lines: the hours and the "no time" shortcut
+                      share the label's row rather than each taking one of their own. */}
+                  <div className="gd-availability-card">
+                    <div className="gd-availability-row">
+                      <span className="gd-availability-label">Today's availability</span>
+                      <span className="gd-availability-value mono">{formatHours(availability)}</span>
+                      {availability > 0 && (
+                        <button
+                          type="button"
+                          className="gd-no-time-btn"
+                          disabled={!todayPlanned || savingAvailability}
+                          title="I don't have time today"
+                          aria-label="I don't have time today"
+                          onClick={() => {
+                            setAvailability(0);
+                            commitAvailability(0);
+                          }}
+                        >
+                          No time
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={4}
+                      step={0.25}
+                      value={availability}
+                      disabled={!todayPlanned || savingAvailability}
+                      onChange={(e) => setAvailability(Number(e.target.value))}
+                      onMouseUp={(e) => commitAvailability(Number((e.target as HTMLInputElement).value))}
+                      onTouchEnd={(e) => commitAvailability(Number((e.target as HTMLInputElement).value))}
+                      aria-label="Today's availability in hours"
+                    />
+                  </div>
+
+                  <p className="gd-plan-note">
+                    Want a different rhythm? Adjust your weekly hours or discipline mix and Gradient will regenerate your
+                    plan around it.
+                  </p>
+                  <button type="button" className="gd-dashed-fab" onClick={() => setShowPlanModal(true)}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                    Edit plan
+                  </button>
+                </>
+              )}
             </>
           ))}
       </div>
