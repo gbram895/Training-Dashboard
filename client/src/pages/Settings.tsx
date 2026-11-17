@@ -5,6 +5,7 @@ import type { HrZoneSettings, ThresholdSettings, TrainingLevel } from '../api/ty
 import ApiTokenCard from '../components/settings/ApiTokenCard';
 import CalibrationCard from '../components/settings/CalibrationCard';
 import WidgetTokenCard from '../components/settings/WidgetTokenCard';
+import RestOrTrainCard from '../components/settings/RestOrTrainCard';
 import PageHead from '../components/PageHead';
 import { useAuth } from '../context/AuthContext';
 import { useCachedState } from '../lib/pageCache';
@@ -354,6 +355,11 @@ export default function Settings() {
               {thresholdSaving ? 'Saving…' : thresholdSaved ? 'Saved ✓' : 'Save thresholds'}
             </button>
           </form>
+        </div>
+
+        <div className="gd-set-group">
+          <p className="gd-set-group-label">Rest or Train</p>
+          <RestOrTrainCard />
         </div>
 
         <div className="gd-set-group">

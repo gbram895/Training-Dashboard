@@ -5551,3 +5551,44 @@ button.gd-slot-chip {
 button.gd-slots-copy {
   margin-left: auto;
 }
+
+/* Rest or Train's plan, followed as planned: Gradient's only say is a warning
+   when today's readiness doesn't match the session. */
+.gd-plan-source {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+}
+
+.gd-readiness-warning {
+  margin: -6px 0 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--warn-wash);
+  color: var(--warn);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+/* Quieter actions under a card's main button, wrapping at phone width. */
+.gd-set-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 18px;
+  margin-top: 10px;
+}
+
+.gd-set-links button {
+  background: none;
+  border: 0;
+  padding: 6px 2px;
+  min-height: 0;
+  color: var(--text-dim);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  box-shadow: none;
+}

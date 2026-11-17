@@ -120,6 +120,8 @@ export interface TrainingPlanConfig {
   runDays: number[];
   /** When in the day each weekday's training can go, keyed by JS getDay(). Missing = any time. */
   trainingWindows?: TrainingWindows | null;
+  /** GRADIENT builds the plan itself; INTERVALS follows Rest or Train's plan from Intervals.icu. */
+  planSource?: 'GRADIENT' | 'INTERVALS';
 }
 
 export interface PlannedDay {
@@ -153,6 +155,10 @@ export interface PlannedDay {
   /** How well the evidence backs this day, and why, as the rulebook asks every session to say. */
   confidence?: RulebookConfidence | null;
   confidenceNote?: string | null;
+  /** On a day imported from Intervals.icu, that calendar event's id. */
+  externalId?: string | null;
+  /** Today's imported session is harder than readiness allows, and why. */
+  readinessWarning?: string | null;
 }
 
 export type TrainingLevel = 'RECREATIONAL' | 'COMPETITIVE';
